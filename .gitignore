@@ -1,0 +1,7 @@
+.codewhale/
+.deepseek/
+
+game/.godot/
+
+*.tmp
+*.cache

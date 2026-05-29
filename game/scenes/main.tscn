@@ -1,0 +1,46 @@
+[gd_scene load_steps=9 format=3 uid="uid://main"]
+
+[ext_resource type="Script" uid="uid://b13tlsudc1f81" path="res://scripts/roguelike/roguelike_manager.gd" id="1_rogue"]
+[ext_resource type="Script" uid="uid://bp8ce6gsg0mom" path="res://scripts/ui/recruit_ui.gd" id="2_recruit"]
+[ext_resource type="Script" uid="uid://ntu3pg6cq6xv" path="res://scripts/ui/resource_bar.gd" id="3_resource"]
+[ext_resource type="Script" uid="uid://cdl0vea8vxt8t" path="res://scripts/ui/deployment_bar.gd" id="4_deploy"]
+[ext_resource type="Script" uid="uid://ceaht7qum8wvb" path="res://scripts/ui/skill_panel.gd" id="5_skill"]
+[ext_resource type="Script" uid="uid://lekijpfaobdq" path="res://scripts/grid/grid_system.gd" id="6_grid"]
+[ext_resource type="Script" uid="uid://cv81n2rpjj7s8" path="res://scripts/deployment/deployment_system.gd" id="7_dep_sys"]
+[ext_resource type="Script" uid="uid://b11hhqpgt0jw5" path="res://scripts/core/startup.gd" id="8_startup"]
+
+[node name="Main" type="Node2D"]
+
+[node name="GridSystem" type="Node2D" parent="."]
+script = ExtResource("6_grid")
+
+[node name="DeploymentSystem" type="Node" parent="."]
+script = ExtResource("7_dep_sys")
+
+[node name="RoguelikeManager" type="Node" parent="."]
+script = ExtResource("1_rogue")
+
+[node name="UICanvas" type="CanvasLayer" parent="."]
+
+[node name="ResourceBar" type="Control" parent="UICanvas"]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("3_resource")
+
+[node name="DeploymentBar" type="Control" parent="UICanvas"]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("4_deploy")
+
+[node name="SkillPanel" type="Control" parent="UICanvas"]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("5_skill")
+
+[node name="RecruitUI" type="Control" parent="UICanvas"]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("2_recruit")
+
+[node name="Startup" type="Node" parent="."]
+script = ExtResource("8_startup")
