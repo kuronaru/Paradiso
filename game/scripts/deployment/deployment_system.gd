@@ -5,6 +5,7 @@ extends Node
 
 signal unit_selected(unit: HeroUnit)
 signal unit_deselected
+signal drag_ended
 
 var selected_unit: HeroUnit = null
 var hand_cards: Array = []            # 手牌 [{class_id, level}]
@@ -92,13 +93,15 @@ func _on_cell_clicked(grid_pos: Vector2i) -> void:
 	"""网格点击处理"""
 	if is_dragging:
 		# 拖拽放置
+		var deployed := false
 		if drag_card_index >= 0:
-			deploy_card(drag_card_index, grid_pos)
+			deployed = deploy_card(drag_card_index, grid_pos)
 		is_dragging = false
 		drag_card_index = -1
 		if drag_preview:
 			drag_preview.queue_free()
 			drag_preview = null
+		drag_ended.emit()
 	elif BattleManager.state == BattleManager.BattleState.PREPARING:
 		# 准备阶段：点击空地尝试部署第一张可部署的卡
 		if hand_cards.size() > 0 and grid.is_deploy_zone(grid_pos) and not grid.is_occupied(grid_pos):

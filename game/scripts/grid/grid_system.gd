@@ -28,6 +28,8 @@ var all_units: Array[Node] = []
 @export var grid_color: Color = Color(0.5, 0.5, 0.5, 0.65)
 @export var deploy_zone_color: Color = Color(0.2, 0.5, 0.2, 0.3)
 @export var spawn_zone_color: Color = Color(0.5, 0.2, 0.2, 0.3)
+## Debug: 打印 UI 命中检测日志
+@export var debug_ui_hits: bool = true
 
 
 func _ready() -> void:
@@ -258,6 +260,27 @@ func spawn_enemy_wave(enemy_templates: Array, spawns: Array) -> void:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		# 检查鼠标是否在 UI 上，防止穿透点击触发部署
+		if _is_mouse_over_ui():
+			return
 		var grid_pos := world_to_grid(get_global_mouse_position())
 		if is_in_bounds(grid_pos):
 			cell_clicked.emit(grid_pos)
+
+
+func _is_mouse_over_ui() -> bool:
+	"""递归检查鼠标是否在任何可见 Control 节点上"""
+	return _check_control_hit(get_tree().root, get_global_mouse_position())
+
+
+func _check_control_hit(node: Node, mouse_pos: Vector2) -> bool:
+	for child in node.get_children():
+		if child is Control and child.is_visible_in_tree() and child.mouse_filter != Control.MOUSE_FILTER_IGNORE:
+			if child.get_global_rect().has_point(mouse_pos):
+				if debug_ui_hits:
+					var label: StringName = child.name if not child.name.is_empty() else "<unnamed>"
+					print("[Grid] UI拦截: %s (%s) rect=%s" % [label, child.get_class(), child.get_global_rect()])
+				return true
+		if _check_control_hit(child, mouse_pos):
+			return true
+	return false

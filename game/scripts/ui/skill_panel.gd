@@ -14,6 +14,11 @@ var deployment_system: DeploymentSystem = null
 
 
 func _ready() -> void:
+	# 确保 Control 覆盖全屏（面板内容锚定到右侧）
+	# 全屏容器不拦截鼠标事件，由子按钮自行处理
+	size = get_viewport_rect().size
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+
 	# 连接DeploymentSystem
 	var tree := get_tree()
 	if tree:

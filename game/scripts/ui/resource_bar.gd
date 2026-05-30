@@ -12,6 +12,9 @@ var wave_start_btn: Button
 
 
 func _ready() -> void:
+	# 确保 Control 有足够尺寸捕获鼠标事件
+	size = Vector2(220, 130)
+
 	# 背景条
 	dp_bar_bg = ColorRect.new()
 	dp_bar_bg.size = Vector2(bar_width, bar_height)

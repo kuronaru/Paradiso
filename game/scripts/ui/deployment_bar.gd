@@ -29,6 +29,7 @@ func _ready() -> void:
 			deployment_system.unit_selected.connect(_on_unit_selected)
 			deployment_system.unit_deselected.connect(_on_unit_deselected)
 			deployment_system.hand_updated.connect(_on_hand_updated)
+			deployment_system.drag_ended.connect(_on_drag_ended)
 
 	# DP变化也刷新按钮状态
 	ResourceManager.dp_changed.connect(_on_dp_changed)
@@ -151,6 +152,12 @@ func _on_hand_updated(_cards: Array) -> void:
 	_refresh_ui()
 
 
+func _on_drag_ended() -> void:
+	"""拖拽完成（成功或失败），清除高亮"""
+	drag_highlight_index = -1
+	_update_button_states()
+
+
 func _on_unit_selected(_unit: HeroUnit) -> void:
 	_refresh_ui()
 
@@ -166,8 +173,3 @@ func _on_dp_changed(_current: int, _max_val: int) -> void:
 func _process(_delta: float) -> void:
 	# 持续更新按钮状态（DP变化、状态变化）
 	_update_button_states()
-
-	# 拖拽状态未激活时重置高亮
-	if deployment_system and not deployment_system.is_dragging and drag_highlight_index >= 0:
-		drag_highlight_index = -1
-		_update_button_states()
