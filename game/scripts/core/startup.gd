@@ -2,6 +2,8 @@
 # 挂载在主场景的Startup节点上，负责初始流程和调试控制
 extends Node
 
+const M = "Startup"
+
 var roguelike_manager: RoguelikeManager = null
 
 
@@ -15,7 +17,7 @@ func _ready() -> void:
 		roguelike_manager = rms[0]
 		# 启动肉鸽模式
 		roguelike_manager.start_run()
-		print("[Startup] 肉鸽模式已启动!")
+		Log.i(M, "肉鸽模式已启动!")
 
 	# 设置部署系统为手动触发
 	ResourceManager.set_regen_enabled(true)
@@ -30,7 +32,7 @@ func _input(event: InputEvent) -> void:
 				if BattleManager.state == BattleManager.BattleState.PREPARING or \
 				   BattleManager.state == BattleManager.BattleState.WAVE_BREAK:
 					BattleManager.start_next_wave()
-					print("[Startup] 手动开始下一波")
+					Log.d(M, "手动开始下一波")
 			KEY_ESCAPE:
 				# 取消选中
 				var dp_systems := get_tree().get_nodes_in_group("deployment_system")

@@ -3,6 +3,8 @@
 class_name RecruitSystem
 extends Node
 
+const M = "Recruit"
+
 class RecruitOption:
 	var class_id: String
 	var job_name: String

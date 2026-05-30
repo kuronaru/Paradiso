@@ -2,6 +2,8 @@
 class_name ResourceBar
 extends Control
 
+const M = "ResourceBar"
+
 @export var bar_width: float = 200.0
 @export var bar_height: float = 24.0
 

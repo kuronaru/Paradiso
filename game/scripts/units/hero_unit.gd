@@ -59,7 +59,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func toggle_stance() -> void:
 	super.toggle_stance()
-	print("[%s] 切换姿态: %s" % [unit_name, "驻扎" if stance == Stance.STATIONED else "行进"])
+	Log.d(M, "[%s] 切换姿态: %s" % [unit_name, "驻扎" if stance == Stance.STATIONED else "行进"])
 
 
 func retreat() -> void:
@@ -67,7 +67,7 @@ func retreat() -> void:
 		return
 	var refund_amount := int(deploy_cost * 0.5)
 	ResourceManager.refund(refund_amount)
-	print("[%s] 撤退，返还 %d DP" % [unit_name, refund_amount])
+	Log.i(M, "[%s] 撤退，返还 %d DP" % [unit_name, refund_amount])
 	BattleManager.unregister_player_unit(self)
 	var grid: GridSystem = BattleManager.grid
 	if grid:

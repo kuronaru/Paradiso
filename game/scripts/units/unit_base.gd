@@ -3,6 +3,8 @@
 class_name UnitBase
 extends Node2D
 
+const M = "Unit"
+
 signal died(unit: Node)
 signal hp_changed(current: int, max_hp: int)
 signal stance_changed(is_stationed: bool)
@@ -268,7 +270,7 @@ func _execute_skill(sd: SkillData) -> void:
 		# 通用持续效果
 		pass
 
-	print("[%s] 使用了技能: %s" % [unit_name, sd.skill_name])
+	Log.i(M, "[%s] 使用了技能: %s" % [unit_name, sd.skill_name])
 
 
 func _enemy_team() -> String:

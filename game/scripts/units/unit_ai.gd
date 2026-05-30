@@ -3,6 +3,8 @@
 class_name UnitAI
 extends Node
 
+const M = "AI"
+
 var owner_unit: UnitBase = null
 var state: String = "idle"       # idle | moving | attacking
 var path: Array = []

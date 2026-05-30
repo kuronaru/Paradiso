@@ -2,6 +2,8 @@
 # 负责战斗初始化、波次控制、胜负判定
 extends Node
 
+const M = "Battle"
+
 signal battle_started
 signal battle_won
 signal battle_lost
@@ -50,7 +52,7 @@ func setup_battle(party_data: Array, enemies: Array, wave_count: int = 3) -> voi
 	state = BattleState.PREPARING
 
 	# 根据party_data生成玩家角色（由DeploymentSystem处理）
-	print("[BattleManager] 战斗初始化: %d 波敌人" % total_waves)
+	Log.i(M, "战斗初始化: %d 波敌人" % total_waves)
 
 	battle_started.emit()
 
@@ -70,7 +72,7 @@ func start_next_wave() -> bool:
 		if is_instance_valid(unit) and unit.has_method("activate_ai"):
 			unit.activate_ai()
 
-	print("[BattleManager] 第 %d 波开始" % current_wave)
+	Log.i(M, "第 %d 波开始" % current_wave)
 	return true
 
 
@@ -116,14 +118,14 @@ func _all_waves_cleared() -> void:
 	state = BattleState.VICTORY
 	all_waves_cleared.emit()
 	battle_won.emit()
-	print("[BattleManager] 战斗胜利!")
+	Log.i(M, "战斗胜利!")
 
 
 func _battle_lost() -> void:
 	"""战斗失败"""
 	state = BattleState.DEFEAT
 	battle_lost.emit()
-	print("[BattleManager] 战斗失败!")
+	Log.i(M, "战斗失败!")
 
 
 func register_player_unit(unit: Node) -> void:

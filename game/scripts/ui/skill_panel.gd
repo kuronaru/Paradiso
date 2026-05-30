@@ -3,6 +3,8 @@
 class_name SkillPanel
 extends Control
 
+const M = "SkillPanel"
+
 var selected_unit: HeroUnit = null
 var skill_buttons: Array[Button] = []
 var stance_btn: Button

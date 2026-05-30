@@ -3,6 +3,8 @@
 class_name DeploymentBar
 extends Control
 
+const M = "DeployBar"
+
 signal card_clicked(card_index: int, class_id: String)
 
 @export var card_size: Vector2 = Vector2(80, 100)

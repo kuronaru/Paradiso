@@ -3,6 +3,8 @@
 class_name RoguelikeManager
 extends Node
 
+const M = "Roguelike"
+
 signal recruit_phase_started
 signal battle_phase_started
 signal map_phase_started
@@ -43,7 +45,7 @@ func _enter_recruit_phase() -> void:
 	phase = RunPhase.RECRUIT
 	var options := recruit_system.generate_recruit_options(GameManager.current_floor, GameManager.party.size())
 	recruit_phase_started.emit()
-	print("[Roguelike] 进入招募阶段，%d 个选项" % options.size())
+	Log.i(M, "进入招募阶段，%d 个选项" % options.size())
 
 
 func purchase_recruit(option_index: int) -> bool:
@@ -141,13 +143,13 @@ func _on_battle_won() -> void:
 	current_node_index += 1
 	var reward := _calculate_reward()
 	GameManager.earn_gold(reward)
-	print("[Roguelike] 战斗胜利! 获得 %d 金币" % reward)
+	Log.i(M, "战斗胜利! 获得 %d 金币" % reward)
 	_enter_recruit_phase()
 
 
 func _on_battle_lost() -> void:
 	"""战斗失败"""
-	print("[Roguelike] 战斗失败! 冒险结束")
+	Log.i(M, "战斗失败! 冒险结束")
 	_end_run(false)
 
 
@@ -166,6 +168,6 @@ func _end_run(victory: bool) -> void:
 	GameManager.is_roguelike_run = false
 	run_ended.emit(victory)
 	if victory:
-		print("[Roguelike] 恭喜! 冒险完成!")
+		Log.i(M, "恭喜! 冒险完成!")
 	else:
-		print("[Roguelike] 冒险失败...")
+		Log.i(M, "冒险失败...")

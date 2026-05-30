@@ -3,6 +3,8 @@
 class_name DeploymentSystem
 extends Node
 
+const M = "Deploy"
+
 signal unit_selected(unit: HeroUnit)
 signal unit_deselected
 signal drag_ended
@@ -30,7 +32,7 @@ func setup_hand(party_data: Array) -> void:
 	hand_cards.clear()
 	for member in party_data:
 		hand_cards.append({"class_id": member["class_id"], "level": member["level"]})
-	print("[Deployment] 手牌初始化: %d 张卡" % hand_cards.size())
+	Log.i(M, "手牌初始化: %d 张卡" % hand_cards.size())
 	hand_updated.emit(hand_cards)
 
 
@@ -53,11 +55,11 @@ func deploy_card(card_index: int, grid_pos: Vector2i) -> bool:
 	var ct := ClassDefinitions.get_template(card_data["class_id"])
 
 	if not ResourceManager.spend(ct.deploy_cost):
-		print("[Deployment] DP不足，需要 %d" % ct.deploy_cost)
+		Log.w(M, "DP不足，需要 %d" % ct.deploy_cost)
 		return false
 
 	if not grid.can_place_at(grid_pos):
-		print("[Deployment] 无法部署到 (%d, %d)" % [grid_pos.x, grid_pos.y])
+		Log.w(M, "无法部署到 (%d, %d)" % [grid_pos.x, grid_pos.y])
 		ResourceManager.refund(ct.deploy_cost)
 		return false
 
@@ -67,7 +69,7 @@ func deploy_card(card_index: int, grid_pos: Vector2i) -> bool:
 
 	hand_cards.remove_at(card_index)
 	hand_updated.emit(hand_cards)
-	print("[Deployment] 部署 %s 到 (%d, %d)" % [ct.job_name, grid_pos.x, grid_pos.y])
+	Log.i(M, "部署 %s 到 (%d, %d)" % [ct.job_name, grid_pos.x, grid_pos.y])
 	return true
 
 

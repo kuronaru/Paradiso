@@ -2,6 +2,8 @@
 # 负责场景切换、游戏模式管理、全局数据持有
 extends Node
 
+const M = "Game"
+
 enum GameMode {
 	BATTLE,        ## 战斗模式
 	RECRUIT,       ## 酒馆招募

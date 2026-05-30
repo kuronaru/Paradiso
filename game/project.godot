@@ -21,6 +21,7 @@ config/features=PackedStringArray("4.5")
 GameManager="*res://scripts/core/game_manager.gd"
 BattleManager="*res://scripts/core/battle_manager.gd"
 ResourceManager="*res://scripts/core/resource_manager.gd"
+Log="*res://scripts/core/logger.gd"
 
 [display]
 

@@ -2,6 +2,8 @@
 # 负责部署点数的增长、消耗、查询
 extends Node
 
+const M = "Resource"
+
 signal dp_changed(current_dp: int, max_dp: int)
 
 ## 部署资源（Deployment Points）

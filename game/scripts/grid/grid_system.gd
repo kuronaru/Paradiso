@@ -3,6 +3,8 @@
 class_name GridSystem
 extends Node2D
 
+const M = "Grid"
+
 signal cell_clicked(grid_pos: Vector2i)
 signal unit_placed(unit: Node, grid_pos: Vector2i)
 
@@ -279,7 +281,7 @@ func _check_control_hit(node: Node, mouse_pos: Vector2) -> bool:
 			if child.get_global_rect().has_point(mouse_pos):
 				if debug_ui_hits:
 					var label: StringName = child.name if not child.name.is_empty() else "<unnamed>"
-					print("[Grid] UI拦截: %s (%s) rect=%s" % [label, child.get_class(), child.get_global_rect()])
+					Log.d(M, "UI拦截: %s (%s) rect=%s" % [label, child.get_class(), child.get_global_rect()])
 				return true
 		if _check_control_hit(child, mouse_pos):
 			return true

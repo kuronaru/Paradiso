@@ -2,6 +2,8 @@
 class_name RecruitUI
 extends Control
 
+const M = "RecruitUI"
+
 signal recruit_purchased
 signal recruit_skipped
 
