@@ -11,6 +11,7 @@ signal drag_ended
 signal hand_updated(cards: Array)
 
 var selected_unit: HeroUnit = null
+var selected_card_index: int = -1     # 当前高亮选中的手牌下标（点击网格部署）
 var hand_cards: Array = []            # 手牌 [{class_id, level}]
 var is_dragging: bool = false
 var drag_card_index: int = -1         # 兼容旧点击部署流程的当前拖拽下标
@@ -53,6 +54,7 @@ func _input(event: InputEvent) -> void:
 
 func setup_hand(party_data: Array) -> void:
 	"""初始化手牌（从肉鸽队伍数据）"""
+	selected_card_index = -1
 	hand_cards.clear()
 	for member in party_data:
 		hand_cards.append({"class_id": member["class_id"], "level": member["level"]})
@@ -92,6 +94,7 @@ func begin_drag(card_index: int) -> bool:
 	drag_card_data = card_data.duplicate(true)
 	drag_original_index = card_index
 	drag_card_index = card_index
+	selected_card_index = -1
 	is_dragging = true
 	drag_over_grid = false
 	drag_preview_mode = ""
@@ -101,6 +104,24 @@ func begin_drag(card_index: int) -> bool:
 	hand_updated.emit(hand_cards)
 	_update_drag_preview()
 	return true
+
+
+func select_card(card_index: int) -> bool:
+	"""高亮选中一张手牌，用于随后点击网格部署"""
+	if card_index < 0 or card_index >= hand_cards.size():
+		selected_card_index = -1
+		return false
+	if not can_deploy_now():
+		selected_card_index = -1
+		return false
+
+	selected_card_index = card_index
+	return true
+
+
+func clear_selected_card() -> void:
+	"""清除当前高亮选中的手牌"""
+	selected_card_index = -1
 
 
 func cancel_drag() -> void:
@@ -122,6 +143,10 @@ func deploy_card(card_index: int, grid_pos: Vector2i) -> bool:
 		return false
 
 	hand_cards.remove_at(card_index)
+	if selected_card_index == card_index:
+		selected_card_index = -1
+	elif selected_card_index > card_index:
+		selected_card_index -= 1
 	hand_updated.emit(hand_cards)
 	return true
 
@@ -179,6 +204,10 @@ func _on_cell_clicked(grid_pos: Vector2i) -> void:
 	"""网格点击处理"""
 	if is_dragging:
 		_finish_drag_at(grid_pos)
+	elif selected_card_index >= 0:
+		# 已经高亮选中手牌时，点击可部署空格执行点击部署
+		if grid.can_place_at(grid_pos) and deploy_card(selected_card_index, grid_pos):
+			clear_selected_card()
 	elif BattleManager.state == BattleManager.BattleState.PREPARING:
 		# 准备阶段：点击空地尝试部署第一张可部署的卡
 		if hand_cards.size() > 0 and grid.is_deploy_zone(grid_pos) and not grid.is_occupied(grid_pos):
