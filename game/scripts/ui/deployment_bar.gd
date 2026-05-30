@@ -1,5 +1,5 @@
 # deployment_bar.gd — 底部部署卡牌栏
-# 显示手牌，支持点击进入拖拽部署模式
+# 显示手牌，支持按住左键拖拽部署
 class_name DeploymentBar
 extends Control
 
@@ -20,6 +20,7 @@ var drag_highlight_index: int = -1
 
 func _ready() -> void:
 	# 确保 Control 占据底部区域
+	add_to_group("deployment_bar")
 	_setup_layout()
 
 	# 找到DeploymentSystem
@@ -35,7 +36,6 @@ func _ready() -> void:
 
 	# DP变化也刷新按钮状态
 	ResourceManager.dp_changed.connect(_on_dp_changed)
-
 	_refresh_ui()
 
 
@@ -80,9 +80,10 @@ func _refresh_ui() -> void:
 		btn.flat = false
 
 		var idx := i
-		btn.pressed.connect(func(): _on_card_pressed(idx))
+		# 按下左键即开始拖拽；真正部署在 DeploymentSystem 中处理
+		btn.button_down.connect(func(): _on_card_drag_started(idx))
 		# 右键取消拖拽
-		btn.gui_input.connect(func(event: InputEvent): _on_card_gui_input(event, idx))
+		btn.gui_input.connect(func(event: InputEvent): _on_card_gui_input(event))
 
 		add_child(btn)
 		cards.append(btn)
@@ -95,12 +96,7 @@ func _update_button_states() -> void:
 	if not deployment_system:
 		return
 
-	# 允许在准备阶段、战斗中、波次间隙部署
-	var can_deploy_now := BattleManager.state in [
-		BattleManager.BattleState.PREPARING,
-		BattleManager.BattleState.IN_PROGRESS,
-		BattleManager.BattleState.WAVE_BREAK,
-	]
+	var can_deploy_now := deployment_system.can_deploy_now()
 
 	for i in range(min(cards.size(), deployment_system.hand_cards.size())):
 		var card_data = deployment_system.hand_cards[i]
@@ -114,26 +110,22 @@ func _update_button_states() -> void:
 			cards[i].modulate = Color.WHITE
 
 
-func _on_card_pressed(index: int) -> void:
+func _on_card_drag_started(index: int) -> void:
+	"""左键按下卡牌时开始拖拽部署"""
 	if not deployment_system:
 		return
 	var hand := deployment_system.hand_cards
 	if index < 0 or index >= hand.size():
 		return
 
-	# 进入拖拽模式 / 或切换拖拽
-	if deployment_system.is_dragging and deployment_system.drag_card_index == index:
-		# 再次点击同一张卡：取消拖拽
-		_cancel_drag()
-	else:
-		deployment_system.is_dragging = true
-		deployment_system.drag_card_index = index
-		drag_highlight_index = index
+	var class_id: String = hand[index]["class_id"]
+	if deployment_system.begin_drag(index):
+		drag_highlight_index = -1
 		_update_button_states()
-		card_clicked.emit(index, hand[index]["class_id"])
+		card_clicked.emit(index, class_id)
 
 
-func _on_card_gui_input(event: InputEvent, _index: int) -> void:
+func _on_card_gui_input(event: InputEvent) -> void:
 	"""右键取消拖拽"""
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_RIGHT:
@@ -141,16 +133,15 @@ func _on_card_gui_input(event: InputEvent, _index: int) -> void:
 
 
 func _cancel_drag() -> void:
+	"""取消当前拖拽"""
 	if deployment_system:
-		deployment_system.is_dragging = false
-		deployment_system.drag_card_index = -1
+		deployment_system.cancel_drag()
 	drag_highlight_index = -1
 	_update_button_states()
 
 
 func _on_hand_updated(_cards: Array) -> void:
 	"""手牌变化时刷新"""
-	_cancel_drag()
 	_refresh_ui()
 
 
