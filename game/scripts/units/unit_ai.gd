@@ -147,7 +147,7 @@ func _start_move_toward(target: Node) -> void:
 		state = "attacking"
 		return
 	var next_pos := owner_unit.grid_position + step
-	if grid.is_in_bounds(next_pos) and not grid.is_occupied(next_pos):
+	if grid.is_deploy_zone(next_pos) and grid.is_in_bounds(next_pos) and not grid.is_occupied(next_pos):
 		move_target_pos = next_pos
 		path = [next_pos]
 		state = "moving"
@@ -158,7 +158,7 @@ func _start_move_toward(target: Node) -> void:
 			owner_unit.grid_position + Vector2i(0, step.y),
 		]
 		for alt in alts:
-			if alt != next_pos and grid.is_in_bounds(alt) and not grid.is_occupied(alt):
+			if alt != next_pos and grid.is_deploy_zone(alt) and grid.is_in_bounds(alt) and not grid.is_occupied(alt):
 				move_target_pos = alt
 				path = [alt]
 				state = "moving"
@@ -173,7 +173,7 @@ func _move_forward() -> void:
 		return
 	var direction := 1 if owner_unit.team == "player" else -1
 	var next_pos := owner_unit.grid_position + Vector2i(direction, 0)
-	if grid.is_in_bounds(next_pos) and not grid.is_occupied(next_pos):
+	if grid.is_deploy_zone(next_pos) and grid.is_in_bounds(next_pos) and not grid.is_occupied(next_pos):
 		move_target_pos = next_pos
 		path = [next_pos]
 		state = "moving"

@@ -7,13 +7,13 @@ signal cell_clicked(grid_pos: Vector2i)
 signal unit_placed(unit: Node, grid_pos: Vector2i)
 
 ## 网格配置
-@export var grid_width: int = 20         # 格子列数
-@export var grid_height: int = 12        # 格子行数
+@export var grid_width: int = 19         # 格子列数
+@export var grid_height: int = 10        # 格子行数
 @export var cell_size: float = 64.0      # 格子像素大小
 @export var grid_offset: Vector2 = Vector2(32, 32)  # 网格起始偏移
 
 ## 部署区域（玩家可部署的行范围）
-@export var deploy_rows: Vector2i = Vector2i(0, 4)
+@export var deploy_rows: Vector2i = Vector2i(1, 6)
 
 ## 敌方出生点
 @export var spawn_points: Array[Vector2i] = []
@@ -25,15 +25,15 @@ var all_units: Array[Node] = []
 
 ## 可视化
 @export var draw_grid: bool = true
-@export var grid_color: Color = Color(0.3, 0.3, 0.3, 0.5)
+@export var grid_color: Color = Color(0.5, 0.5, 0.5, 0.65)
 @export var deploy_zone_color: Color = Color(0.2, 0.5, 0.2, 0.3)
 @export var spawn_zone_color: Color = Color(0.5, 0.2, 0.2, 0.3)
 
 
 func _ready() -> void:
-	# 初始化默认出生点（右侧边缘）
+	# 初始化默认出生点（右侧边缘，仅在可部署/可移动范围内）
 	if spawn_points.is_empty():
-		for y in range(deploy_rows.x, grid_height):
+		for y in range(deploy_rows.x, deploy_rows.y + 1):
 			spawn_points.append(Vector2i(grid_width - 1, y))
 	BattleManager.grid = self
 	queue_redraw()
@@ -43,28 +43,27 @@ func _draw() -> void:
 	if not draw_grid:
 		return
 
+	# 网格线 — 画在格子边界上（非格子中心）
 	for x in range(grid_width + 1):
-		var start := grid_to_world(Vector2i(x, 0))
-		var end := grid_to_world(Vector2i(x, grid_height))
-		draw_line(start, end, grid_color, 1.0)
+		var line_x := grid_offset.x + x * cell_size
+		draw_line(Vector2(line_x, grid_offset.y), Vector2(line_x, grid_offset.y + grid_height * cell_size), grid_color, 1.0)
 
 	for y in range(grid_height + 1):
-		var start := grid_to_world(Vector2i(0, y))
-		var end := grid_to_world(Vector2i(grid_width, y))
-		draw_line(start, end, grid_color, 1.0)
+		var line_y := grid_offset.y + y * cell_size
+		draw_line(Vector2(grid_offset.x, line_y), Vector2(grid_offset.x + grid_width * cell_size, line_y), grid_color, 1.0)
 
-	# 部署区域高亮
+	# 部署区域高亮 — 用格子边界坐标
 	var deploy_rect := Rect2(
-		grid_to_world(Vector2i(0, deploy_rows.x)),
-		grid_to_world(Vector2i(grid_width, deploy_rows.y + 1)) - grid_to_world(Vector2i(0, deploy_rows.x))
+		Vector2(grid_offset.x, grid_offset.y + deploy_rows.x * cell_size),
+		Vector2(grid_width * cell_size, (deploy_rows.y - deploy_rows.x + 1) * cell_size)
 	)
 	draw_rect(deploy_rect, deploy_zone_color)
 
-	# 出生区域高亮
+	# 出生区域高亮 — 用格子边界坐标
 	if not spawn_points.is_empty():
 		for sp in spawn_points:
 			var sp_rect := Rect2(
-				grid_to_world(sp),
+				Vector2(grid_offset.x + sp.x * cell_size, grid_offset.y + sp.y * cell_size),
 				Vector2(cell_size, cell_size)
 			)
 			draw_rect(sp_rect, spawn_zone_color)
@@ -95,6 +94,11 @@ func is_occupied(grid_pos: Vector2i) -> bool:
 
 func is_deploy_zone(grid_pos: Vector2i) -> bool:
 	return grid_pos.y >= deploy_rows.x and grid_pos.y <= deploy_rows.y
+
+
+func is_move_zone(grid_pos: Vector2i) -> bool:
+	"""是否在可移动范围内（与可部署范围一致）"""
+	return is_in_bounds(grid_pos) and is_deploy_zone(grid_pos)
 
 
 func can_place_at(grid_pos: Vector2i) -> bool:
@@ -207,8 +211,8 @@ func spawn_enemy_wave(enemy_templates: Array, spawns: Array) -> void:
 	"""批量生成敌人"""
 	var sp_list := spawns.duplicate()
 	if sp_list.is_empty():
-		# 使用默认右侧出生点
-		for y in range(deploy_rows.x, grid_height):
+		# 使用默认右侧出生点（仅在可部署范围内）
+		for y in range(deploy_rows.x, deploy_rows.y + 1):
 			sp_list.append(Vector2i(grid_width - 1, y))
 
 	var sp_idx := 0
