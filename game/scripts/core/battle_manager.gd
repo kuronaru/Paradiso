@@ -88,6 +88,8 @@ func _spawn_wave_enemies(wave_index: int) -> void:
 	# 通知GridSystem生成实体
 	if grid and grid.has_method("spawn_enemy_wave"):
 		grid.spawn_enemy_wave(wave_enemies, enemy_spawn_points)
+	# 生成完毕，清空模板列表（check_battle_end 依赖此判断）
+	wave_enemies.clear()
 
 
 func check_battle_end() -> void:
@@ -98,12 +100,14 @@ func check_battle_end() -> void:
 	if enemy_units.is_empty() and wave_enemies.is_empty():
 		# 当前波次清空
 		wave_cleared.emit(current_wave)
-		state = BattleState.WAVE_BREAK
 
 		if current_wave >= total_waves:
 			_all_waves_cleared()
+		else:
+			# 自动进入下一波
+			start_next_wave()
 
-	if player_units.is_empty():
+	if player_units.is_empty() and state == BattleState.IN_PROGRESS:
 		_battle_lost()
 
 

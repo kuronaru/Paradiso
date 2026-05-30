@@ -1,4 +1,4 @@
-# resource_bar.gd — DP资源显示条
+# resource_bar.gd — DP资源显示条 + 开始波次按钮
 class_name ResourceBar
 extends Control
 
@@ -8,6 +8,7 @@ extends Control
 var dp_label: Label
 var dp_bar_bg: ColorRect
 var dp_bar_fill: ColorRect
+var wave_start_btn: Button
 
 
 func _ready() -> void:
@@ -25,7 +26,7 @@ func _ready() -> void:
 	dp_bar_fill.position = Vector2(10, 10)
 	add_child(dp_bar_fill)
 
-	# DPlabel
+	# DP条
 	dp_label = Label.new()
 	dp_label.position = Vector2(14, 12)
 	dp_label.add_theme_font_size_override("font_size", 14)
@@ -47,6 +48,15 @@ func _ready() -> void:
 	wave_label.add_theme_font_size_override("font_size", 12)
 	wave_label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
 	add_child(wave_label)
+
+	# 开始波次按钮
+	wave_start_btn = Button.new()
+	wave_start_btn.name = "WaveStartBtn"
+	wave_start_btn.position = Vector2(14, 92)
+	wave_start_btn.size = Vector2(140, 32)
+	wave_start_btn.add_theme_font_size_override("font_size", 13)
+	wave_start_btn.pressed.connect(_on_wave_start_pressed)
+	add_child(wave_start_btn)
 
 	ResourceManager.dp_changed.connect(_on_dp_changed)
 	_on_dp_changed(ResourceManager.current_dp, ResourceManager.max_dp)
@@ -73,6 +83,28 @@ func _process(_delta: float) -> void:
 			BattleManager.BattleState.DEFEAT:
 				state_text = "失败!"
 		wave_label.text = "波次: %d/%d | %s" % [BattleManager.current_wave, BattleManager.total_waves, state_text]
+
+	# 更新波次按钮
+	_update_wave_button()
+
+
+func _update_wave_button() -> void:
+	if not wave_start_btn:
+		return
+
+	match BattleManager.state:
+		BattleManager.BattleState.PREPARING:
+			wave_start_btn.visible = true
+			wave_start_btn.text = "▶ 开始战斗"
+			wave_start_btn.disabled = false
+		_:
+			wave_start_btn.visible = false
+
+
+func _on_wave_start_pressed() -> void:
+	if BattleManager.state == BattleManager.BattleState.PREPARING or \
+	   BattleManager.state == BattleManager.BattleState.WAVE_BREAK:
+		BattleManager.start_next_wave()
 
 
 func _on_dp_changed(current: int, max_val: int) -> void:
