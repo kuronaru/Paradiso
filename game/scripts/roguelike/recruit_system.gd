@@ -46,7 +46,7 @@ func generate_recruit_options(floor: int, party_size: int) -> Array[RecruitOptio
 
 		var level := 1
 		if has_rare and i == 0:
-			level = 2 + randi() % min(3, floor)
+			level = 2 + randi() % min(2, floor)
 			has_rare = false  # 只出一个稀有
 
 		var cost := _calculate_cost(level, party_size)

@@ -40,7 +40,7 @@ func _build_top_buttons() -> void:
 	bar.anchor_right = 1.0
 	bar.anchor_top = 0.0
 	bar.anchor_bottom = 0.0
-	bar.offset_left = -354.0
+	bar.offset_left = -242.0
 	bar.offset_right = -16.0
 	bar.offset_top = 16.0
 	bar.offset_bottom = 54.0
@@ -50,7 +50,6 @@ func _build_top_buttons() -> void:
 	bar.z_index = 100
 	add_child(bar)
 
-	bar.add_child(_create_top_button("角色仓库", _on_storage_pressed))
 	bar.add_child(_create_top_button("角色图鉴", _on_catalog_pressed))
 
 	pause_shortcut_button = _create_top_button("暂停", _on_pause_shortcut_pressed)
@@ -128,11 +127,6 @@ func _set_paused(paused: bool) -> void:
 	pause_overlay.visible = paused
 	if pause_shortcut_button:
 		pause_shortcut_button.text = "继续" if paused else "暂停"
-
-
-func _on_storage_pressed() -> void:
-	"""角色仓库入口（待接入具体界面）"""
-	Log.i(M, "角色仓库功能待实现")
 
 
 func _on_catalog_pressed() -> void:

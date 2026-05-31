@@ -95,7 +95,9 @@ func _refresh() -> void:
 		if i < options.size():
 			var opt = options[i]
 			var ct := ClassDefinitions.get_template(opt.class_id)
-			option_buttons[i].text = "%s\nLv.%d\n\n消耗: %d 金币" % [ct.job_name, opt.level, opt.cost]
+			var cap := GameManager.get_star_level_cap(opt.level)
+			var effective_level := GameManager.get_effective_level_for_star(opt.class_id, opt.level)
+			option_buttons[i].text = "%s\n%d星\n战斗等级: %d/%d\n\n消耗: %d 金币" % [ct.job_name, opt.level, effective_level, cap, opt.cost]
 			option_buttons[i].disabled = GameManager.gold < opt.cost
 			option_buttons[i].visible = true
 		else:

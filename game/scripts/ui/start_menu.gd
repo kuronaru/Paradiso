@@ -7,6 +7,8 @@ const M = "StartMenu"
 const MAIN_SCENE_PATH := "res://scenes/main.tscn"
 const ENCYCLOPEDIA_SCENE_PATH := "res://scenes/encyclopedia.tscn"
 
+var storage_overlay: CharacterStorageUI = null
+
 
 func _ready() -> void:
 	"""创建开始界面UI"""
@@ -69,6 +71,7 @@ func _build_menu() -> void:
 	menu.add_child(spacer)
 
 	menu.add_child(_create_menu_button("开始游戏", _on_start_pressed))
+	menu.add_child(_create_menu_button("冒险小队", _on_storage_pressed))
 	menu.add_child(_create_menu_button("角色图鉴", _on_catalog_pressed))
 	menu.add_child(_create_menu_button("游戏设置", _on_settings_pressed))
 	menu.add_child(_create_menu_button("退出游戏", _on_quit_pressed))
@@ -93,6 +96,24 @@ func _on_start_pressed() -> void:
 func _on_catalog_pressed() -> void:
 	"""进入角色/敌人图鉴界面"""
 	get_tree().change_scene_to_file(ENCYCLOPEDIA_SCENE_PATH)
+
+
+func _on_storage_pressed() -> void:
+	"""打开局外冒险小队养成界面"""
+	if storage_overlay and is_instance_valid(storage_overlay):
+		storage_overlay.move_to_front()
+		return
+	storage_overlay = CharacterStorageUI.new()
+	storage_overlay.set_return_callback(_close_storage_overlay)
+	storage_overlay.z_index = 100
+	add_child(storage_overlay)
+
+
+func _close_storage_overlay() -> void:
+	"""关闭冒险小队养成界面"""
+	if storage_overlay and is_instance_valid(storage_overlay):
+		storage_overlay.queue_free()
+	storage_overlay = null
 
 
 func _on_settings_pressed() -> void:

@@ -169,7 +169,8 @@ func _update_card_selection_visual(index: int, is_selected: bool) -> void:
 func _get_card_text(ct: ClassTemplate, card_data: Dictionary) -> String:
 	"""生成卡牌文字，包含部署DP进度"""
 	var current_dp: int = min(ResourceManager.current_dp, ct.deploy_cost)
-	return "%s\nDP:%d/%d\nLv.%d" % [ct.job_name, current_dp, ct.deploy_cost, card_data["level"]]
+	var star_level: int = int(card_data.get("star_level", 1))
+	return "%s\n%d星 Lv.%d\nDP:%d/%d" % [ct.job_name, star_level, card_data["level"], current_dp, ct.deploy_cost]
 
 
 func _get_deploy_progress(deploy_cost: int) -> float:

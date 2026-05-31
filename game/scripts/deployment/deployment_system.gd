@@ -58,7 +58,11 @@ func setup_hand(party_data: Array) -> void:
 	selected_card_index = -1
 	hand_cards.clear()
 	for member in party_data:
-		hand_cards.append({"class_id": member["class_id"], "level": member["level"]})
+		hand_cards.append({
+			"class_id": member["class_id"],
+			"level": member["level"],
+			"star_level": member.get("star_level", 1)
+		})
 	Log.i(M, "手牌初始化: %d 张卡" % hand_cards.size())
 	hand_updated.emit(hand_cards)
 
@@ -266,7 +270,8 @@ func retreat_selected() -> void:
 		if selected_unit.class_template:
 			hand_cards.append({
 				"class_id": selected_unit.class_template.class_id,
-				"level": 1
+				"level": selected_unit.level,
+				"star_level": 1
 			})
 			hand_updated.emit(hand_cards)
 		selected_unit = null
@@ -384,7 +389,12 @@ func _create_card_preview() -> Control:
 	label.add_theme_font_size_override("font_size", 11)
 
 	var ct := ClassDefinitions.get_template(drag_card_data["class_id"])
-	label.text = "%s\nDP:%d\nLv.%d" % [ct.job_name, ct.deploy_cost, drag_card_data["level"]]
+	label.text = "%s\n%d星 Lv.%d\nDP:%d" % [
+		ct.job_name,
+		int(drag_card_data.get("star_level", 1)),
+		drag_card_data["level"],
+		ct.deploy_cost
+	]
 	card.add_child(label)
 	return card
 

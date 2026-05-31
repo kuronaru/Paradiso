@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3 uid="uid://encyclopedia"]
 
-[ext_resource type="Script" path="res://scripts/ui/encyclopedia_ui.gd" id="1_encyclopedia"]
+[ext_resource type="Script" uid="uid://bxo0ko7d7h25d" path="res://scripts/ui/encyclopedia_ui.gd" id="1_encyclopedia"]
 
 [node name="Encyclopedia" type="Control"]
 layout_mode = 3

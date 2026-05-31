@@ -19,6 +19,7 @@ var grid_position: Vector2i = Vector2i.ZERO
 
 ## 基础属性
 var unit_name: String = ""
+var level: int = 1
 var max_hp: int = 100
 var current_hp: int = 100
 var attack: int = 10
@@ -81,11 +82,13 @@ func _process(delta: float) -> void:
 func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 	"""从职业模板初始化"""
 	class_template = class_data
+	level = clampi(lvl, 1, GameManager.MAX_CHARACTER_LEVEL)
 	unit_name = class_data.job_name
-	max_hp = class_data.base_hp
+	var level_scale := 1.0 + float(level - 1) * 0.05
+	max_hp = int(round(class_data.base_hp * level_scale))
 	current_hp = max_hp
-	attack = class_data.base_atk
-	defense = class_data.base_def
+	attack = int(round(class_data.base_atk * level_scale))
+	defense = int(round(class_data.base_def * level_scale))
 	attack_speed = class_data.attack_speed
 	move_speed = class_data.move_speed
 	attack_range = class_data.attack_range

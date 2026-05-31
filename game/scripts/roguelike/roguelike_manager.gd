@@ -110,12 +110,13 @@ func _start_battle(node: Dictionary) -> void:
 	battle_phase_started.emit()
 
 	# 用队伍数据初始化部署系统
+	var battle_party := GameManager.get_battle_party_data()
 	var deployment := _get_deployment_system()
 	if deployment:
-		deployment.setup_hand(GameManager.party)
+		deployment.setup_hand(battle_party)
 
 	# 配置战斗
-	BattleManager.setup_battle(GameManager.party, node.get("enemy_pool", EnemyUnit.get_enemy_pool()), node.get("waves", 3))
+	BattleManager.setup_battle(battle_party, node.get("enemy_pool", EnemyUnit.get_enemy_pool()), node.get("waves", 3))
 	BattleManager.enemy_spawn_points = node.get("spawn_points", [])
 
 	# 连接战斗结束信号
