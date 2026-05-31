@@ -5,9 +5,11 @@ extends Control
 
 const M = "GameMenu"
 const START_MENU_PATH := "res://scenes/start_menu.tscn"
+const ENCYCLOPEDIA_SCENE_PATH := "res://scenes/encyclopedia.tscn"
 
 var pause_overlay: Control = null
 var pause_shortcut_button: Button = null
+var encyclopedia_overlay: EncyclopediaUI = null
 
 
 func _ready() -> void:
@@ -134,8 +136,32 @@ func _on_storage_pressed() -> void:
 
 
 func _on_catalog_pressed() -> void:
-	"""角色图鉴入口（待接入具体界面）"""
-	Log.i(M, "角色图鉴功能待实现")
+	"""进入角色/敌人图鉴界面"""
+	_open_encyclopedia_overlay()
+
+
+func _open_encyclopedia_overlay() -> void:
+	"""在游戏内以覆盖层打开图鉴，不切换场景也不改变暂停状态"""
+	if encyclopedia_overlay and is_instance_valid(encyclopedia_overlay):
+		encyclopedia_overlay.move_to_front()
+		return
+
+	var scene := load(ENCYCLOPEDIA_SCENE_PATH) as PackedScene
+	if not scene:
+		return
+
+	encyclopedia_overlay = scene.instantiate() as EncyclopediaUI
+	encyclopedia_overlay.set_return_callback(_close_encyclopedia_overlay)
+	encyclopedia_overlay.z_index = 200
+	encyclopedia_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(encyclopedia_overlay)
+
+
+func _close_encyclopedia_overlay() -> void:
+	"""关闭游戏内图鉴覆盖层，保持打开前的游戏暂停/运行状态"""
+	if encyclopedia_overlay and is_instance_valid(encyclopedia_overlay):
+		encyclopedia_overlay.queue_free()
+	encyclopedia_overlay = null
 
 
 func _on_pause_shortcut_pressed() -> void:

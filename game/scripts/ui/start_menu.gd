@@ -1,10 +1,11 @@
 # start_menu.gd — 游戏开始界面
-# 显示标题与主菜单按钮，负责进入主战斗场景或退出游戏。
+# 显示标题与主菜单按钮，负责进入主战斗场景、图鉴界面或退出游戏。
 class_name StartMenu
 extends Control
 
 const M = "StartMenu"
 const MAIN_SCENE_PATH := "res://scenes/main.tscn"
+const ENCYCLOPEDIA_SCENE_PATH := "res://scenes/encyclopedia.tscn"
 
 
 func _ready() -> void:
@@ -90,8 +91,8 @@ func _on_start_pressed() -> void:
 
 
 func _on_catalog_pressed() -> void:
-	"""角色图鉴入口（待接入具体界面）"""
-	Log.i(M, "角色图鉴功能待实现")
+	"""进入角色/敌人图鉴界面"""
+	get_tree().change_scene_to_file(ENCYCLOPEDIA_SCENE_PATH)
 
 
 func _on_settings_pressed() -> void:
