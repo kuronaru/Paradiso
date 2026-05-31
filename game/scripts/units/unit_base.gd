@@ -51,6 +51,8 @@ var ai_enabled: bool = true
 ## 可视化（占位）
 @export var color: Color = Color.WHITE
 @export var unit_radius: float = 24.0
+@export var floating_number_rise: float = 28.0
+@export var floating_number_duration: float = 0.65
 ## 血条节点
 var hp_bar_bg: ColorRect = null
 var hp_bar_fill: ColorRect = null
@@ -156,6 +158,7 @@ func take_damage(amount: int) -> void:
 	"""受到伤害"""
 	var actual: int = max(1, amount - defense)
 	current_hp -= actual
+	_show_floating_number(-actual, Color(1.0, 0.2, 0.2, 1.0))
 	hp_changed.emit(current_hp, max_hp)
 	if current_hp <= 0:
 		current_hp = 0
@@ -164,8 +167,37 @@ func take_damage(amount: int) -> void:
 
 func heal(amount: int) -> void:
 	"""恢复生命"""
-	current_hp = min(current_hp + amount, max_hp)
+	var actual: int = min(amount, max_hp - current_hp)
+	if actual <= 0:
+		return
+	current_hp += actual
+	_show_floating_number(actual, Color(0.2, 1.0, 0.35, 1.0))
 	hp_changed.emit(current_hp, max_hp)
+
+
+func _show_floating_number(amount: int, text_color: Color) -> void:
+	"""显示伤害/治疗飘字：从单位中心向上跳起后淡出"""
+	var label := Label.new()
+	label.text = "%+d" % amount
+	label.add_theme_font_size_override("font_size", 18)
+	label.add_theme_color_override("font_color", text_color)
+	label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	label.add_theme_constant_override("shadow_offset_x", 1)
+	label.add_theme_constant_override("shadow_offset_y", 1)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.size = Vector2(unit_radius * 3.0, 28.0)
+	label.position = -label.size * 0.5
+	label.z_index = 100
+	add_child(label)
+
+	var start_pos := label.position
+	var end_pos := start_pos + Vector2(0.0, -floating_number_rise)
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(label, "position", end_pos, floating_number_duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(label, "modulate:a", 0.0, floating_number_duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.finished.connect(label.queue_free)
 
 
 func _die() -> void:
