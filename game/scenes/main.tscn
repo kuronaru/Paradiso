@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://main"]
+[gd_scene load_steps=10 format=3 uid="uid://main"]
 
 [ext_resource type="Script" uid="uid://b13tlsudc1f81" path="res://scripts/roguelike/roguelike_manager.gd" id="1_rogue"]
 [ext_resource type="Script" uid="uid://bp8ce6gsg0mom" path="res://scripts/ui/recruit_ui.gd" id="2_recruit"]
@@ -8,6 +8,7 @@
 [ext_resource type="Script" uid="uid://lekijpfaobdq" path="res://scripts/grid/grid_system.gd" id="6_grid"]
 [ext_resource type="Script" uid="uid://cv81n2rpjj7s8" path="res://scripts/deployment/deployment_system.gd" id="7_dep_sys"]
 [ext_resource type="Script" uid="uid://b11hhqpgt0jw5" path="res://scripts/core/startup.gd" id="8_startup"]
+[ext_resource type="Script" uid="uid://b6bdyeumuvdmv" path="res://scripts/ui/game_menu_ui.gd" id="9_game_menu"]
 
 [node name="Main" type="Node2D"]
 
@@ -41,6 +42,11 @@ script = ExtResource("5_skill")
 layout_mode = 3
 anchors_preset = 0
 script = ExtResource("2_recruit")
+
+[node name="GameMenuUI" type="Control" parent="UICanvas"]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("9_game_menu")
 
 [node name="Startup" type="Node" parent="."]
 script = ExtResource("8_startup")
