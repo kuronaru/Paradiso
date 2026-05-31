@@ -30,6 +30,7 @@ func _ready() -> void:
 	grid = BattleManager.grid
 	if grid:
 		grid.cell_clicked.connect(_on_cell_clicked)
+		grid.unit_clicked.connect(_on_unit_clicked)
 
 
 func _process(_delta: float) -> void:
@@ -198,6 +199,30 @@ func select_unit_at(grid_pos: Vector2i) -> void:
 			selected_unit = unit
 			unit.is_selected = true
 			unit_selected.emit(unit)
+
+
+func _on_unit_clicked(unit: Node) -> void:
+	"""战场单位点击处理；不依赖网格坐标"""
+	var unit_valid := is_instance_valid(unit)
+	var unit_type := unit.get_class() if unit_valid else "<invalid>"
+	Log.d(M, "收到战场单位点击信号: unit=%s valid=%s type=%s" % [unit, unit_valid, unit_type])
+	if selected_unit:
+		selected_unit.is_selected = false
+		selected_unit = null
+		unit_deselected.emit()
+
+	if not (unit is HeroUnit):
+		Log.d(M, "战场单位点击未选中角色: 目标不是HeroUnit")
+		return
+
+	var hero := unit as HeroUnit
+	if hero.is_alive:
+		Log.d(M, "发送角色选中信号: name=%s pos=%s" % [hero.unit_name, hero.global_position])
+		selected_unit = hero
+		hero.is_selected = true
+		unit_selected.emit(hero)
+	else:
+		Log.d(M, "战场单位点击未选中角色: 角色已死亡 name=%s" % hero.unit_name)
 
 
 func _on_cell_clicked(grid_pos: Vector2i) -> void:

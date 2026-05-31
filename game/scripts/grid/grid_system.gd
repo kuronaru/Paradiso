@@ -6,6 +6,7 @@ extends Node2D
 const M = "Grid"
 
 signal cell_clicked(grid_pos: Vector2i)
+signal unit_clicked(unit: Node)
 signal unit_placed(unit: Node, grid_pos: Vector2i)
 
 ## 网格配置
@@ -265,9 +266,42 @@ func _input(event: InputEvent) -> void:
 		# 检查鼠标是否在 UI 上，防止穿透点击触发部署
 		if _is_mouse_over_ui():
 			return
+		var clicked_unit := _get_unit_at_mouse_position()
+		if clicked_unit:
+			unit_clicked.emit(clicked_unit)
+			return
 		var grid_pos := world_to_grid(get_global_mouse_position())
 		if is_in_bounds(grid_pos):
 			cell_clicked.emit(grid_pos)
+
+
+func _get_unit_at_mouse_position() -> Node:
+	"""检测鼠标是否点击到战场单位；不依赖网格占用，允许单位移动、重叠或离开格子中心"""
+	var mouse_pos := get_global_mouse_position()
+	var fallback_unit: UnitBase = null
+	for i in range(all_units.size() - 1, -1, -1):
+		var unit := all_units[i]
+		if not is_instance_valid(unit):
+			continue
+		if not (unit is UnitBase):
+			continue
+
+		var combat_unit := unit as UnitBase
+		if not combat_unit.is_alive:
+			continue
+
+		var hit_size := combat_unit.unit_radius * 2.0
+		var hit_rect := Rect2(
+			combat_unit.global_position - Vector2(hit_size, hit_size) * 0.5,
+			Vector2(hit_size, hit_size)
+		)
+		if hit_rect.has_point(mouse_pos):
+			# 重叠时优先返回玩家角色，确保点击角色形象可以打开角色命令菜单
+			if combat_unit is HeroUnit:
+				return combat_unit
+			if not fallback_unit:
+				fallback_unit = combat_unit
+	return fallback_unit
 
 
 func _is_mouse_over_ui() -> bool:
@@ -279,10 +313,22 @@ func _check_control_hit(node: Node, mouse_pos: Vector2) -> bool:
 	for child in node.get_children():
 		if child is Control and child.is_visible_in_tree() and child.mouse_filter != Control.MOUSE_FILTER_IGNORE:
 			if child.get_global_rect().has_point(mouse_pos):
+				if _is_unit_visual_control(child):
+					continue
 				if debug_ui_hits:
-					var label: StringName = child.name if not child.name.is_empty() else "<unnamed>"
+					var label: String = str(child.name) if not child.name.is_empty() else "<unnamed>"
 					Log.d(M, "UI拦截: %s (%s) rect=%s" % [label, child.get_class(), child.get_global_rect()])
 				return true
 		if _check_control_hit(child, mouse_pos):
 			return true
+	return false
+
+
+func _is_unit_visual_control(control: Control) -> bool:
+	"""判断Control是否属于战场单位自身的占位UI；这类UI不应阻挡单位点击"""
+	var node: Node = control
+	while node:
+		if node is UnitBase:
+			return true
+		node = node.get_parent()
 	return false
