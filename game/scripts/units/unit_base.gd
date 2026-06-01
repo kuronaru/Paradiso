@@ -180,6 +180,8 @@ func heal(amount: int) -> void:
 
 func _show_floating_number(amount: int, text_color: Color) -> void:
 	"""显示伤害/治疗飘字：从单位中心向上跳起后淡出"""
+	if not SettingsManager.show_floating_numbers:
+		return
 	var label := Label.new()
 	label.text = "%+d" % amount
 	label.add_theme_font_size_override("font_size", 18)

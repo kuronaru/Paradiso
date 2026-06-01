@@ -10,6 +10,7 @@ const ENCYCLOPEDIA_SCENE_PATH := "res://scenes/encyclopedia.tscn"
 var pause_overlay: Control = null
 var pause_shortcut_button: Button = null
 var encyclopedia_overlay: EncyclopediaUI = null
+var settings_overlay: SettingsUI = null
 
 
 func _ready() -> void:
@@ -169,8 +170,27 @@ func _on_continue_pressed() -> void:
 
 
 func _on_settings_pressed() -> void:
-	"""游戏设置入口（待后续功能接口接入）"""
-	pass
+	"""打开游戏设置界面"""
+	_open_settings_overlay()
+
+
+func _open_settings_overlay() -> void:
+	"""在游戏内打开设置覆盖层，保持当前暂停状态"""
+	if settings_overlay and is_instance_valid(settings_overlay):
+		settings_overlay.move_to_front()
+		return
+	settings_overlay = SettingsUI.new()
+	settings_overlay.set_return_callback(_close_settings_overlay)
+	settings_overlay.z_index = 260
+	settings_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(settings_overlay)
+
+
+func _close_settings_overlay() -> void:
+	"""关闭游戏内设置覆盖层"""
+	if settings_overlay and is_instance_valid(settings_overlay):
+		settings_overlay.queue_free()
+	settings_overlay = null
 
 
 func _on_return_menu_pressed() -> void:

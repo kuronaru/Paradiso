@@ -9,6 +9,7 @@ const ENCYCLOPEDIA_SCENE_PATH := "res://scenes/encyclopedia.tscn"
 
 var storage_overlay: CharacterStorageUI = null
 var load_overlay: Control = null
+var settings_overlay: SettingsUI = null
 var primary_game_button: Button = null
 
 
@@ -254,8 +255,31 @@ func _close_load_overlay() -> void:
 
 
 func _on_settings_pressed() -> void:
-	"""游戏设置入口（待接入具体界面）"""
-	Log.i(M, "游戏设置功能待实现")
+	"""打开游戏设置界面"""
+	_open_settings_overlay()
+
+
+func _open_settings_overlay() -> void:
+	"""在主菜单中打开游戏设置覆盖层"""
+	if settings_overlay and is_instance_valid(settings_overlay):
+		settings_overlay.move_to_front()
+		return
+	if load_overlay and is_instance_valid(load_overlay):
+		_close_load_overlay()
+	if storage_overlay and is_instance_valid(storage_overlay):
+		_close_storage_overlay()
+
+	settings_overlay = SettingsUI.new()
+	settings_overlay.set_return_callback(_close_settings_overlay)
+	settings_overlay.z_index = 140
+	add_child(settings_overlay)
+
+
+func _close_settings_overlay() -> void:
+	"""关闭游戏设置界面并返回主菜单"""
+	if settings_overlay and is_instance_valid(settings_overlay):
+		settings_overlay.queue_free()
+	settings_overlay = null
 
 
 func _on_quit_pressed() -> void:
