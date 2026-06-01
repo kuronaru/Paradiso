@@ -11,6 +11,13 @@ func _ready() -> void:
 	# 等待Autoload都初始化完毕
 	await get_tree().process_frame
 
+	# 直接进入主场景时，确保有可用的玩家存档
+	if not GameManager.has_active_save:
+		if GameManager.has_any_save_slot():
+			GameManager.load_save(GameManager.get_continue_save_id())
+		else:
+			GameManager.create_new_save(GameManager.current_save_id)
+
 	# 找到RoguelikeManager
 	var rms := get_tree().get_nodes_in_group("roguelike_manager")
 	if rms.size() > 0:

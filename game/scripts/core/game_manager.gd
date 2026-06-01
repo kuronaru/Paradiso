@@ -8,11 +8,13 @@ const UPGRADE_BASE_COST := 20
 const UPGRADE_COST_STEP := 5
 const SAVE_VERSION := 1
 const SAVE_DIR_PATH := "res://userdata"
-const SAVE_FILE_PATH := "res://userdata/save1"
+const SAVE_SLOT_IDS: Array[String] = ["save1", "save2", "save3"]
+const LAST_SAVE_FILE_PATH := "res://userdata/last_save"
 
 signal gold_changed(gold: int)
 signal owned_characters_changed(characters: Array)
 signal party_changed(party: Array)
+signal save_slot_changed(save_id: String)
 
 enum GameMode {
 	BATTLE,        ## 战斗模式
@@ -29,6 +31,8 @@ var owned_characters: Array = []    # 存档持有角色 [{class_id, level}]
 var gold: int = 100                 # 存档金币
 var current_floor: int = 1          # 当前层数
 var is_roguelike_run: bool = false  # 是否在肉鸽流程中
+var current_save_id: String = "save1"
+var has_active_save: bool = false
 
 ## 肉鸽运行状态
 var run_history: Array = []         # 经过的节点记录
@@ -37,7 +41,7 @@ var blessings: Array = []           # 祝福/遗物
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	load_save()
+	load_last_selected_save()
 
 
 func start_battle(party_data: Array, enemy_pool: Array, wave_count: int = 3) -> void:
@@ -136,11 +140,34 @@ func _ensure_save_data() -> void:
 		owned_characters_changed.emit(owned_characters)
 
 
-func load_save() -> void:
-	"""运行游戏后自动加载 save1；不存在时创建默认存档"""
+func load_last_selected_save() -> void:
+	"""运行游戏后自动加载上次选择的存档槽位"""
 	_ensure_save_directory()
+	current_save_id = _read_last_save_id()
+	if has_save_slot(current_save_id):
+		load_save(current_save_id)
+		return
+
+	var fallback_save_id := get_continue_save_id()
+	current_save_id = fallback_save_id
+	if has_save_slot(current_save_id):
+		load_save(current_save_id)
+		return
+
+	_reset_default_save_data()
+	has_active_save = false
+	gold_changed.emit(gold)
+	owned_characters_changed.emit(owned_characters)
+	save_slot_changed.emit(current_save_id)
+
+
+func load_save(save_id: String = "") -> void:
+	"""加载指定存档槽位；不存在时保持为空白存档"""
+	_ensure_save_directory()
+	current_save_id = _normalize_save_id(save_id if save_id != "" else current_save_id)
+	_write_last_save_id(current_save_id)
 	var loaded := false
-	var save_path := _get_save_file_absolute_path()
+	var save_path := _get_save_file_absolute_path(current_save_id)
 
 	if FileAccess.file_exists(save_path):
 		var file := FileAccess.open(save_path, FileAccess.READ)
@@ -150,33 +177,117 @@ func load_save() -> void:
 				_apply_save_data(parsed)
 				loaded = true
 			else:
-				Log.w(M, "存档解析失败，使用默认存档: %s" % save_path)
+				Log.w(M, "存档解析失败，保持为空白存档: %s" % save_path)
 		else:
-			Log.w(M, "无法读取存档，使用默认存档: %s" % save_path)
+			Log.w(M, "无法读取存档，保持为空白存档: %s" % save_path)
 
 	if not loaded:
-		gold = 100
-		owned_characters.clear()
-		_ensure_save_data()
+		_reset_default_save_data()
+		has_active_save = false
 	else:
 		_ensure_save_data()
+		has_active_save = true
+		save_game()
 
-	save_game()
 	gold_changed.emit(gold)
 	owned_characters_changed.emit(owned_characters)
-	Log.i(M, "已加载存档 save1: 金币 %d, 角色 %d" % [gold, owned_characters.size()])
+	save_slot_changed.emit(current_save_id)
+	Log.i(M, "已加载存档 %s: 金币 %d, 角色 %d" % [current_save_id, gold, owned_characters.size()])
 
 
 func save_game() -> bool:
-	"""保存玩家存档资源和角色仓库到 userdata/save1"""
+	"""保存玩家存档资源和角色仓库到当前存档槽位"""
+	if not has_active_save:
+		return false
 	_ensure_save_directory()
-	var file := FileAccess.open(_get_save_file_absolute_path(), FileAccess.WRITE)
+	var save_path := _get_save_file_absolute_path(current_save_id)
+	var file := FileAccess.open(save_path, FileAccess.WRITE)
 	if not file:
-		Log.w(M, "无法写入存档: %s" % _get_save_file_absolute_path())
+		Log.w(M, "无法写入存档: %s" % save_path)
 		return false
 
 	file.store_string(JSON.stringify(_build_save_data(), "\t"))
 	return true
+
+
+func switch_save_slot(save_id: String) -> void:
+	"""切换当前使用的存档槽位"""
+	save_game()
+	load_save(save_id)
+
+
+func create_new_save(save_id: String = "") -> void:
+	"""在指定槽位创建新的默认存档"""
+	current_save_id = _normalize_save_id(save_id if save_id != "" else current_save_id)
+	_reset_default_save_data()
+	has_active_save = true
+	_write_last_save_id(current_save_id)
+	save_game()
+	gold_changed.emit(gold)
+	owned_characters_changed.emit(owned_characters)
+	save_slot_changed.emit(current_save_id)
+
+
+func get_save_slot_ids() -> Array[String]:
+	"""获取当前版本可用的存档槽位"""
+	return SAVE_SLOT_IDS.duplicate()
+
+
+func has_save_slot(save_id: String) -> bool:
+	"""判断指定存档槽位是否已有存档文件"""
+	return FileAccess.file_exists(_get_save_file_absolute_path(save_id))
+
+
+func has_any_save_slot() -> bool:
+	"""判断三个存档槽位中是否存在任意存档"""
+	for save_id in SAVE_SLOT_IDS:
+		if has_save_slot(save_id):
+			return true
+	return false
+
+
+func get_continue_save_id() -> String:
+	"""获取继续游戏应使用的存档槽位"""
+	if has_save_slot(current_save_id):
+		return current_save_id
+
+	var last_save_id := _read_last_save_id()
+	if has_save_slot(last_save_id):
+		return last_save_id
+
+	for save_id in SAVE_SLOT_IDS:
+		if has_save_slot(save_id):
+			return save_id
+	return current_save_id
+
+
+func get_save_slot_summary(save_id: String) -> Dictionary:
+	"""读取存档槽位摘要，用于主菜单选择界面"""
+	var normalized := _normalize_save_id(save_id)
+	var summary := {
+		"save_id": normalized,
+		"exists": false,
+		"gold": 0,
+		"character_count": 0
+	}
+	var path := _get_save_file_absolute_path(normalized)
+	if not FileAccess.file_exists(path):
+		return summary
+
+	var file := FileAccess.open(path, FileAccess.READ)
+	if not file:
+		return summary
+
+	var parsed = JSON.parse_string(file.get_as_text())
+	if not (parsed is Dictionary):
+		return summary
+
+	summary["exists"] = true
+	var resources: Dictionary = parsed.get("resources", {})
+	summary["gold"] = max(0, int(resources.get("gold", 100)))
+	var characters: Array = parsed.get("owned_characters", [])
+	summary["character_count"] = characters.size()
+	return summary
 
 
 func _apply_save_data(data: Dictionary) -> void:
@@ -206,6 +317,13 @@ func _build_save_data() -> Dictionary:
 	}
 
 
+func _reset_default_save_data() -> void:
+	"""重置为新存档的默认玩家数据"""
+	gold = 100
+	owned_characters.clear()
+	_ensure_save_data()
+
+
 func _ensure_save_directory() -> void:
 	"""确保存档目录存在"""
 	var dir_path := _get_save_dir_absolute_path()
@@ -221,9 +339,41 @@ func _get_save_dir_absolute_path() -> String:
 	return ProjectSettings.globalize_path(SAVE_DIR_PATH)
 
 
-func _get_save_file_absolute_path() -> String:
-	"""获取 save1 存档文件的绝对路径"""
-	return ProjectSettings.globalize_path(SAVE_FILE_PATH)
+func _get_save_file_absolute_path(save_id: String = "") -> String:
+	"""获取指定存档槽位文件的绝对路径"""
+	var normalized := _normalize_save_id(save_id if save_id != "" else current_save_id)
+	return ProjectSettings.globalize_path("%s/%s" % [SAVE_DIR_PATH, normalized])
+
+
+func _get_last_save_file_absolute_path() -> String:
+	"""获取上次使用存档记录文件的绝对路径"""
+	return ProjectSettings.globalize_path(LAST_SAVE_FILE_PATH)
+
+
+func _read_last_save_id() -> String:
+	"""读取上次使用的存档槽位"""
+	var path := _get_last_save_file_absolute_path()
+	if not FileAccess.file_exists(path):
+		return "save1"
+
+	var file := FileAccess.open(path, FileAccess.READ)
+	if not file:
+		return "save1"
+
+	return _normalize_save_id(file.get_as_text().strip_edges())
+
+
+func _write_last_save_id(save_id: String) -> void:
+	"""记录上次使用的存档槽位"""
+	_ensure_save_directory()
+	var file := FileAccess.open(_get_last_save_file_absolute_path(), FileAccess.WRITE)
+	if file:
+		file.store_string(_normalize_save_id(save_id))
+
+
+func _normalize_save_id(save_id: String) -> String:
+	"""规范化存档槽位ID"""
+	return save_id if save_id in SAVE_SLOT_IDS else "save1"
 
 
 func get_owned_character_level(class_id: String) -> int:
