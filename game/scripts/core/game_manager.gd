@@ -6,6 +6,9 @@ const M = "Game"
 const MAX_CHARACTER_LEVEL := 100
 const UPGRADE_BASE_COST := 20
 const UPGRADE_COST_STEP := 5
+const SAVE_VERSION := 1
+const SAVE_DIR_PATH := "res://userdata"
+const SAVE_FILE_PATH := "res://userdata/save1"
 
 signal gold_changed(gold: int)
 signal owned_characters_changed(characters: Array)
@@ -34,7 +37,7 @@ var blessings: Array = []           # 祝福/遗物
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	_ensure_save_data()
+	load_save()
 
 
 func start_battle(party_data: Array, enemy_pool: Array, wave_count: int = 3) -> void:
@@ -84,11 +87,13 @@ func add_to_party(class_id: String, star_level: int = 1) -> void:
 	party_changed.emit(party)
 
 
-func spend_gold(amount: int) -> bool:
+func spend_gold(amount: int, auto_save: bool = true) -> bool:
 	"""消费金币，返回是否成功"""
 	if gold >= amount:
 		gold -= amount
 		gold_changed.emit(gold)
+		if auto_save:
+			save_game()
 		return true
 	return false
 
@@ -97,15 +102,128 @@ func earn_gold(amount: int) -> void:
 	"""获取金币"""
 	gold += amount
 	gold_changed.emit(gold)
+	save_game()
 
 
 func _ensure_save_data() -> void:
 	"""初始化存档持有角色数据"""
-	if not owned_characters.is_empty():
-		return
+	var level_by_class: Dictionary = {}
+	for card in owned_characters:
+		if not (card is Dictionary):
+			continue
+		var class_id: String = str(card.get("class_id", ""))
+		if class_id in ClassDefinitions.get_all_class_ids() and not level_by_class.has(class_id):
+			level_by_class[class_id] = clampi(int(card.get("level", 1)), 1, MAX_CHARACTER_LEVEL)
+
+	var normalized: Array = []
 	for class_id in ClassDefinitions.get_all_class_ids():
-		owned_characters.append({"class_id": class_id, "level": 1})
+		normalized.append({
+			"class_id": class_id,
+			"level": int(level_by_class.get(class_id, 1))
+		})
+
+	var changed := owned_characters.size() != normalized.size()
+	if not changed:
+		for i in range(owned_characters.size()):
+			var old_card: Dictionary = owned_characters[i]
+			var new_card: Dictionary = normalized[i]
+			if old_card.get("class_id", "") != new_card.get("class_id", "") or int(old_card.get("level", 1)) != int(new_card.get("level", 1)):
+				changed = true
+				break
+
+	owned_characters = normalized
+	if changed:
+		owned_characters_changed.emit(owned_characters)
+
+
+func load_save() -> void:
+	"""运行游戏后自动加载 save1；不存在时创建默认存档"""
+	_ensure_save_directory()
+	var loaded := false
+	var save_path := _get_save_file_absolute_path()
+
+	if FileAccess.file_exists(save_path):
+		var file := FileAccess.open(save_path, FileAccess.READ)
+		if file:
+			var parsed = JSON.parse_string(file.get_as_text())
+			if parsed is Dictionary:
+				_apply_save_data(parsed)
+				loaded = true
+			else:
+				Log.w(M, "存档解析失败，使用默认存档: %s" % save_path)
+		else:
+			Log.w(M, "无法读取存档，使用默认存档: %s" % save_path)
+
+	if not loaded:
+		gold = 100
+		owned_characters.clear()
+		_ensure_save_data()
+	else:
+		_ensure_save_data()
+
+	save_game()
+	gold_changed.emit(gold)
 	owned_characters_changed.emit(owned_characters)
+	Log.i(M, "已加载存档 save1: 金币 %d, 角色 %d" % [gold, owned_characters.size()])
+
+
+func save_game() -> bool:
+	"""保存玩家存档资源和角色仓库到 userdata/save1"""
+	_ensure_save_directory()
+	var file := FileAccess.open(_get_save_file_absolute_path(), FileAccess.WRITE)
+	if not file:
+		Log.w(M, "无法写入存档: %s" % _get_save_file_absolute_path())
+		return false
+
+	file.store_string(JSON.stringify(_build_save_data(), "\t"))
+	return true
+
+
+func _apply_save_data(data: Dictionary) -> void:
+	"""把存档数据应用到全局玩家数据"""
+	var resources: Dictionary = data.get("resources", {})
+	gold = max(0, int(resources.get("gold", 100)))
+
+	owned_characters.clear()
+	var stored_characters: Array = data.get("owned_characters", [])
+	for card in stored_characters:
+		if not (card is Dictionary):
+			continue
+		owned_characters.append({
+			"class_id": str(card.get("class_id", "")),
+			"level": clampi(int(card.get("level", 1)), 1, MAX_CHARACTER_LEVEL)
+		})
+
+
+func _build_save_data() -> Dictionary:
+	"""构建当前版本的存档数据"""
+	return {
+		"version": SAVE_VERSION,
+		"resources": {
+			"gold": gold
+		},
+		"owned_characters": owned_characters
+	}
+
+
+func _ensure_save_directory() -> void:
+	"""确保存档目录存在"""
+	var dir_path := _get_save_dir_absolute_path()
+	if DirAccess.dir_exists_absolute(dir_path):
+		return
+	var error := DirAccess.make_dir_recursive_absolute(dir_path)
+	if error != OK:
+		Log.w(M, "创建存档目录失败: %s error=%d" % [dir_path, error])
+
+
+func _get_save_dir_absolute_path() -> String:
+	"""获取项目根目录下 userdata 的绝对路径"""
+	return ProjectSettings.globalize_path(SAVE_DIR_PATH)
+
+
+func _get_save_file_absolute_path() -> String:
+	"""获取 save1 存档文件的绝对路径"""
+	return ProjectSettings.globalize_path(SAVE_FILE_PATH)
 
 
 func get_owned_character_level(class_id: String) -> int:
@@ -171,13 +289,14 @@ func upgrade_owned_character(index: int, target_level: int) -> bool:
 	var cost := calculate_upgrade_cost(current_level, next_level)
 	if cost <= 0:
 		return false
-	if not spend_gold(cost):
+	if not spend_gold(cost, false):
 		return false
 
 	card["level"] = next_level
 	owned_characters[index] = card
 	owned_characters_changed.emit(owned_characters)
 	party_changed.emit(party)
+	save_game()
 	Log.i(M, "角色升级: %s Lv.%d -> Lv.%d, 消耗金币 %d" % [
 		card.get("class_id", ""),
 		current_level,

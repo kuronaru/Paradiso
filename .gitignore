@@ -2,6 +2,7 @@
 .deepseek/
 
 game/.godot/
+game/userdata/
 
 *.tmp
 *.cache
