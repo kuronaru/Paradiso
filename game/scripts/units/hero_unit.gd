@@ -4,6 +4,7 @@ extends UnitBase
 
 var deploy_cost: int = 10
 var is_selected: bool = false
+var star_level: int = 1
 
 @export var hero_color: Color = Color(0.3, 0.6, 1.0)
 
@@ -69,6 +70,7 @@ func retreat() -> void:
 	ResourceManager.refund(refund_amount)
 	Log.i(M, "[%s] 撤退，返还 %d DP" % [unit_name, refund_amount])
 	BattleManager.unregister_player_unit(self)
+	BattleManager.unit_retreated.emit(self)
 	var grid: GridSystem = BattleManager.grid
 	if grid:
 		grid.remove_unit(self)

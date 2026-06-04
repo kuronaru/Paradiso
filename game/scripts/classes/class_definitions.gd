@@ -17,6 +17,10 @@ static func get_template(class_id: String) -> ClassTemplate:
 		"warrior":
 			template.class_id = "warrior"
 			template.job_name = "战士"
+			template.class_group = "fighter"
+			template.subclass_id = "champion"
+			template.stat_tags = ["STR", "CON"]
+			template.alignment_tags = ["LAWFUL", "NEUTRAL"]
 			template.deploy_cost = 8
 			template.attack_mode = ClassTemplate.AttackMode.MELEE_SINGLE
 			template.target_type = ClassTemplate.TargetType.GROUND
@@ -39,6 +43,10 @@ static func get_template(class_id: String) -> ClassTemplate:
 		"ranger":
 			template.class_id = "ranger"
 			template.job_name = "游侠"
+			template.class_group = "ranger"
+			template.subclass_id = "hunter"
+			template.stat_tags = ["DEX", "WIS"]
+			template.alignment_tags = ["NEUTRAL", "GOOD"]
 			template.deploy_cost = 10
 			template.attack_mode = ClassTemplate.AttackMode.RANGED_SINGLE
 			template.target_type = ClassTemplate.TargetType.BOTH
@@ -61,6 +69,10 @@ static func get_template(class_id: String) -> ClassTemplate:
 		"mage":
 			template.class_id = "mage"
 			template.job_name = "法师"
+			template.class_group = "wizard"
+			template.subclass_id = "evocation"
+			template.stat_tags = ["INT", "WIS"]
+			template.alignment_tags = ["CHAOTIC", "NEUTRAL"]
 			template.deploy_cost = 15
 			template.attack_mode = ClassTemplate.AttackMode.MAGIC_AOE
 			template.target_type = ClassTemplate.TargetType.BOTH
@@ -83,6 +95,10 @@ static func get_template(class_id: String) -> ClassTemplate:
 		"priest":
 			template.class_id = "priest"
 			template.job_name = "牧师"
+			template.class_group = "cleric"
+			template.subclass_id = "life_domain"
+			template.stat_tags = ["WIS", "CHA"]
+			template.alignment_tags = ["LAWFUL", "GOOD"]
 			template.deploy_cost = 10
 			template.attack_mode = ClassTemplate.AttackMode.HEAL
 			template.target_type = ClassTemplate.TargetType.GROUND
@@ -105,6 +121,10 @@ static func get_template(class_id: String) -> ClassTemplate:
 		"rogue":
 			template.class_id = "rogue"
 			template.job_name = "盗贼"
+			template.class_group = "rogue"
+			template.subclass_id = "thief"
+			template.stat_tags = ["DEX", "INT"]
+			template.alignment_tags = ["CHAOTIC", "EVIL"]
 			template.deploy_cost = 7
 			template.attack_mode = ClassTemplate.AttackMode.MELEE_SINGLE
 			template.target_type = ClassTemplate.TargetType.GROUND

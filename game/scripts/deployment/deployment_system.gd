@@ -70,7 +70,7 @@ func setup_hand(party_data: Array) -> void:
 func can_deploy_card(class_id: String) -> bool:
 	"""检查是否可以部署指定职业"""
 	var ct := ClassDefinitions.get_template(class_id)
-	return ResourceManager.can_afford(ct.deploy_cost)
+	return ResourceManager.can_afford(_get_deploy_cost(ct))
 
 
 func can_deploy_now() -> bool:
@@ -166,25 +166,35 @@ func _deploy_card_data(card_data: Dictionary, grid_pos: Vector2i) -> bool:
 		return false
 
 	var ct := ClassDefinitions.get_template(card_data["class_id"])
+	var deploy_cost := _get_deploy_cost(ct)
 
 	if not grid.can_place_at(grid_pos):
 		Log.w(M, "无法部署到 (%d, %d)" % [grid_pos.x, grid_pos.y])
 		return false
 
-	if not ResourceManager.spend(ct.deploy_cost):
-		Log.w(M, "DP不足，需要 %d" % ct.deploy_cost)
+	if not ResourceManager.spend(deploy_cost):
+		Log.w(M, "DP不足，需要 %d" % deploy_cost)
 		return false
 
 	var hero := HeroUnit.new()
+	hero.star_level = int(card_data.get("star_level", 1))
 	hero.setup(ct, card_data["level"])
+	hero.deploy_cost = deploy_cost
 	if not grid.place_unit(hero, grid_pos):
-		ResourceManager.refund(ct.deploy_cost)
+		ResourceManager.refund(deploy_cost)
 		BattleManager.unregister_player_unit(hero)
 		hero.queue_free()
 		return false
 
+	BattleManager.unit_deployed.emit(hero)
 	Log.i(M, "部署 %s 到 (%d, %d)" % [ct.job_name, grid_pos.x, grid_pos.y])
 	return true
+
+
+func _get_deploy_cost(ct: ClassTemplate) -> int:
+	if SynergyManager and SynergyManager.has_method("get_discounted_deploy_cost"):
+		return SynergyManager.get_discounted_deploy_cost(ct.deploy_cost)
+	return ct.deploy_cost
 
 
 func select_unit_at(grid_pos: Vector2i) -> void:
@@ -271,7 +281,7 @@ func retreat_selected() -> void:
 			hand_cards.append({
 				"class_id": selected_unit.class_template.class_id,
 				"level": selected_unit.level,
-				"star_level": 1
+				"star_level": selected_unit.star_level
 			})
 			hand_updated.emit(hand_cards)
 		selected_unit = null

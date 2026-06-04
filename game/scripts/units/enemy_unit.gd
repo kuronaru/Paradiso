@@ -33,6 +33,7 @@ func setup_from_template(template: Dictionary) -> void:
 	move_speed = template.get("move_speed", 1.5)
 	attack_range = template.get("attack_range", 1.5)
 	search_range = template.get("search_range", 5.0)
+	set_base_stats_from_current()
 
 	# 颜色根据类型
 	match enemy_type:

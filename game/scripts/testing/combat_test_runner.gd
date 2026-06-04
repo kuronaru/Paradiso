@@ -70,6 +70,7 @@ func spawn_hero(class_id: String, level: int, grid_pos: Vector2i) -> HeroUnit:
 		Log.w(M, "无法放置测试角色 %s 到 (%d, %d)" % [class_id, grid_pos.x, grid_pos.y])
 		return null
 
+	BattleManager.unit_deployed.emit(hero)
 	hero.activate_ai()
 	return hero
 
@@ -101,6 +102,8 @@ func _prepare_test_battle() -> void:
 	BattleManager.player_units.clear()
 	BattleManager.enemy_units.clear()
 	BattleManager.grid = grid
+	if SynergyManager and SynergyManager.has_method("recalculate"):
+		SynergyManager.recalculate()
 
 
 func _clear_grid_units() -> void:

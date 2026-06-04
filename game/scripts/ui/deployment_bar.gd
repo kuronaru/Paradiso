@@ -137,8 +137,9 @@ func _update_button_states() -> void:
 	for i in range(min(cards.size(), deployment_system.hand_cards.size())):
 		var card_data = deployment_system.hand_cards[i]
 		var ct := ClassDefinitions.get_template(card_data["class_id"])
-		var progress := _get_deploy_progress(ct.deploy_cost) if can_deploy_now else 0.0
-		var can_afford := ResourceManager.can_afford(ct.deploy_cost)
+		var deploy_cost := _get_deploy_cost(ct)
+		var progress := _get_deploy_progress(deploy_cost) if can_deploy_now else 0.0
+		var can_afford := ResourceManager.can_afford(deploy_cost)
 
 		# 战斗阶段不可部署时禁用按钮；DP不足时仍允许点击选中，但不会开始拖拽
 		cards[i].disabled = not can_deploy_now
@@ -168,9 +169,64 @@ func _update_card_selection_visual(index: int, is_selected: bool) -> void:
 
 func _get_card_text(ct: ClassTemplate, card_data: Dictionary) -> String:
 	"""生成卡牌文字，包含部署DP进度"""
-	var current_dp: int = min(ResourceManager.current_dp, ct.deploy_cost)
+	var deploy_cost := _get_deploy_cost(ct)
+	var current_dp: int = min(ResourceManager.current_dp, deploy_cost)
 	var star_level: int = int(card_data.get("star_level", 1))
-	return "%s\n%d星 Lv.%d\nDP:%d/%d" % [ct.job_name, star_level, card_data["level"], current_dp, ct.deploy_cost]
+	return "%s\n%d星 Lv.%d\n%s\nDP:%d/%d" % [
+		ct.job_name,
+		star_level,
+		card_data["level"],
+		_get_synergy_line(ct),
+		current_dp,
+		deploy_cost
+	]
+
+
+func _get_deploy_cost(ct: ClassTemplate) -> int:
+	if SynergyManager and SynergyManager.has_method("get_discounted_deploy_cost"):
+		return SynergyManager.get_discounted_deploy_cost(ct.deploy_cost)
+	return ct.deploy_cost
+
+
+func _get_synergy_line(ct: ClassTemplate) -> String:
+	var tags: Array[String] = []
+	if ct.class_group != "":
+		tags.append(_main_group_label(ct.class_group))
+	for tag in ct.stat_tags:
+		tags.append(str(tag))
+	for tag in ct.alignment_tags:
+		tags.append(_alignment_label(str(tag)))
+	return " / ".join(tags)
+
+
+func _main_group_label(class_group: String) -> String:
+	match class_group:
+		"fighter":
+			return "战士"
+		"ranger":
+			return "游侠"
+		"wizard":
+			return "法师"
+		"cleric":
+			return "牧师"
+		"rogue":
+			return "游荡者"
+	return class_group
+
+
+func _alignment_label(tag: String) -> String:
+	match tag:
+		"LAWFUL":
+			return "守序"
+		"CHAOTIC":
+			return "混沌"
+		"GOOD":
+			return "善良"
+		"EVIL":
+			return "邪恶"
+		"NEUTRAL":
+			return "中立"
+	return tag
 
 
 func _get_deploy_progress(deploy_cost: int) -> float:

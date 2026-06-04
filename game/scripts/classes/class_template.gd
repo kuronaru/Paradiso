@@ -9,6 +9,18 @@ extends Resource
 ## 职业名称
 @export var job_name: String = ""
 
+## 主羁绊职业大分支（DND职业体系）
+@export var class_group: String = ""
+
+## 职业小分支
+@export var subclass_id: String = ""
+
+## 六维小羁绊标签
+@export var stat_tags: Array[String] = []
+
+## 阵营小羁绊标签
+@export var alignment_tags: Array[String] = []
+
 ## 部署消耗 DP
 @export var deploy_cost: int = 10
 

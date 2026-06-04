@@ -143,6 +143,8 @@ func _on_battle_won() -> void:
 	"""战斗胜利"""
 	current_node_index += 1
 	var reward := _calculate_reward()
+	if SynergyManager and SynergyManager.has_method("apply_victory_gold_bonus"):
+		reward = SynergyManager.apply_victory_gold_bonus(reward)
 	GameManager.earn_gold(reward)
 	Log.i(M, "战斗胜利! 获得 %d 金币" % reward)
 	_enter_recruit_phase()

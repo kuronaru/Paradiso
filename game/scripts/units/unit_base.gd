@@ -29,6 +29,18 @@ var move_speed: float = 2.0
 var attack_range: float = 1.5
 var search_range: float = 5.0
 
+## 等级换算后的基础属性；羁绊/姿态变化都从这里重算，避免重复叠乘
+var base_max_hp: int = 100
+var base_attack: int = 10
+var base_defense: int = 5
+var base_attack_speed: float = 1.0
+var base_move_speed: float = 2.0
+var base_attack_range: float = 1.5
+var base_search_range: float = 5.0
+
+## 当前羁绊数值修正
+var synergy_modifiers: Dictionary = {}
+
 ## 职业数据
 var class_template: ClassTemplate = null
 
@@ -85,17 +97,92 @@ func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 	level = clampi(lvl, 1, GameManager.MAX_CHARACTER_LEVEL)
 	unit_name = class_data.job_name
 	var level_scale := 1.0 + float(level - 1) * 0.05
-	max_hp = int(round(class_data.base_hp * level_scale))
+	base_max_hp = int(round(class_data.base_hp * level_scale))
+	base_attack = int(round(class_data.base_atk * level_scale))
+	base_defense = int(round(class_data.base_def * level_scale))
+	base_attack_speed = class_data.attack_speed
+	base_move_speed = class_data.move_speed
+	base_attack_range = class_data.attack_range
+	base_search_range = class_data.search_range
+	max_hp = base_max_hp
 	current_hp = max_hp
-	attack = int(round(class_data.base_atk * level_scale))
-	defense = int(round(class_data.base_def * level_scale))
-	attack_speed = class_data.attack_speed
-	move_speed = class_data.move_speed
-	attack_range = class_data.attack_range
-	search_range = class_data.search_range
+	attack = base_attack
+	defense = base_defense
+	attack_speed = base_attack_speed
+	move_speed = base_move_speed
+	attack_range = base_attack_range
+	search_range = base_search_range
+	synergy_modifiers = _default_synergy_modifiers()
 	# 初始化技能冷却
 	for sid in class_data.skill_ids:
 		skill_cooldowns[sid] = 0.0
+
+
+func set_base_stats_from_current() -> void:
+	"""敌人或测试单位直接写属性后，同步基础属性缓存"""
+	base_max_hp = max_hp
+	base_attack = attack
+	base_defense = defense
+	base_attack_speed = attack_speed
+	base_move_speed = move_speed
+	base_attack_range = attack_range
+	base_search_range = search_range
+	if synergy_modifiers.is_empty():
+		synergy_modifiers = _default_synergy_modifiers()
+
+
+func apply_synergy_modifiers(modifiers: Dictionary) -> void:
+	"""应用全队羁绊数值修正"""
+	if team != "player":
+		return
+	synergy_modifiers = _default_synergy_modifiers()
+	for key in modifiers:
+		synergy_modifiers[key] = modifiers[key]
+	_recalculate_stats(true)
+
+
+func _default_synergy_modifiers() -> Dictionary:
+	return {
+		"max_hp_multiplier": 1.0,
+		"attack_multiplier": 1.0,
+		"defense_multiplier": 1.0,
+		"attack_speed_multiplier": 1.0,
+		"move_speed_multiplier": 1.0,
+		"damage_multiplier": 1.0,
+		"skill_damage_multiplier": 1.0,
+		"heal_multiplier": 1.0,
+		"incoming_heal_multiplier": 1.0,
+		"armor_pierce": 0.0,
+		"crit_chance": 0.0,
+		"crit_damage_multiplier": 1.0,
+		"skill_cooldown_reduction": 0.0,
+		"life_steal_percent": 0.0,
+		"search_range_bonus": 0.0,
+	}
+
+
+func _recalculate_stats(preserve_hp_ratio: bool) -> void:
+	var old_max_hp := max_hp
+	var hp_ratio := float(current_hp) / float(max(old_max_hp, 1))
+	max_hp = maxi(1, int(round(float(base_max_hp) * float(synergy_modifiers.get("max_hp_multiplier", 1.0)))))
+	attack = maxi(1, int(round(float(base_attack) * float(synergy_modifiers.get("attack_multiplier", 1.0)))))
+	defense = maxi(0, int(round(float(base_defense) * float(synergy_modifiers.get("defense_multiplier", 1.0)))))
+	attack_speed = max(0.05, base_attack_speed * float(synergy_modifiers.get("attack_speed_multiplier", 1.0)))
+	move_speed = max(0.0, base_move_speed * float(synergy_modifiers.get("move_speed_multiplier", 1.0)))
+	attack_range = base_attack_range
+	search_range = base_search_range + float(synergy_modifiers.get("search_range_bonus", 0.0))
+
+	if stance == Stance.STATIONED and class_template:
+		defense = maxi(0, int(round(float(defense) * class_template.stance_defense_bonus)))
+		attack_range *= class_template.stance_range_bonus
+		if class_template.stance_is_rooted:
+			move_speed = 0.0
+
+	if preserve_hp_ratio:
+		current_hp = clampi(int(round(float(max_hp) * hp_ratio)), 1 if is_alive else 0, max_hp)
+	else:
+		current_hp = max_hp
+	hp_changed.emit(current_hp, max_hp)
 
 
 func _setup_visual() -> void:
@@ -157,25 +244,29 @@ func get_team() -> String:
 	return team
 
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, armor_pierce: float = 0.0) -> int:
 	"""受到伤害"""
-	var actual: int = max(1, amount - defense)
+	var effective_defense := int(round(float(defense) * (1.0 - clampf(armor_pierce, 0.0, 0.95))))
+	var actual: int = max(1, amount - effective_defense)
 	current_hp -= actual
 	_show_floating_number(-actual, Color(1.0, 0.2, 0.2, 1.0))
 	hp_changed.emit(current_hp, max_hp)
 	if current_hp <= 0:
 		current_hp = 0
 		_die()
+	return actual
 
 
-func heal(amount: int) -> void:
+func heal(amount: int) -> int:
 	"""恢复生命"""
-	var actual: int = min(amount, max_hp - current_hp)
+	var scaled_amount := int(round(float(amount) * float(synergy_modifiers.get("incoming_heal_multiplier", 1.0))))
+	var actual: int = min(scaled_amount, max_hp - current_hp)
 	if actual <= 0:
-		return
+		return 0
 	current_hp += actual
 	_show_floating_number(actual, Color(0.2, 1.0, 0.35, 1.0))
 	hp_changed.emit(current_hp, max_hp)
+	return actual
 
 
 func _show_floating_number(amount: int, text_color: Color) -> void:
@@ -212,6 +303,7 @@ func _die() -> void:
 		BattleManager.unregister_player_unit(self)
 	else:
 		BattleManager.unregister_enemy_unit(self)
+	BattleManager.unit_died.emit(self)
 	# 死亡后延迟移除
 	var timer := get_tree().create_timer(0.3)
 	timer.timeout.connect(_remove_from_grid)
@@ -238,20 +330,9 @@ func toggle_stance() -> void:
 	"""切换行进/驻扎状态"""
 	if stance == Stance.MARCH:
 		stance = Stance.STATIONED
-		# 应用驻扎修正
-		if class_template:
-			defense = int(class_template.base_def * class_template.stance_defense_bonus)
-			attack_range = class_template.attack_range * class_template.stance_range_bonus
-			if class_template.stance_is_rooted:
-				move_speed = 0.0
 	else:
 		stance = Stance.MARCH
-		# 恢复行进修正
-		if class_template:
-			defense = class_template.base_def
-			attack_range = class_template.attack_range
-			move_speed = class_template.move_speed * class_template.march_move_speed_bonus
-			attack = int(class_template.base_atk * class_template.march_attack_penalty)
+	_recalculate_stats(true)
 	stance_changed.emit(stance == Stance.STATIONED)
 
 
@@ -266,7 +347,8 @@ func use_skill(skill_id: String) -> bool:
 		return false
 	# 执行技能效果
 	_execute_skill(sd)
-	skill_cooldowns[skill_id] = sd.cooldown
+	var cooldown_reduction := clampf(float(synergy_modifiers.get("skill_cooldown_reduction", 0.0)), 0.0, 0.40)
+	skill_cooldowns[skill_id] = max(0.1, sd.cooldown * (1.0 - cooldown_reduction))
 	return true
 
 
@@ -283,25 +365,27 @@ func _execute_skill(sd: SkillData) -> void:
 			var targets := grid.get_units_in_range(grid_position, sd.aoe_radius, _enemy_team())
 			for t in targets:
 				if t.has_method("take_damage"):
-					t.take_damage(int(attack * sd.damage_multiplier))
+					var dealt: int = t.take_damage(_calculate_damage(attack * sd.damage_multiplier, true), _get_armor_pierce())
+					_apply_life_steal(dealt)
 		else:
 			# 单体伤害
 			if target and is_instance_valid(target) and target.has_method("take_damage"):
-				target.take_damage(int(attack * sd.damage_multiplier))
+				var dealt: int = target.take_damage(_calculate_damage(attack * sd.damage_multiplier, true), _get_armor_pierce())
+				_apply_life_steal(dealt)
 
 	if sd.heal_amount > 0:
 		# 治疗技能
 		var targets := grid.get_units_in_range(grid_position, sd.aoe_radius, team)
 		for t in targets:
 			if t.has_method("heal"):
-				t.heal(int(attack * sd.heal_amount))
+				t.heal(_calculate_heal(attack * sd.heal_amount))
 
 	if sd.buff_defense > 0:
 		# Buff技能
 		defense = int(defense * sd.buff_defense)
 		if sd.duration > 0:
 			var timer := get_tree().create_timer(sd.duration)
-			timer.timeout.connect(func(): defense = class_template.base_def if class_template else defense)
+			timer.timeout.connect(func(): _recalculate_stats(true))
 
 	if sd.duration > 0 and sd.buff_defense == 0:
 		# 通用持续效果
@@ -320,12 +404,40 @@ func perform_attack() -> void:
 		return
 	if not target or not is_instance_valid(target):
 		return
-	var interval := class_template.get_attack_speed_interval() if class_template else 1.0
+	var interval := 999.0 if attack_speed <= 0 else 1.0 / attack_speed
 	attack_cooldown = interval
 
 	if class_template and class_template.attack_mode == ClassTemplate.AttackMode.HEAL:
 		if target.has_method("heal"):
-			target.heal(attack)
+			target.heal(_calculate_heal(attack))
 	else:
 		if target.has_method("take_damage"):
-			target.take_damage(attack)
+			var dealt: int = target.take_damage(_calculate_damage(attack, false), _get_armor_pierce())
+			_apply_life_steal(dealt)
+
+
+func _calculate_damage(base_amount: float, is_skill: bool) -> int:
+	var amount := base_amount * float(synergy_modifiers.get("damage_multiplier", 1.0))
+	if is_skill:
+		amount *= float(synergy_modifiers.get("skill_damage_multiplier", 1.0))
+	if randf() < clampf(float(synergy_modifiers.get("crit_chance", 0.0)), 0.0, 0.75):
+		amount *= 1.5 * float(synergy_modifiers.get("crit_damage_multiplier", 1.0))
+	return maxi(1, int(round(amount)))
+
+
+func _calculate_heal(base_amount: float) -> int:
+	var amount := base_amount * float(synergy_modifiers.get("heal_multiplier", 1.0))
+	return maxi(1, int(round(amount)))
+
+
+func _get_armor_pierce() -> float:
+	return clampf(float(synergy_modifiers.get("armor_pierce", 0.0)), 0.0, 0.95)
+
+
+func _apply_life_steal(damage_dealt: int) -> void:
+	if team != "player" or damage_dealt <= 0:
+		return
+	var percent := clampf(float(synergy_modifiers.get("life_steal_percent", 0.0)), 0.0, 0.50)
+	if percent <= 0:
+		return
+	heal(int(round(float(damage_dealt) * percent)))

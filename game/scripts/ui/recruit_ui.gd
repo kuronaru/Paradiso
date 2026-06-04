@@ -97,11 +97,59 @@ func _refresh() -> void:
 			var ct := ClassDefinitions.get_template(opt.class_id)
 			var cap := GameManager.get_star_level_cap(opt.level)
 			var effective_level := GameManager.get_effective_level_for_star(opt.class_id, opt.level)
-			option_buttons[i].text = "%s\n%d星\n战斗等级: %d/%d\n\n消耗: %d 金币" % [ct.job_name, opt.level, effective_level, cap, opt.cost]
+			option_buttons[i].text = "%s\n%d星\n战斗等级: %d/%d\n%s\n\n消耗: %d 金币" % [
+				ct.job_name,
+				opt.level,
+				effective_level,
+				cap,
+				_get_synergy_line(ct),
+				opt.cost
+			]
 			option_buttons[i].disabled = GameManager.gold < opt.cost
 			option_buttons[i].visible = true
 		else:
 			option_buttons[i].visible = false
+
+
+func _get_synergy_line(ct: ClassTemplate) -> String:
+	var tags: Array[String] = []
+	if ct.class_group != "":
+		tags.append(_main_group_label(ct.class_group))
+	for tag in ct.stat_tags:
+		tags.append(str(tag))
+	for tag in ct.alignment_tags:
+		tags.append(_alignment_label(str(tag)))
+	return "羁绊: %s" % " / ".join(tags)
+
+
+func _main_group_label(class_group: String) -> String:
+	match class_group:
+		"fighter":
+			return "战士"
+		"ranger":
+			return "游侠"
+		"wizard":
+			return "法师"
+		"cleric":
+			return "牧师"
+		"rogue":
+			return "游荡者"
+	return class_group
+
+
+func _alignment_label(tag: String) -> String:
+	match tag:
+		"LAWFUL":
+			return "守序"
+		"CHAOTIC":
+			return "混沌"
+		"GOOD":
+			return "善良"
+		"EVIL":
+			return "邪恶"
+		"NEUTRAL":
+			return "中立"
+	return tag
 
 
 func _on_purchase(index: int) -> void:
