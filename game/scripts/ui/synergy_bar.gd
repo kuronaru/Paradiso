@@ -15,7 +15,7 @@ const M = "SynergyBar"
 var summaries: Array[Dictionary] = []
 var icon_items: Array[Control] = []
 var detail_panel: PanelContainer = null
-var detail_label: Label = null
+var detail_label: RichTextLabel = null
 var selected_synergy_id: String = ""
 
 
@@ -43,17 +43,21 @@ func _reposition() -> void:
 func _setup_detail_panel() -> void:
 	detail_panel = PanelContainer.new()
 	detail_panel.visible = false
-	detail_panel.size = Vector2(panel_width, 132.0)
+	detail_panel.size = Vector2(panel_width, 176.0)
 	detail_panel.position = Vector2(0, _get_item_height() + icon_spacing + 6.0)
 	detail_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(detail_panel)
 
-	detail_label = Label.new()
+	detail_label = RichTextLabel.new()
+	detail_label.bbcode_enabled = true
+	detail_label.fit_content = true
+	detail_label.scroll_active = false
 	detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	detail_label.add_theme_font_size_override("font_size", 13)
-	detail_label.add_theme_color_override("font_color", Color(0.92, 0.96, 1.0))
-	detail_label.add_theme_constant_override("line_spacing", 2)
-	detail_label.custom_minimum_size = Vector2(panel_width - 24.0, 110.0)
+	detail_label.add_theme_font_size_override("normal_font_size", 13)
+	detail_label.add_theme_font_size_override("bold_font_size", 13)
+	detail_label.add_theme_color_override("default_color", Color(0.92, 0.96, 1.0))
+	detail_label.add_theme_constant_override("line_separation", 2)
+	detail_label.custom_minimum_size = Vector2(panel_width - 24.0, 154.0)
 	detail_panel.add_child(detail_label)
 
 
@@ -77,11 +81,11 @@ func _refresh_icons() -> void:
 	var item_height := _get_item_height()
 	var max_per_row: int = maxi(1, int(floor(panel_width / (icon_size + icon_spacing))))
 	var row_count: int = int(ceil(float(summaries.size()) / float(max_per_row)))
-	size.y = float(row_count) * (item_height + icon_spacing) + 150.0
+	size.y = float(row_count) * (item_height + icon_spacing) + 194.0
 
 	for i in range(summaries.size()):
 		var summary: Dictionary = summaries[i]
-		var row: int = int(i / max_per_row)
+		var row: int = int(float(i) / max_per_row)
 		var col: int = i % max_per_row
 		var row_items: int = mini(max_per_row, summaries.size() - row * max_per_row)
 		var row_width: float = float(row_items) * icon_size + float(row_items - 1) * icon_spacing
@@ -187,11 +191,201 @@ func _refresh_detail() -> void:
 		return
 	for summary in summaries:
 		if str(summary.get("id", "")) == selected_synergy_id:
-			detail_label.text = _format_detail(summary)
+			detail_label.text = _format_detail_rich(summary)
 			detail_panel.visible = true
 			return
 	detail_panel.visible = false
 	selected_synergy_id = ""
+
+
+func _format_detail_rich(summary: Dictionary) -> String:
+	var count: int = int(summary.get("count", 0))
+	var max_threshold: int = int(summary.get("max_threshold", 0))
+	var next_threshold: int = int(summary.get("next_threshold", max_threshold))
+	var is_active: bool = bool(summary.get("is_active", false))
+	var threshold_target: int = max_threshold if is_active else next_threshold
+	var threshold_text: String = "%d/%d" % [count, threshold_target]
+	var members: Array = summary.get("members", [])
+	var member_text: String = "暂无"
+	if not members.is_empty():
+		var names: PackedStringArray = []
+		for member in members:
+			names.append(str(member))
+		member_text = "、".join(names)
+
+	var effect_text: String = _format_effect_lines(summary)
+	return "[b]%s[/b]  %s  [color=#7ed6ff]%d层[/color]\n%s\n%s\n角色：%s" % [
+		_bbcode_escape(str(summary.get("display_name", ""))),
+		threshold_text,
+		int(summary.get("layer", 0)),
+		_bbcode_escape(str(summary.get("description", ""))),
+		effect_text,
+		_bbcode_escape(member_text)
+	]
+
+
+func _format_effect_lines(summary: Dictionary) -> String:
+	var active_tier: int = int(summary.get("active_tier", 0))
+	var layer: int = int(summary.get("layer", 0))
+	var lines: PackedStringArray = []
+	var scalable_modifiers: Array = summary.get("scalable_modifiers", [])
+	for modifier_value in scalable_modifiers:
+		if not (modifier_value is Dictionary):
+			continue
+		var modifier: Dictionary = modifier_value
+		lines.append(_format_scalable_modifier_line(modifier, active_tier, layer))
+
+	var fixed_modifiers: Array = summary.get("fixed_modifiers", [])
+	for modifier_value in fixed_modifiers:
+		if not (modifier_value is Dictionary):
+			continue
+		var modifier: Dictionary = modifier_value
+		lines.append(_format_fixed_modifier_line(modifier, active_tier))
+
+	if lines.is_empty():
+		return "[color=#8d98a8]当前层数暂无数值项。[/color]"
+	return "当前层数数值：" + "  ".join(lines)
+
+
+func _format_scalable_modifier_line(modifier: Dictionary, active_tier: int, layer: int) -> String:
+	var min_tier: int = int(modifier.get("min_tier", 0))
+	var stat: String = str(modifier.get("stat", ""))
+	var base: float = float(modifier.get("base", 0.0))
+	var per_layer: float = float(modifier.get("per_layer", 0.0))
+	var max_value: float = float(modifier.get("max_value", base))
+	var value: float = minf(base + float(layer) * per_layer, max_value)
+	return "%s %s %s" % [
+		_format_tier_tag(min_tier, active_tier),
+		_stat_display_name(stat),
+		_format_modifier_value(stat, value)
+	]
+
+
+func _format_fixed_modifier_line(modifier: Dictionary, active_tier: int) -> String:
+	var min_tier: int = int(modifier.get("min_tier", 0))
+	var stat: String = str(modifier.get("stat", ""))
+	var value: float = float(modifier.get("value", 0.0))
+	return "%s %s %s" % [
+		_format_tier_tag(min_tier, active_tier),
+		_stat_display_name(stat),
+		_format_modifier_value(stat, value)
+	]
+
+
+func _format_tier_tag(min_tier: int, active_tier: int) -> String:
+	if active_tier >= min_tier:
+		return "[color=#9df7b5]已生效[/color]"
+	return "[color=#8d98a8]%d人解锁[/color]" % min_tier
+
+
+func _format_modifier_value(stat: String, value: float) -> String:
+	var text: String = ""
+	if _is_multiplier_stat(stat):
+		text = _format_percent(value - 1.0)
+	elif _is_fraction_stat(stat):
+		text = _format_percent(value)
+	elif stat == "deploy_cost_discount":
+		text = _format_percent(-value)
+	elif stat == "victory_gold_multiplier":
+		text = _format_percent(value - 1.0)
+	elif stat == "max_dp_bonus":
+		text = "+%d" % int(round(value))
+	elif stat == "search_range_bonus":
+		text = "+%s" % _format_number(value)
+	else:
+		text = "+%s" % _format_number(value)
+	return "[color=#ffd166][b]%s[/b][/color]" % text
+
+
+func _format_percent(value: float) -> String:
+	var sign: String = "+" if value >= 0.0 else ""
+	return "%s%s%%" % [sign, _format_number(value * 100.0)]
+
+
+func _format_number(value: float) -> String:
+	var rounded: float = snappedf(value, 0.1)
+	if is_equal_approx(rounded, round(rounded)):
+		return "%d" % int(round(rounded))
+	return "%.1f" % rounded
+
+
+func _is_multiplier_stat(stat: String) -> bool:
+	return stat in [
+		"max_hp_multiplier",
+		"attack_multiplier",
+		"defense_multiplier",
+		"attack_speed_multiplier",
+		"move_speed_multiplier",
+		"damage_multiplier",
+		"skill_damage_multiplier",
+		"heal_multiplier",
+		"incoming_heal_multiplier",
+		"crit_damage_multiplier",
+	]
+
+
+func _is_fraction_stat(stat: String) -> bool:
+	return stat in [
+		"armor_pierce",
+		"crit_chance",
+		"skill_cooldown_reduction",
+		"life_steal_percent",
+	]
+
+
+func _stat_display_name(stat: String) -> String:
+	match stat:
+		"max_hp_multiplier":
+			return "生命"
+		"attack_multiplier":
+			return "攻击"
+		"defense_multiplier":
+			return "防御"
+		"attack_speed_multiplier":
+			return "攻速"
+		"move_speed_multiplier":
+			return "移速"
+		"damage_multiplier":
+			return "伤害"
+		"skill_damage_multiplier":
+			return "技能伤害"
+		"heal_multiplier":
+			return "治疗/护盾"
+		"incoming_heal_multiplier":
+			return "承疗"
+		"crit_damage_multiplier":
+			return "暴击伤害"
+		"armor_pierce":
+			return "破甲"
+		"crit_chance":
+			return "暴击率"
+		"skill_cooldown_reduction":
+			return "技能冷却"
+		"life_steal_percent":
+			return "攻击吸血"
+		"search_range_bonus":
+			return "索敌范围"
+		"max_dp_bonus":
+			return "DP上限"
+		"deploy_cost_discount":
+			return "部署费用"
+		"victory_gold_multiplier":
+			return "胜利金币"
+	return stat
+
+
+func _bbcode_escape(value: String) -> String:
+	var result := ""
+	for i in range(value.length()):
+		var character := value.substr(i, 1)
+		match character:
+			"[":
+				result += "[lb]"
+			"]":
+				result += "[rb]"
+			_:
+				result += character
+	return result
 
 
 func _format_detail(summary: Dictionary) -> String:

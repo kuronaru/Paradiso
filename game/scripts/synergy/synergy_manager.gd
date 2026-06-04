@@ -136,6 +136,8 @@ func _build_summary(definition: SynergyDefinition, count: int, active_tier: int,
 		"layer": layer,
 		"is_active": active_tier > 0,
 		"description": definition.description,
+		"scalable_modifiers": definition.scalable_modifiers.duplicate(true),
+		"fixed_modifiers": definition.fixed_modifiers.duplicate(true),
 		"members": members.duplicate(),
 		"order": definition.order,
 	}
