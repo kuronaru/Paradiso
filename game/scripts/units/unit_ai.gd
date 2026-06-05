@@ -14,6 +14,14 @@ var target_recheck_timer: float = 0.0
 const TARGET_RECHECK_INTERVAL: float = 1.0
 
 
+func reset_ai_state() -> void:
+	state = "idle"
+	path.clear()
+	path_progress = 0.0
+	move_target_pos = Vector2.ZERO
+	target_recheck_timer = 0.0
+
+
 func execute(delta: float) -> void:
 	if not owner_unit or not owner_unit.is_alive:
 		return

@@ -10,8 +10,14 @@ const SAVE_VERSION := 1
 const SAVE_DIR_PATH := "res://userdata"
 const SAVE_SLOT_IDS: Array[String] = ["save1", "save2", "save3"]
 const LAST_SAVE_FILE_PATH := "res://userdata/last_save"
+const ROGUELIKE_STARTING_GOLD := 6
+const ROGUELIKE_MAX_HAND_CARDS := 10
+const ROGUELIKE_MAX_DEPLOYED_UNITS := 8
+const ROGUELIKE_MAX_ROUNDS := 15
 
 signal gold_changed(gold: int)
+signal run_gold_changed(gold: int)
+signal run_round_changed(round: int, max_rounds: int)
 signal owned_characters_changed(characters: Array)
 signal party_changed(party: Array)
 signal save_slot_changed(save_id: String)
@@ -29,7 +35,10 @@ var current_mode: GameMode = GameMode.BATTLE
 var party: Array = []               # 本次冒险队伍 [{class_id, star_level, level}]
 var owned_characters: Array = []    # 存档持有角色 [{class_id, level}]
 var gold: int = 100                 # 存档金币
+var run_gold: int = 0                # 单局肉鸽金币
 var current_floor: int = 1          # 当前层数
+var current_run_round: int = 1       # 当前肉鸽回合
+var max_run_rounds: int = ROGUELIKE_MAX_ROUNDS
 var is_roguelike_run: bool = false  # 是否在肉鸽流程中
 var current_save_id: String = "save1"
 var has_active_save: bool = false
@@ -37,6 +46,7 @@ var has_active_save: bool = false
 ## 肉鸽运行状态
 var run_history: Array = []         # 经过的节点记录
 var blessings: Array = []           # 祝福/遗物
+var _next_run_card_instance_id: int = 1
 
 
 func _ready() -> void:
@@ -56,11 +66,15 @@ func start_roguelike_run() -> void:
 	is_roguelike_run = true
 	party.clear()
 	current_floor = 1
+	current_run_round = 1
+	max_run_rounds = ROGUELIKE_MAX_ROUNDS
+	run_gold = ROGUELIKE_STARTING_GOLD
+	_next_run_card_instance_id = 1
 	run_history.clear()
 	blessings.clear()
-	# 给初始基础角色
-	_add_starter_party()
 	party_changed.emit(party)
+	run_gold_changed.emit(run_gold)
+	run_round_changed.emit(current_run_round, max_run_rounds)
 	_enter_recruit_phase()
 
 
@@ -80,15 +94,81 @@ func proceed_to_next_floor() -> void:
 	current_floor += 1
 
 
-func add_to_party(class_id: String, star_level: int = 1) -> void:
+func advance_roguelike_round() -> void:
+	"""推进肉鸽单局回合，并同步旧楼层字段供现有UI显示。"""
+	current_run_round += 1
+	current_floor = current_run_round
+	run_round_changed.emit(current_run_round, max_run_rounds)
+
+
+func can_add_to_party(card_count: int = 1) -> bool:
+	"""检查当前单局手牌区是否还能加入角色。"""
+	if not is_roguelike_run:
+		return true
+	return party.size() + card_count <= ROGUELIKE_MAX_HAND_CARDS
+
+
+func add_to_party(class_id: String, star_level: int = 1) -> bool:
 	"""添加角色到本次冒险队伍；level 表示局内招募星级"""
+	if not can_add_to_party():
+		return false
 	var star := clampi(star_level, 1, 3)
-	party.append({
+	var card := {
 		"class_id": class_id,
 		"star_level": star,
 		"level": get_effective_level_for_star(class_id, star)
-	})
+	}
+	if is_roguelike_run:
+		card["instance_id"] = _next_run_card_instance_id
+		_next_run_card_instance_id += 1
+	party.append(card)
 	party_changed.emit(party)
+	return true
+
+
+func remove_from_party_card(card_data: Dictionary) -> bool:
+	"""从单局手牌数据中移除一张卡，部署成功时调用。"""
+	if not is_roguelike_run:
+		return true
+
+	var instance_id := int(card_data.get("instance_id", -1))
+	for i in range(party.size()):
+		var member: Dictionary = party[i]
+		if instance_id >= 0 and int(member.get("instance_id", -2)) == instance_id:
+			party.remove_at(i)
+			party_changed.emit(party)
+			return true
+
+	var class_id := str(card_data.get("class_id", ""))
+	var star_level := int(card_data.get("star_level", card_data.get("level", 1)))
+	for i in range(party.size()):
+		var member: Dictionary = party[i]
+		if str(member.get("class_id", "")) == class_id and int(member.get("star_level", member.get("level", 1))) == star_level:
+			party.remove_at(i)
+			party_changed.emit(party)
+			return true
+
+	return false
+
+
+func return_card_to_party(card_data: Dictionary) -> bool:
+	"""撤回部署角色时，把卡牌放回单局手牌区。"""
+	if not can_add_to_party():
+		return false
+
+	var restored := card_data.duplicate(true)
+	var class_id := str(restored.get("class_id", "warrior"))
+	var star := clampi(int(restored.get("star_level", restored.get("level", 1))), 1, 3)
+	restored["class_id"] = class_id
+	restored["star_level"] = star
+	restored["level"] = get_effective_level_for_star(class_id, star)
+	if is_roguelike_run and not restored.has("instance_id"):
+		restored["instance_id"] = _next_run_card_instance_id
+		_next_run_card_instance_id += 1
+
+	party.append(restored)
+	party_changed.emit(party)
+	return true
 
 
 func spend_gold(amount: int, auto_save: bool = true) -> bool:
@@ -107,6 +187,28 @@ func earn_gold(amount: int) -> void:
 	gold += amount
 	gold_changed.emit(gold)
 	save_game()
+
+
+func get_active_gold() -> int:
+	"""获取当前界面应显示和消费的金币。"""
+	return run_gold if is_roguelike_run else gold
+
+
+func spend_run_gold(amount: int) -> bool:
+	"""消费单局肉鸽金币，不写入存档。"""
+	if amount < 0:
+		return false
+	if run_gold >= amount:
+		run_gold -= amount
+		run_gold_changed.emit(run_gold)
+		return true
+	return false
+
+
+func earn_run_gold(amount: int) -> void:
+	"""获得单局肉鸽金币，不写入存档。"""
+	run_gold += max(0, amount)
+	run_gold_changed.emit(run_gold)
 
 
 func _ensure_save_data() -> void:

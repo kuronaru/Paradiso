@@ -58,11 +58,11 @@ func setup_hand(party_data: Array) -> void:
 	selected_card_index = -1
 	hand_cards.clear()
 	for member in party_data:
-		hand_cards.append({
-			"class_id": member["class_id"],
-			"level": member["level"],
-			"star_level": member.get("star_level", 1)
-		})
+		var card: Dictionary = member.duplicate(true)
+		card["class_id"] = member["class_id"]
+		card["level"] = member["level"]
+		card["star_level"] = member.get("star_level", 1)
+		hand_cards.append(card)
 	Log.i(M, "手牌初始化: %d 张卡" % hand_cards.size())
 	hand_updated.emit(hand_cards)
 
@@ -80,6 +80,18 @@ func can_deploy_now() -> bool:
 		BattleManager.BattleState.IN_PROGRESS,
 		BattleManager.BattleState.WAVE_BREAK,
 	]
+
+
+func get_deployed_count() -> int:
+	var count := 0
+	for unit in BattleManager.player_units:
+		if is_instance_valid(unit) and unit is HeroUnit and unit.is_alive:
+			count += 1
+	return count
+
+
+func can_deploy_more() -> bool:
+	return get_deployed_count() < GameManager.ROGUELIKE_MAX_DEPLOYED_UNITS
 
 
 func begin_drag(card_index: int) -> bool:
@@ -168,6 +180,10 @@ func _deploy_card_data(card_data: Dictionary, grid_pos: Vector2i) -> bool:
 	var ct := ClassDefinitions.get_template(card_data["class_id"])
 	var deploy_cost := _get_deploy_cost(ct)
 
+	if not can_deploy_more():
+		Log.w(M, "部署人数已达上限 %d" % GameManager.ROGUELIKE_MAX_DEPLOYED_UNITS)
+		return false
+
 	if not grid.can_place_at(grid_pos):
 		Log.w(M, "无法部署到 (%d, %d)" % [grid_pos.x, grid_pos.y])
 		return false
@@ -186,6 +202,15 @@ func _deploy_card_data(card_data: Dictionary, grid_pos: Vector2i) -> bool:
 		hero.queue_free()
 		return false
 
+	if GameManager.is_roguelike_run and not GameManager.remove_from_party_card(card_data):
+		ResourceManager.refund(deploy_cost)
+		BattleManager.unregister_player_unit(hero)
+		grid.remove_unit(hero)
+		hero.queue_free()
+		Log.w(M, "部署失败：手牌数据未同步")
+		return false
+
+	hero.mark_deployed(card_data, grid_pos)
 	BattleManager.unit_deployed.emit(hero)
 	Log.i(M, "部署 %s 到 (%d, %d)" % [ct.job_name, grid_pos.x, grid_pos.y])
 	return true
@@ -275,17 +300,33 @@ func use_selected_skill(skill_index: int) -> void:
 
 func retreat_selected() -> void:
 	if selected_unit and is_instance_valid(selected_unit):
+		if GameManager.is_roguelike_run and hand_cards.size() >= GameManager.ROGUELIKE_MAX_HAND_CARDS:
+			Log.w(M, "手牌区已满，无法撤回角色")
+			return
+		var card_data := _card_data_from_unit(selected_unit)
 		selected_unit.retreat()
 		# 把卡牌退回手牌
-		if selected_unit.class_template:
-			hand_cards.append({
-				"class_id": selected_unit.class_template.class_id,
-				"level": selected_unit.level,
-				"star_level": selected_unit.star_level
-			})
+		if card_data.size() > 0:
+			hand_cards.append(card_data)
+			if GameManager.is_roguelike_run:
+				GameManager.return_card_to_party(card_data)
 			hand_updated.emit(hand_cards)
 		selected_unit = null
 		unit_deselected.emit()
+
+
+func _card_data_from_unit(unit: HeroUnit) -> Dictionary:
+	if not unit:
+		return {}
+	if not unit.run_card_data.is_empty():
+		return unit.run_card_data.duplicate(true)
+	if unit.class_template:
+		return {
+			"class_id": unit.class_template.class_id,
+			"level": unit.level,
+			"star_level": unit.star_level
+		}
+	return {}
 
 
 func _finish_drag() -> void:

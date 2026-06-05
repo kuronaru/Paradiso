@@ -5,6 +5,8 @@ extends UnitBase
 var deploy_cost: int = 10
 var is_selected: bool = false
 var star_level: int = 1
+var deployed_grid_position: Vector2i = Vector2i.ZERO
+var run_card_data: Dictionary = {}
 
 @export var hero_color: Color = Color(0.3, 0.6, 1.0)
 
@@ -61,6 +63,21 @@ func _unhandled_input(event: InputEvent) -> void:
 func toggle_stance() -> void:
 	super.toggle_stance()
 	Log.d(M, "[%s] 切换姿态: %s" % [unit_name, "驻扎" if stance == Stance.STATIONED else "行进"])
+
+
+func mark_deployed(card_data: Dictionary, grid_pos: Vector2i) -> void:
+	run_card_data = card_data.duplicate(true)
+	deployed_grid_position = grid_pos
+
+
+func prepare_for_next_round() -> void:
+	target = null
+	attack_cooldown = 0.0
+	current_hp = max_hp
+	hp_changed.emit(current_hp, max_hp)
+	deactivate_ai()
+	if ai_controller and ai_controller.has_method("reset_ai_state"):
+		ai_controller.reset_ai_state()
 
 
 func retreat() -> void:

@@ -4,12 +4,16 @@ class_name DeploymentBar
 extends Control
 
 const M = "DeployBar"
+const SHOP_PANEL_HEIGHT := 112.0
+const SHOP_BOTTOM_MARGIN := 8.0
+const HAND_GAP_ABOVE_SHOP := 8.0
+const LAYOUT_TWEEN_TIME := 0.22
 
 signal card_clicked(card_index: int, class_id: String)
 
-@export var card_size: Vector2 = Vector2(80, 100)
+@export var card_size: Vector2 = Vector2(78, 88)
 @export var spacing: float = 8.0
-@export var bar_height: float = 120.0
+@export var bar_height: float = 100.0
 @export var selected_raise_ratio: float = 0.25
 @export var drag_hold_time: float = 0.18
 @export var drag_distance_threshold: float = 16.0
@@ -18,7 +22,10 @@ var cards: Array = []                # 卡牌按钮节点
 var card_base_positions: Array = []  # 卡牌未选中时的位置
 var card_shades: Array = []          # DP不足时覆盖在卡牌上方的暗色遮罩
 var card_labels: Array = []          # 卡牌文字节点，用于刷新DP进度
+var card_slots: Array = []           # HBox中的卡牌槽位
 var deployment_system: DeploymentSystem = null
+var hand_center: CenterContainer = null
+var hand_row: HBoxContainer = null
 
 ## 拖拽状态视觉提示
 var drag_highlight_index: int = -1
@@ -28,6 +35,9 @@ var press_card_index: int = -1
 var press_started_at_msec: int = 0
 var press_start_mouse_pos: Vector2 = Vector2.ZERO
 var press_started_drag: bool = false
+var layout_tween: Tween = null
+var last_prepare_layout: bool = true
+var cached_viewport_size: Vector2 = Vector2.ZERO
 
 
 func _ready() -> void:
@@ -52,46 +62,62 @@ func _ready() -> void:
 
 
 func _setup_layout() -> void:
-	"""设置锚定在底部"""
-	# 锚定到左下和右下
+	"""设置阶段感知的手牌栏布局"""
+	cached_viewport_size = get_viewport_rect().size
 	anchor_left = 0.0
-	anchor_right = 1.0
-	anchor_top = 1.0
-	anchor_bottom = 1.0
-	# 偏移：从底部向上 bar_height
+	anchor_right = 0.0
+	anchor_top = 0.0
+	anchor_bottom = 0.0
 	offset_left = 0.0
-	offset_right = 0.0
-	offset_top = -bar_height
+	offset_right = cached_viewport_size.x
+	offset_top = 0.0
 	offset_bottom = 0.0
+	size = Vector2(cached_viewport_size.x, bar_height)
+	position = Vector2(0.0, _prepare_y())
+	z_index = 80
+
+	hand_center = CenterContainer.new()
+	hand_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fill_parent(hand_center)
+	add_child(hand_center)
+
+	hand_row = HBoxContainer.new()
+	hand_row.add_theme_constant_override("separation", spacing)
+	hand_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hand_center.add_child(hand_row)
 
 
 func _refresh_ui() -> void:
 	"""重建卡牌按钮"""
-	# 清除旧的
-	for card in cards:
-		card.queue_free()
+	if hand_row:
+		for child in hand_row.get_children():
+			child.queue_free()
 	cards.clear()
 	card_base_positions.clear()
 	card_shades.clear()
 	card_labels.clear()
+	card_slots.clear()
 	drag_highlight_index = -1
 
-	if not deployment_system:
+	if not deployment_system or not hand_row:
 		return
 
 	var hand := deployment_system.hand_cards
-	var start_x := 16.0
-	var btn_y := 10.0  # 相对于 DeploymentBar 顶部偏移
+	var raise_height := card_size.y * selected_raise_ratio
 
 	for i in range(hand.size()):
 		var card_data = hand[i]
 		var ct := ClassDefinitions.get_template(card_data["class_id"])
-		var base_position := Vector2(start_x + i * (card_size.x + spacing), btn_y)
+
+		var slot := Control.new()
+		slot.custom_minimum_size = Vector2(card_size.x, card_size.y + raise_height)
+		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hand_row.add_child(slot)
 
 		var btn := Button.new()
 		btn.size = card_size
 		btn.clip_contents = true
-		btn.position = base_position
+		btn.position = Vector2(0.0, raise_height)
 		btn.flat = false
 
 		# 遮罩从顶部向下覆盖卡牌；DP增加时高度变小，露出底部正常颜色
@@ -117,11 +143,12 @@ func _refresh_ui() -> void:
 		# 左键短按为选中；按住一定时间或拖动一定距离后才开始拖拽
 		btn.gui_input.connect(func(event: InputEvent): _on_card_gui_input(event, idx))
 
-		add_child(btn)
+		slot.add_child(btn)
 		cards.append(btn)
-		card_base_positions.append(base_position)
+		card_base_positions.append(Vector2(0.0, raise_height))
 		card_shades.append(shade)
 		card_labels.append(label)
+		card_slots.append(slot)
 
 	_update_button_states()
 
@@ -402,5 +429,55 @@ func _on_dp_changed(_current: int, _max_val: int) -> void:
 
 func _process(_delta: float) -> void:
 	# 持续更新按钮状态（DP变化、状态变化）并检测长按拖拽
+	_update_stage_layout()
 	_update_pending_hold()
 	_update_button_states()
+
+
+func _update_stage_layout() -> void:
+	var viewport_size := get_viewport_rect().size
+	if viewport_size != cached_viewport_size:
+		cached_viewport_size = viewport_size
+		size = Vector2(viewport_size.x, bar_height)
+		offset_right = viewport_size.x
+		_refresh_ui()
+		_apply_stage_layout(false)
+
+	var wants_prepare := _is_prepare_layout()
+	if wants_prepare != last_prepare_layout:
+		last_prepare_layout = wants_prepare
+		_apply_stage_layout(true)
+
+
+func _is_prepare_layout() -> bool:
+	return GameManager.is_roguelike_run and BattleManager.state == BattleManager.BattleState.PREPARING
+
+
+func _apply_stage_layout(animated: bool) -> void:
+	var target_y := _prepare_y() if _is_prepare_layout() else _battle_y()
+	if layout_tween and layout_tween.is_valid():
+		layout_tween.kill()
+	if animated and is_inside_tree():
+		layout_tween = create_tween()
+		layout_tween.tween_property(self, "position:y", target_y, LAYOUT_TWEEN_TIME).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	else:
+		position.y = target_y
+
+
+func _prepare_y() -> float:
+	return get_viewport_rect().size.y - SHOP_PANEL_HEIGHT - SHOP_BOTTOM_MARGIN - bar_height - HAND_GAP_ABOVE_SHOP
+
+
+func _battle_y() -> float:
+	return get_viewport_rect().size.y - SHOP_PANEL_HEIGHT - SHOP_BOTTOM_MARGIN + (SHOP_PANEL_HEIGHT - bar_height) * 0.5
+
+
+func _fill_parent(control: Control) -> void:
+	control.anchor_left = 0.0
+	control.anchor_top = 0.0
+	control.anchor_right = 1.0
+	control.anchor_bottom = 1.0
+	control.offset_left = 0.0
+	control.offset_top = 0.0
+	control.offset_right = 0.0
+	control.offset_bottom = 0.0

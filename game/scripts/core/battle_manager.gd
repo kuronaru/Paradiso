@@ -39,11 +39,15 @@ var enemy_units: Array = []                    # 场上敌人单位
 var enemy_spawn_points: Array = []
 
 
-func setup_battle(party_data: Array, enemies: Array, wave_count: int = 3) -> void:
+func setup_battle(party_data: Array, enemies: Array, wave_count: int = 3, preserve_player_units: bool = false) -> void:
 	"""初始化一场战斗"""
 	# 清除上一场状态
-	player_units.clear()
-	enemy_units.clear()
+	if preserve_player_units:
+		_clear_enemy_units()
+		_prepare_existing_player_units()
+	else:
+		player_units.clear()
+		enemy_units.clear()
 	wave_enemies.clear()
 
 	total_waves = wave_count
@@ -55,6 +59,58 @@ func setup_battle(party_data: Array, enemies: Array, wave_count: int = 3) -> voi
 	Log.i(M, "战斗初始化: %d 波敌人" % total_waves)
 
 	battle_started.emit()
+
+
+func prepare_player_units_for_next_round() -> void:
+	"""战斗结束后保留玩家部署，并把角色放回部署时的位置。"""
+	_clear_enemy_units()
+	_prepare_existing_player_units()
+	state = BattleState.PREPARING
+
+
+func _clear_enemy_units() -> void:
+	if grid:
+		for unit in enemy_units.duplicate():
+			if is_instance_valid(unit):
+				grid.remove_unit(unit)
+				unit.queue_free()
+	enemy_units.clear()
+	wave_enemies.clear()
+
+
+func _prepare_existing_player_units() -> void:
+	if player_units.is_empty():
+		return
+
+	var valid_units: Array = []
+	for unit in player_units.duplicate():
+		if not is_instance_valid(unit):
+			player_units.erase(unit)
+			continue
+		if unit is UnitBase and not unit.is_alive:
+			player_units.erase(unit)
+			continue
+		valid_units.append(unit)
+
+	if grid:
+		for unit in valid_units:
+			if unit.grid_position in grid.occupancy and grid.occupancy[unit.grid_position] == unit:
+				grid.free_cell(unit.grid_position)
+
+		for unit in valid_units:
+			var target_pos: Vector2i = unit.grid_position
+			if unit is HeroUnit:
+				target_pos = (unit as HeroUnit).deployed_grid_position
+			if not grid.is_in_bounds(target_pos) or not grid.is_deploy_zone(target_pos) or grid.is_occupied(target_pos):
+				target_pos = unit.grid_position
+			if not grid.is_occupied(target_pos):
+				grid.occupy_cell(target_pos, unit)
+				unit.grid_position = target_pos
+				unit.global_position = grid.grid_to_world(target_pos)
+
+	for unit in valid_units:
+		if unit is HeroUnit:
+			(unit as HeroUnit).prepare_for_next_round()
 
 
 func start_next_wave() -> bool:

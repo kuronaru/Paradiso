@@ -4,6 +4,9 @@ class_name GridSystem
 extends Node2D
 
 const M = "Grid"
+const PREP_GRID_RECT := Rect2(64, 96, 1152, 392)
+const BATTLE_GRID_RECT := Rect2(64, 32, 1152, 560)
+const LAYOUT_TWEEN_TIME := 0.22
 
 signal cell_clicked(grid_pos: Vector2i)
 signal unit_clicked(unit: Node)
@@ -34,6 +37,10 @@ var all_units: Array[Node] = []
 ## Debug: 打印 UI 命中检测日志
 @export var debug_ui_hits: bool = true
 
+var layout_tween: Tween = null
+var layout_animating: bool = false
+var last_prepare_layout: bool = true
+
 
 func _ready() -> void:
 	# 初始化默认出生点（右侧边缘，仅在可部署/可移动范围内）
@@ -41,7 +48,61 @@ func _ready() -> void:
 		for y in range(deploy_rows.x, deploy_rows.y + 1):
 			spawn_points.append(Vector2i(grid_width - 1, y))
 	BattleManager.grid = self
+	last_prepare_layout = _is_prepare_layout()
+	_apply_stage_layout(false)
 	queue_redraw()
+
+
+func _process(_delta: float) -> void:
+	var wants_prepare := _is_prepare_layout()
+	if wants_prepare != last_prepare_layout:
+		last_prepare_layout = wants_prepare
+		_apply_stage_layout(true)
+
+	if layout_animating:
+		_sync_unit_positions()
+		queue_redraw()
+
+
+func _is_prepare_layout() -> bool:
+	return BattleManager.state == BattleManager.BattleState.PREPARING
+
+
+func _apply_stage_layout(animated: bool) -> void:
+	var target_rect := PREP_GRID_RECT if _is_prepare_layout() else BATTLE_GRID_RECT
+	var next_cell_size := maxf(1.0, floorf(minf(
+		target_rect.size.x / float(grid_width),
+		target_rect.size.y / float(grid_height)
+	)))
+	var next_grid_size := Vector2(float(grid_width) * next_cell_size, float(grid_height) * next_cell_size)
+	var next_offset := target_rect.position + (target_rect.size - next_grid_size) * 0.5
+
+	if layout_tween and layout_tween.is_valid():
+		layout_tween.kill()
+		layout_animating = false
+
+	if animated and is_inside_tree():
+		layout_animating = true
+		layout_tween = create_tween()
+		layout_tween.set_parallel(true)
+		layout_tween.tween_property(self, "grid_offset", next_offset, LAYOUT_TWEEN_TIME).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		layout_tween.tween_property(self, "cell_size", next_cell_size, LAYOUT_TWEEN_TIME).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		layout_tween.finished.connect(func():
+			layout_animating = false
+			_sync_unit_positions()
+			queue_redraw()
+		)
+	else:
+		grid_offset = next_offset
+		cell_size = next_cell_size
+		_sync_unit_positions()
+		queue_redraw()
+
+
+func _sync_unit_positions() -> void:
+	for unit in all_units:
+		if is_instance_valid(unit):
+			unit.global_position = grid_to_world(unit.grid_position)
 
 
 func _draw() -> void:
