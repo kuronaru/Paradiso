@@ -135,14 +135,25 @@ func _add_progress_lamps(parent: Control, summary: Dictionary) -> void:
 	var start_x: float = (icon_size - lamp_total_width) * 0.5
 
 	for i in range(lamp_count):
-		var lamp := ColorRect.new()
+		var lamp := Panel.new()
 		lamp.size = Vector2(lamp_width, progress_lamp_height)
 		lamp.position = Vector2(start_x + float(i) * (lamp_width + gap), 0.0)
 		var required_count: int = i + 1
 		var is_lit: bool = count >= required_count
-		lamp.color = Color(0.20, 0.75, 1.0, 0.95) if is_lit else Color(0.24, 0.26, 0.30, 0.85)
+		lamp.add_theme_stylebox_override("panel", _create_progress_lamp_style(is_lit))
 		lamp.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		parent.add_child(lamp)
+
+
+func _create_progress_lamp_style(is_lit: bool) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.20, 0.75, 1.0, 0.95) if is_lit else Color(0.24, 0.26, 0.30, 0.85)
+	var radius := int(ceil(progress_lamp_height * 0.4))
+	style.corner_radius_top_left = radius
+	style.corner_radius_top_right = radius
+	style.corner_radius_bottom_left = radius
+	style.corner_radius_bottom_right = radius
+	return style
 
 
 func _apply_icon_style(btn: Button, is_active: bool) -> void:
@@ -298,8 +309,8 @@ func _format_modifier_value(stat: String, value: float) -> String:
 
 
 func _format_percent(value: float) -> String:
-	var sign: String = "+" if value >= 0.0 else ""
-	return "%s%s%%" % [sign, _format_number(value * 100.0)]
+	var _sign: String = "+" if value >= 0.0 else ""
+	return "%s%s%%" % [_sign, _format_number(value * 100.0)]
 
 
 func _format_number(value: float) -> String:
