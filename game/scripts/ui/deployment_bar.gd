@@ -119,6 +119,42 @@ func _refresh_ui() -> void:
 		btn.clip_contents = true
 		btn.position = Vector2(0.0, raise_height)
 		btn.flat = false
+		_apply_card_style(btn, bool(card_data.get("is_golden", false)))
+
+		var card_margin := MarginContainer.new()
+		card_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_fill_parent(card_margin)
+		card_margin.add_theme_constant_override("margin_left", 6)
+		card_margin.add_theme_constant_override("margin_top", 6)
+		card_margin.add_theme_constant_override("margin_right", 6)
+		card_margin.add_theme_constant_override("margin_bottom", 6)
+		btn.add_child(card_margin)
+
+		var card_stack := VBoxContainer.new()
+		card_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card_stack.add_theme_constant_override("separation", 4)
+		card_margin.add_child(card_stack)
+
+		var icon_center := CenterContainer.new()
+		icon_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon_center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		card_stack.add_child(icon_center)
+
+		var icon := ColorRect.new()
+		icon.custom_minimum_size = Vector2(44, 38)
+		icon.color = _get_class_icon_color(card_data["class_id"])
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon_center.add_child(icon)
+
+		var label := Label.new()
+		label.custom_minimum_size = Vector2(0, 32)
+		label.text = _get_card_text(ct, card_data)
+		label.add_theme_font_size_override("font_size", 11)
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card_stack.add_child(label)
 
 		# 遮罩从顶部向下覆盖卡牌；DP增加时高度变小，露出底部正常颜色
 		var shade := ColorRect.new()
@@ -126,18 +162,8 @@ func _refresh_ui() -> void:
 		shade.position = Vector2.ZERO
 		shade.color = Color(0.05, 0.05, 0.06, 0.68)
 		shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		shade.z_index = 1
+		shade.z_index = 4
 		btn.add_child(shade)
-
-		var label := Label.new()
-		label.size = card_size
-		label.text = _get_card_text(ct, card_data)
-		label.add_theme_font_size_override("font_size", 11)
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		label.z_index = 2
-		btn.add_child(label)
 
 		var idx := i
 		# 左键短按为选中；按住一定时间或拖动一定距离后才开始拖拽
@@ -194,18 +220,56 @@ func _update_card_selection_visual(index: int, is_selected: bool) -> void:
 	btn.z_index = 20 if is_selected else 0
 
 
+func _apply_card_style(btn: Button, is_golden: bool) -> void:
+	var base_color := Color(0.11, 0.12, 0.16, 0.96)
+	var border_color := Color(0.28, 0.32, 0.42, 1.0)
+	if is_golden:
+		base_color = Color(0.72, 0.52, 0.12, 0.98)
+		border_color = Color(1.0, 0.83, 0.28, 1.0)
+
+	var normal := _make_card_style(base_color, border_color)
+	var hover := _make_card_style(base_color.lightened(0.08), border_color.lightened(0.08))
+	var pressed := _make_card_style(base_color.darkened(0.08), border_color)
+	var disabled := _make_card_style(base_color.darkened(0.25), border_color.darkened(0.25))
+	btn.add_theme_stylebox_override("normal", normal)
+	btn.add_theme_stylebox_override("hover", hover)
+	btn.add_theme_stylebox_override("pressed", pressed)
+	btn.add_theme_stylebox_override("disabled", disabled)
+
+
+func _make_card_style(bg_color: Color, border_color: Color) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = bg_color
+	style.border_color = border_color
+	style.set_border_width_all(2)
+	style.corner_radius_top_left = 5
+	style.corner_radius_top_right = 5
+	style.corner_radius_bottom_left = 5
+	style.corner_radius_bottom_right = 5
+	return style
+
+
+func _get_class_icon_color(class_id: String) -> Color:
+	match class_id:
+		"warrior":
+			return Color(0.78, 0.24, 0.20, 1.0)
+		"ranger":
+			return Color(0.22, 0.58, 0.28, 1.0)
+		"mage":
+			return Color(0.35, 0.34, 0.86, 1.0)
+		"priest":
+			return Color(0.88, 0.82, 0.42, 1.0)
+		"rogue":
+			return Color(0.48, 0.30, 0.62, 1.0)
+	return Color(0.48, 0.52, 0.58, 1.0)
+
+
 func _get_card_text(ct: ClassTemplate, card_data: Dictionary) -> String:
-	"""生成卡牌文字，包含部署DP进度"""
-	var deploy_cost := _get_deploy_cost(ct)
-	var current_dp: int = min(ResourceManager.current_dp, deploy_cost)
-	var star_level: int = int(card_data.get("star_level", 1))
-	return "%s\n%d星 Lv.%d\n%s\nDP:%d/%d" % [
+	"""生成简化手牌文字。"""
+	var shop_level := int(card_data.get("shop_level", card_data.get("star_level", 1)))
+	return "%s\n等阶 %d" % [
 		ct.job_name,
-		star_level,
-		card_data["level"],
-		_get_synergy_line(ct),
-		current_dp,
-		deploy_cost
+		shop_level
 	]
 
 
@@ -281,7 +345,6 @@ func _update_card_progress_visual(index: int, progress: float, can_afford: bool)
 	shade.visible = shade_height > 0.5
 	shade.color = Color(0.05, 0.05, 0.06, 0.68) if not can_afford else Color(0.05, 0.05, 0.06, 0.0)
 
-	label.size = card_size
 	label.text = _get_card_text(ct, card_data)
 	label.modulate = Color.WHITE if can_afford else Color(0.72, 0.72, 0.72, 1.0)
 

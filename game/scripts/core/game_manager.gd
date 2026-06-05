@@ -108,20 +108,26 @@ func can_add_to_party(card_count: int = 1) -> bool:
 	return party.size() + card_count <= ROGUELIKE_MAX_HAND_CARDS
 
 
-func add_to_party(class_id: String, star_level: int = 1) -> bool:
+func add_to_party(class_id: String, star_level: int = 1, shop_level: int = 1, upgrade_tier: int = 1) -> bool:
 	"""添加角色到本次冒险队伍；level 表示局内招募星级"""
 	if not can_add_to_party():
 		return false
 	var star := clampi(star_level, 1, 3)
-	var card := {
+	var tier := maxi(1, upgrade_tier)
+	var card: Dictionary = {
 		"class_id": class_id,
 		"star_level": star,
-		"level": get_effective_level_for_star(class_id, star)
+		"level": get_effective_level_for_star(class_id, star),
+		"shop_level": maxi(1, shop_level),
+		"upgrade_tier": tier,
+		"is_golden": tier > 1
 	}
 	if is_roguelike_run:
 		card["instance_id"] = _next_run_card_instance_id
 		_next_run_card_instance_id += 1
 	party.append(card)
+	if is_roguelike_run:
+		_try_promote_party_cards(class_id, star, maxi(1, shop_level), tier)
 	party_changed.emit(party)
 	return true
 
@@ -141,9 +147,14 @@ func remove_from_party_card(card_data: Dictionary) -> bool:
 
 	var class_id := str(card_data.get("class_id", ""))
 	var star_level := int(card_data.get("star_level", card_data.get("level", 1)))
+	var shop_level := int(card_data.get("shop_level", 1))
+	var upgrade_tier := int(card_data.get("upgrade_tier", 1))
 	for i in range(party.size()):
 		var member: Dictionary = party[i]
-		if str(member.get("class_id", "")) == class_id and int(member.get("star_level", member.get("level", 1))) == star_level:
+		if str(member.get("class_id", "")) == class_id \
+				and int(member.get("star_level", member.get("level", 1))) == star_level \
+				and int(member.get("shop_level", 1)) == shop_level \
+				and int(member.get("upgrade_tier", 1)) == upgrade_tier:
 			party.remove_at(i)
 			party_changed.emit(party)
 			return true
@@ -162,12 +173,54 @@ func return_card_to_party(card_data: Dictionary) -> bool:
 	restored["class_id"] = class_id
 	restored["star_level"] = star
 	restored["level"] = get_effective_level_for_star(class_id, star)
+	restored["shop_level"] = maxi(1, int(restored.get("shop_level", 1)))
+	restored["upgrade_tier"] = maxi(1, int(restored.get("upgrade_tier", 1)))
+	restored["is_golden"] = bool(restored.get("is_golden", false)) or int(restored["upgrade_tier"]) > 1
 	if is_roguelike_run and not restored.has("instance_id"):
 		restored["instance_id"] = _next_run_card_instance_id
 		_next_run_card_instance_id += 1
 
 	party.append(restored)
 	party_changed.emit(party)
+	return true
+
+
+func _try_promote_party_cards(class_id: String, star_level: int, shop_level: int, upgrade_tier: int) -> bool:
+	"""同名同等阶三张手牌合成为一张金色晋升卡。"""
+	var matches: Array[int] = []
+	for i in range(party.size()):
+		var member: Dictionary = party[i]
+		if str(member.get("class_id", "")) != class_id:
+			continue
+		if int(member.get("star_level", member.get("level", 1))) != star_level:
+			continue
+		if int(member.get("shop_level", 1)) != shop_level:
+			continue
+		if int(member.get("upgrade_tier", 1)) != upgrade_tier:
+			continue
+		matches.append(i)
+		if matches.size() >= 3:
+			break
+
+	if matches.size() < 3:
+		return false
+
+	for j in range(matches.size() - 1, -1, -1):
+		party.remove_at(matches[j])
+
+	var promoted_tier := upgrade_tier + 1
+	var promoted_card := {
+		"class_id": class_id,
+		"star_level": star_level,
+		"level": get_effective_level_for_star(class_id, star_level),
+		"shop_level": shop_level,
+		"upgrade_tier": promoted_tier,
+		"is_golden": true,
+		"instance_id": _next_run_card_instance_id
+	}
+	_next_run_card_instance_id += 1
+	party.append(promoted_card)
+	Log.i(M, "三合一晋升: %s 等阶%d -> 金色卡" % [class_id, shop_level])
 	return true
 
 

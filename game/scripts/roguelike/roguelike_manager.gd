@@ -62,7 +62,7 @@ func purchase_recruit(option_index: int) -> bool:
 	var option = options[option_index]
 	if not GameManager.spend_run_gold(option.cost):
 		return false
-	if not GameManager.add_to_party(option.class_id, option.level):
+	if not GameManager.add_to_party(option.class_id, option.level, option.shop_level):
 		GameManager.earn_run_gold(option.cost)
 		return false
 	recruit_system.remove_option(option_index)

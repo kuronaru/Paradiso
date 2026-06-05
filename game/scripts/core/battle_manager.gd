@@ -39,7 +39,7 @@ var enemy_units: Array = []                    # 场上敌人单位
 var enemy_spawn_points: Array = []
 
 
-func setup_battle(party_data: Array, enemies: Array, wave_count: int = 3, preserve_player_units: bool = false) -> void:
+func setup_battle(_party_data: Array, enemies: Array, wave_count: int = 3, preserve_player_units: bool = false) -> void:
 	"""初始化一场战斗"""
 	# 清除上一场状态
 	if preserve_player_units:

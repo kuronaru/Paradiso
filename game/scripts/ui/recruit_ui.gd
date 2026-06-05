@@ -202,7 +202,10 @@ func _refresh() -> void:
 			option_buttons[i].disabled = active_gold < opt.cost or not GameManager.can_add_to_party() or not _is_prepare_layout()
 			option_buttons[i].visible = true
 		else:
-			option_buttons[i].visible = false
+			option_buttons[i].text = "空"
+			option_buttons[i].tooltip_text = ""
+			option_buttons[i].disabled = true
+			option_buttons[i].visible = true
 
 
 func _get_synergy_line(ct: ClassTemplate) -> String:
