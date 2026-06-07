@@ -78,7 +78,7 @@ func _setup_ui() -> void:
 	panel_container.add_child(content_margin)
 
 	shop_row = HBoxContainer.new()
-	shop_row.add_theme_constant_override("separation", PANEL_GAP)
+	shop_row.add_theme_constant_override("separation", int(PANEL_GAP))
 	content_margin.add_child(shop_row)
 
 	var left_panel := VBoxContainer.new()
@@ -118,7 +118,7 @@ func _setup_ui() -> void:
 	options_row = HBoxContainer.new()
 	options_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	options_row.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	options_row.add_theme_constant_override("separation", CARD_SPACING)
+	options_row.add_theme_constant_override("separation", int(CARD_SPACING))
 	shop_row.add_child(options_row)
 	for i in range(5):
 		var btn := Button.new()

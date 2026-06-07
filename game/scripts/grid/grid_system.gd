@@ -4,7 +4,7 @@ class_name GridSystem
 extends Node2D
 
 const M = "Grid"
-const PREP_GRID_RECT := Rect2(64, 96, 1152, 392)
+const PREP_GRID_RECT := Rect2(64, 32, 1152, 560)
 const BATTLE_GRID_RECT := Rect2(64, 32, 1152, 560)
 const LAYOUT_TWEEN_TIME := 0.22
 

@@ -82,7 +82,7 @@ func _setup_layout() -> void:
 	add_child(hand_center)
 
 	hand_row = HBoxContainer.new()
-	hand_row.add_theme_constant_override("separation", spacing)
+	hand_row.add_theme_constant_override("separation", int(spacing))
 	hand_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hand_center.add_child(hand_row)
 
