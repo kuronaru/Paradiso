@@ -101,8 +101,10 @@ func _find_target() -> void:
 	if not grid:
 		return
 
-	var enemy_team := "enemy" if owner_unit.team == "player" else "player"
-	var candidates := grid.get_units_in_range(owner_unit.grid_position, owner_unit.search_range, enemy_team)
+	var target_team := _get_target_team()
+	var candidates := grid.get_units_in_range(owner_unit.grid_position, owner_unit.search_range, target_team)
+	if _is_healer():
+		candidates = candidates.filter(func(u): return u != owner_unit and u.current_hp < u.max_hp)
 
 	if candidates.is_empty():
 		owner_unit.target = null
@@ -116,7 +118,10 @@ func _find_target() -> void:
 
 	match priority:
 		ClassTemplate.TargetPriority.NEAREST:
-			owner_unit.target = grid.get_nearest_unit(owner_unit.grid_position, enemy_team)
+			if _is_healer():
+				_select_by(candidates, func(u): return u.current_hp, false)
+			else:
+				owner_unit.target = grid.get_nearest_unit(owner_unit.grid_position, target_team)
 		ClassTemplate.TargetPriority.LOWEST_HP:
 			_select_by(candidates, func(u): return u.current_hp, false)
 		ClassTemplate.TargetPriority.HIGHEST_ATK:
@@ -126,6 +131,16 @@ func _find_target() -> void:
 		ClassTemplate.TargetPriority.RANDOM:
 			candidates.shuffle()
 			owner_unit.target = candidates[0] if not candidates.is_empty() else null
+
+
+func _is_healer() -> bool:
+	return owner_unit.class_template and owner_unit.class_template.attack_mode == ClassTemplate.AttackMode.HEAL
+
+
+func _get_target_team() -> String:
+	if _is_healer():
+		return owner_unit.team
+	return "enemy" if owner_unit.team == "player" else "player"
 
 
 func _select_by(candidates: Array, value_fn: Callable, highest: bool) -> void:

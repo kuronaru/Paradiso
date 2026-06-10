@@ -672,19 +672,7 @@ func _skill_style_for_index(index: int, selected: bool) -> StyleBoxFlat:
 
 
 func _class_color(class_id: String) -> Color:
-	match class_id:
-		"warrior":
-			return Color(0.54, 0.2, 0.18)
-		"ranger":
-			return Color(0.23, 0.48, 0.28)
-		"mage":
-			return Color(0.34, 0.33, 0.68)
-		"priest":
-			return Color(0.76, 0.68, 0.35)
-		"rogue":
-			return Color(0.32, 0.32, 0.36)
-		_:
-			return Color(0.28, 0.42, 0.56)
+	return ClassDefinitions.get_template_color(class_id)
 
 
 func _attack_mode_name(value: int) -> String:

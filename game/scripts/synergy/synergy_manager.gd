@@ -255,11 +255,19 @@ func _build_definitions() -> void:
 	_definition_order.clear()
 	var order := 0
 
-	_add(SynergyDefinition.new("main_fighter", "战士", "战", SynergyDefinition.SynergyType.MAIN_CLASS, "fighter", [3, 6], order, "主羁绊：武器大师。MVP阶段先显示计数与层数，后续接入破甲与武器机制。", [], [], "fighter_weapon_mastery")); order += 1
-	_add(SynergyDefinition.new("main_ranger", "游侠", "游", SynergyDefinition.SynergyType.MAIN_CLASS, "ranger", [3, 6], order, "主羁绊：猎物标记。MVP阶段先显示计数与层数，后续接入标记目标机制。", [], [], "ranger_mark")); order += 1
-	_add(SynergyDefinition.new("main_wizard", "法师", "法", SynergyDefinition.SynergyType.MAIN_CLASS, "wizard", [3, 6], order, "主羁绊：奥术学派。MVP阶段先显示计数与层数，后续接入奥术印记机制。", [], [], "wizard_arcane_mark")); order += 1
+	_add(SynergyDefinition.new("main_barbarian", "野蛮人", "蛮", SynergyDefinition.SynergyType.MAIN_CLASS, "barbarian", [3, 6], order, "主羁绊：狂怒。MVP阶段先显示计数与层数，后续接入低血狂怒、溅射和锁血。", [], [], "barbarian_rage")); order += 1
+	_add(SynergyDefinition.new("main_bard", "吟游诗人", "诗", SynergyDefinition.SynergyType.MAIN_CLASS, "bard", [3, 6], order, "主羁绊：激励。MVP阶段先显示计数与层数，后续接入团队短板补强。", [], [], "bard_inspiration")); order += 1
 	_add(SynergyDefinition.new("main_cleric", "牧师", "牧", SynergyDefinition.SynergyType.MAIN_CLASS, "cleric", [3, 6], order, "主羁绊：神恩。MVP阶段先显示计数与层数，后续接入治疗产盾和保底圣盾。", [], [], "cleric_grace")); order += 1
+	_add(SynergyDefinition.new("main_druid", "德鲁伊", "德", SynergyDefinition.SynergyType.MAIN_CLASS, "druid", [3, 6], order, "主羁绊：自然羁绊。MVP阶段先显示计数与层数，后续接入藤蔓、自然领域和召唤伙伴。", [], [], "druid_nature_bond")); order += 1
+	_add(SynergyDefinition.new("main_fighter", "战士", "战", SynergyDefinition.SynergyType.MAIN_CLASS, "fighter", [3, 6], order, "主羁绊：武器大师。MVP阶段先显示计数与层数，后续接入破甲与武器机制。", [], [], "fighter_weapon_mastery")); order += 1
+	_add(SynergyDefinition.new("main_monk", "武僧", "僧", SynergyDefinition.SynergyType.MAIN_CLASS, "monk", [3, 6], order, "主羁绊：气。MVP阶段先显示计数与层数，后续接入连击、打断和跃迁追击。", [], [], "monk_ki")); order += 1
+	_add(SynergyDefinition.new("main_paladin", "圣武士", "圣", SynergyDefinition.SynergyType.MAIN_CLASS, "paladin", [3, 6], order, "主羁绊：誓言光环。MVP阶段先显示计数与层数，后续接入光环承伤和审判圣击。", [], [], "paladin_oath_aura")); order += 1
+	_add(SynergyDefinition.new("main_ranger", "游侠", "游", SynergyDefinition.SynergyType.MAIN_CLASS, "ranger", [3, 6], order, "主羁绊：猎物标记。MVP阶段先显示计数与层数，后续接入标记目标机制。", [], [], "ranger_mark")); order += 1
 	_add(SynergyDefinition.new("main_rogue", "游荡者", "贼", SynergyDefinition.SynergyType.MAIN_CLASS, "rogue", [3, 6], order, "主羁绊：潜袭。MVP阶段先显示计数与层数，后续接入潜袭和斩杀。", [], [], "rogue_sneak")); order += 1
+	_add(SynergyDefinition.new("main_sorcerer", "术士", "术", SynergyDefinition.SynergyType.MAIN_CLASS, "sorcerer", [3, 6], order, "主羁绊：超魔。MVP阶段先显示计数与层数，后续接入超魔充能和强化施法。", [], [], "sorcerer_metamagic")); order += 1
+	_add(SynergyDefinition.new("main_warlock", "契术师", "契", SynergyDefinition.SynergyType.MAIN_CLASS, "warlock", [3, 6], order, "主羁绊：契约。MVP阶段先显示计数与层数，后续接入诅咒和灵魂碎片。", [], [], "warlock_pact")); order += 1
+	_add(SynergyDefinition.new("main_wizard", "法师", "法", SynergyDefinition.SynergyType.MAIN_CLASS, "wizard", [3, 6], order, "主羁绊：奥术学派。MVP阶段先显示计数与层数，后续接入奥术印记机制。", [], [], "wizard_arcane_mark")); order += 1
+	_add(SynergyDefinition.new("main_artificer", "奇械师", "械", SynergyDefinition.SynergyType.MAIN_CLASS, "artificer", [3, 6], order, "主羁绊：魔导工坊。MVP阶段先显示计数与层数，后续接入装置、炮台和自动重建。", [], [], "artificer_workshop")); order += 1
 
 	_add(SynergyDefinition.new("stat_str", "力量", "力", SynergyDefinition.SynergyType.MINOR_STAT, "STR", [2, 3], order, "小羁绊：提升物理攻击倍率，3人后获得破甲。", [
 		{"min_tier": 2, "stat": "attack_multiplier", "base": 1.15, "per_layer": 0.0038, "max_value": 5.0},

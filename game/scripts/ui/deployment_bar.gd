@@ -250,18 +250,7 @@ func _make_card_style(bg_color: Color, border_color: Color) -> StyleBoxFlat:
 
 
 func _get_class_icon_color(class_id: String) -> Color:
-	match class_id:
-		"warrior":
-			return Color(0.78, 0.24, 0.20, 1.0)
-		"ranger":
-			return Color(0.22, 0.58, 0.28, 1.0)
-		"mage":
-			return Color(0.35, 0.34, 0.86, 1.0)
-		"priest":
-			return Color(0.88, 0.82, 0.42, 1.0)
-		"rogue":
-			return Color(0.48, 0.30, 0.62, 1.0)
-	return Color(0.48, 0.52, 0.58, 1.0)
+	return ClassDefinitions.get_template_color(class_id)
 
 
 func _get_card_text(ct: ClassTemplate, card_data: Dictionary) -> String:
@@ -291,18 +280,7 @@ func _get_synergy_line(ct: ClassTemplate) -> String:
 
 
 func _main_group_label(class_group: String) -> String:
-	match class_group:
-		"fighter":
-			return "战士"
-		"ranger":
-			return "游侠"
-		"wizard":
-			return "法师"
-		"cleric":
-			return "牧师"
-		"rogue":
-			return "游荡者"
-	return class_group
+	return ClassDefinitions.get_class_group_label(class_group)
 
 
 func _alignment_label(tag: String) -> String:

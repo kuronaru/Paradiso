@@ -459,7 +459,7 @@ func _create_unit_preview() -> Control:
 
 	var rect := ColorRect.new()
 	rect.size = size
-	rect.color = Color(0.3, 0.6, 1.0, 1.0)
+	rect.color = ClassDefinitions.get_template_color(str(drag_card_data.get("class_id", "fighter_champion")))
 	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(rect)
 	return root

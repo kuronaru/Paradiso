@@ -41,33 +41,6 @@ const OPTION_SLOTS_BY_LEVEL := {
 	5: 5,
 	6: 5,
 }
-const CLASS_TAVERN_DATA := {
-	"warrior": {
-		"shop_level": 1,
-		"base_cost": 2,
-		"passive": "前排承压"
-	},
-	"ranger": {
-		"shop_level": 1,
-		"base_cost": 2,
-		"passive": "残血追击"
-	},
-	"rogue": {
-		"shop_level": 1,
-		"base_cost": 3,
-		"passive": "低费近战"
-	},
-	"priest": {
-		"shop_level": 2,
-		"base_cost": 3,
-		"passive": "治疗续航"
-	},
-	"mage": {
-		"shop_level": 3,
-		"base_cost": 3,
-		"passive": "范围法术"
-	},
-}
 
 var tavern_level: int = 1
 var upgrade_discount: int = 0
@@ -152,7 +125,7 @@ func upgrade_tavern() -> bool:
 
 func _calculate_cost(class_id: String, level: int) -> int:
 	"""计算招募花费"""
-	var data: Dictionary = CLASS_TAVERN_DATA.get(class_id, {})
+	var data: Dictionary = ClassDefinitions.get_tavern_data(class_id)
 	var base_cost := int(data.get("base_cost", 2))
 	match clampi(level, 1, 3):
 		1:
@@ -166,7 +139,7 @@ func _calculate_cost(class_id: String, level: int) -> int:
 func _build_available_option_pool() -> Array[Dictionary]:
 	var pool: Array[Dictionary] = []
 	for class_id in ClassDefinitions.get_all_class_ids():
-		var data: Dictionary = CLASS_TAVERN_DATA.get(class_id, {})
+		var data: Dictionary = ClassDefinitions.get_tavern_data(class_id)
 		if data.is_empty():
 			continue
 

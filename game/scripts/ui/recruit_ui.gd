@@ -220,18 +220,7 @@ func _get_synergy_line(ct: ClassTemplate) -> String:
 
 
 func _main_group_label(class_group: String) -> String:
-	match class_group:
-		"fighter":
-			return "战士"
-		"ranger":
-			return "游侠"
-		"wizard":
-			return "法师"
-		"cleric":
-			return "牧师"
-		"rogue":
-			return "游荡者"
-	return class_group
+	return ClassDefinitions.get_class_group_label(class_group)
 
 
 func _alignment_label(tag: String) -> String:

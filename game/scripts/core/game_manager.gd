@@ -112,12 +112,13 @@ func add_to_party(class_id: String, star_level: int = 1, shop_level: int = 1, up
 	"""添加角色到本次冒险队伍；level 表示局内招募星级"""
 	if not can_add_to_party():
 		return false
+	var canonical_id := ClassDefinitions.canonicalize_class_id(class_id)
 	var star := clampi(star_level, 1, 3)
 	var tier := maxi(1, upgrade_tier)
 	var card: Dictionary = {
-		"class_id": class_id,
+		"class_id": canonical_id,
 		"star_level": star,
-		"level": get_effective_level_for_star(class_id, star),
+		"level": get_effective_level_for_star(canonical_id, star),
 		"shop_level": maxi(1, shop_level),
 		"upgrade_tier": tier,
 		"is_golden": tier > 1
@@ -127,7 +128,7 @@ func add_to_party(class_id: String, star_level: int = 1, shop_level: int = 1, up
 		_next_run_card_instance_id += 1
 	party.append(card)
 	if is_roguelike_run:
-		_try_promote_party_cards(class_id, star, maxi(1, shop_level), tier)
+		_try_promote_party_cards(canonical_id, star, maxi(1, shop_level), tier)
 	party_changed.emit(party)
 	return true
 
@@ -145,13 +146,13 @@ func remove_from_party_card(card_data: Dictionary) -> bool:
 			party_changed.emit(party)
 			return true
 
-	var class_id := str(card_data.get("class_id", ""))
+	var class_id := ClassDefinitions.canonicalize_class_id(str(card_data.get("class_id", "")))
 	var star_level := int(card_data.get("star_level", card_data.get("level", 1)))
 	var shop_level := int(card_data.get("shop_level", 1))
 	var upgrade_tier := int(card_data.get("upgrade_tier", 1))
 	for i in range(party.size()):
 		var member: Dictionary = party[i]
-		if str(member.get("class_id", "")) == class_id \
+		if ClassDefinitions.canonicalize_class_id(str(member.get("class_id", ""))) == class_id \
 				and int(member.get("star_level", member.get("level", 1))) == star_level \
 				and int(member.get("shop_level", 1)) == shop_level \
 				and int(member.get("upgrade_tier", 1)) == upgrade_tier:
@@ -168,7 +169,7 @@ func return_card_to_party(card_data: Dictionary) -> bool:
 		return false
 
 	var restored := card_data.duplicate(true)
-	var class_id := str(restored.get("class_id", "warrior"))
+	var class_id := ClassDefinitions.canonicalize_class_id(str(restored.get("class_id", "fighter_champion")))
 	var star := clampi(int(restored.get("star_level", restored.get("level", 1))), 1, 3)
 	restored["class_id"] = class_id
 	restored["star_level"] = star
@@ -187,10 +188,11 @@ func return_card_to_party(card_data: Dictionary) -> bool:
 
 func _try_promote_party_cards(class_id: String, star_level: int, shop_level: int, upgrade_tier: int) -> bool:
 	"""同名同等阶三张手牌合成为一张金色晋升卡。"""
+	var canonical_id := ClassDefinitions.canonicalize_class_id(class_id)
 	var matches: Array[int] = []
 	for i in range(party.size()):
 		var member: Dictionary = party[i]
-		if str(member.get("class_id", "")) != class_id:
+		if ClassDefinitions.canonicalize_class_id(str(member.get("class_id", ""))) != canonical_id:
 			continue
 		if int(member.get("star_level", member.get("level", 1))) != star_level:
 			continue
@@ -210,9 +212,9 @@ func _try_promote_party_cards(class_id: String, star_level: int, shop_level: int
 
 	var promoted_tier := upgrade_tier + 1
 	var promoted_card := {
-		"class_id": class_id,
+		"class_id": canonical_id,
 		"star_level": star_level,
-		"level": get_effective_level_for_star(class_id, star_level),
+		"level": get_effective_level_for_star(canonical_id, star_level),
 		"shop_level": shop_level,
 		"upgrade_tier": promoted_tier,
 		"is_golden": true,
@@ -220,7 +222,7 @@ func _try_promote_party_cards(class_id: String, star_level: int, shop_level: int
 	}
 	_next_run_card_instance_id += 1
 	party.append(promoted_card)
-	Log.i(M, "三合一晋升: %s 等阶%d -> 金色卡" % [class_id, shop_level])
+	Log.i(M, "三合一晋升: %s 等阶%d -> 金色卡" % [canonical_id, shop_level])
 	return true
 
 
@@ -270,9 +272,9 @@ func _ensure_save_data() -> void:
 	for card in owned_characters:
 		if not (card is Dictionary):
 			continue
-		var class_id: String = str(card.get("class_id", ""))
-		if class_id in ClassDefinitions.get_all_class_ids() and not level_by_class.has(class_id):
-			level_by_class[class_id] = clampi(int(card.get("level", 1)), 1, MAX_CHARACTER_LEVEL)
+		var class_id := ClassDefinitions.canonicalize_class_id(str(card.get("class_id", "")))
+		var stored_level := clampi(int(card.get("level", 1)), 1, MAX_CHARACTER_LEVEL)
+		level_by_class[class_id] = maxi(int(level_by_class.get(class_id, 1)), stored_level)
 
 	var normalized: Array = []
 	for class_id in ClassDefinitions.get_all_class_ids():
@@ -456,7 +458,7 @@ func _apply_save_data(data: Dictionary) -> void:
 		if not (card is Dictionary):
 			continue
 		owned_characters.append({
-			"class_id": str(card.get("class_id", "")),
+			"class_id": ClassDefinitions.canonicalize_class_id(str(card.get("class_id", ""))),
 			"level": clampi(int(card.get("level", 1)), 1, MAX_CHARACTER_LEVEL)
 		})
 
@@ -534,8 +536,9 @@ func _normalize_save_id(save_id: String) -> String:
 func get_owned_character_level(class_id: String) -> int:
 	"""获取存档中的角色养成等级"""
 	_ensure_save_data()
+	var canonical_id := ClassDefinitions.canonicalize_class_id(class_id)
 	for card in owned_characters:
-		if card.get("class_id", "") == class_id:
+		if ClassDefinitions.canonicalize_class_id(str(card.get("class_id", ""))) == canonical_id:
 			return int(card.get("level", 1))
 	return 1
 
@@ -553,16 +556,18 @@ func get_star_level_cap(star_level: int) -> int:
 
 func get_effective_level_for_star(class_id: String, star_level: int) -> int:
 	"""根据养成等级和星级上限计算本次战斗实际等级"""
-	return min(get_owned_character_level(class_id), get_star_level_cap(star_level))
+	var canonical_id := ClassDefinitions.canonicalize_class_id(class_id)
+	return min(get_owned_character_level(canonical_id), get_star_level_cap(star_level))
 
 
 func get_battle_party_data() -> Array:
 	"""生成用于部署和战斗的队伍数据"""
 	var result: Array = []
 	for member in party:
-		var class_id: String = member.get("class_id", "warrior")
+		var class_id := ClassDefinitions.canonicalize_class_id(str(member.get("class_id", "fighter_champion")))
 		var star_level: int = int(member.get("star_level", member.get("level", 1)))
 		var data: Dictionary = member.duplicate(true)
+		data["class_id"] = class_id
 		data["star_level"] = star_level
 		data["level"] = get_effective_level_for_star(class_id, star_level)
 		result.append(data)
