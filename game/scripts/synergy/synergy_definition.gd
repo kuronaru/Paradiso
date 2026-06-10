@@ -3,7 +3,7 @@ class_name SynergyDefinition
 extends RefCounted
 
 enum SynergyType {
-	MAIN_CLASS,
+	MAIN_NATION,
 	MINOR_STAT,
 	MINOR_ALIGNMENT,
 }
@@ -11,7 +11,7 @@ enum SynergyType {
 var synergy_id: String = ""
 var display_name: String = ""
 var short_name: String = ""
-var type: SynergyType = SynergyType.MAIN_CLASS
+var type: SynergyType = SynergyType.MAIN_NATION
 var tag: String = ""
 var thresholds: Array[int] = []
 var order: int = 0
@@ -25,7 +25,7 @@ func _init(
 		p_id: String = "",
 		p_name: String = "",
 		p_short: String = "",
-		p_type: SynergyType = SynergyType.MAIN_CLASS,
+		p_type: SynergyType = SynergyType.MAIN_NATION,
 		p_tag: String = "",
 		p_thresholds: Array[int] = [],
 		p_order: int = 0,
@@ -63,4 +63,3 @@ func get_next_threshold(count: int) -> int:
 
 func get_max_threshold() -> int:
 	return thresholds[-1] if not thresholds.is_empty() else 0
-

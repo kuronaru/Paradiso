@@ -9,7 +9,7 @@ extends Resource
 ## 职业名称
 @export var job_name: String = ""
 
-## 主羁绊职业大分支（DND职业体系）
+## 主羁绊国家代号（nation_a~nation_f）
 @export var class_group: String = ""
 
 ## 职业小分支
