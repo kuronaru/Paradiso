@@ -4,6 +4,8 @@ class_name UnitBase
 extends Node2D
 
 const M = "Unit"
+const COLLISION_LAYER_PLAYER := 1
+const COLLISION_LAYER_ENEMY := 2
 
 signal died(unit: Node)
 signal hp_changed(current: int, max_hp: int)
@@ -64,15 +66,23 @@ var ai_enabled: bool = true
 ## 可视化（占位）
 @export var color: Color = Color.WHITE
 @export var unit_radius: float = 24.0
+@export var collision_radius: float = 0.0
+@export var ground_anchor_offset: Vector2 = Vector2.ZERO
+@export var show_collision_debug_ring: bool = true
 @export var floating_number_rise: float = 28.0
 @export var floating_number_duration: float = 0.65
 ## 血条节点
 var hp_bar_bg: ColorRect = null
 var hp_bar_fill: ColorRect = null
+var ground_collision_area: Area2D = null
+var ground_collision_shape: CollisionShape2D = null
+var collision_debug_ring: Line2D = null
 
 
 func _ready() -> void:
+	_setup_ground_collision()
 	_setup_visual()
+	_setup_collision_debug_ring()
 	_setup_ai()
 	hp_changed.connect(_update_hp_bar)
 	_update_hp_bar(current_hp, max_hp)
@@ -104,6 +114,7 @@ func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 	base_move_speed = class_data.move_speed
 	base_attack_range = class_data.attack_range
 	base_search_range = class_data.search_range
+	collision_radius = class_data.collision_radius
 	max_hp = base_max_hp
 	current_hp = max_hp
 	attack = base_attack
@@ -116,6 +127,7 @@ func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 	# 初始化技能冷却
 	for sid in class_data.skill_ids:
 		skill_cooldowns[sid] = 0.0
+	refresh_ground_collision()
 
 
 func set_base_stats_from_current() -> void:
@@ -227,6 +239,75 @@ func _setup_ai() -> void:
 	add_child(ai_controller)
 
 
+func _setup_ground_collision() -> void:
+	ground_collision_area = Area2D.new()
+	ground_collision_area.name = "GroundCollisionArea"
+	ground_collision_area.position = ground_anchor_offset
+	add_child(ground_collision_area)
+
+	ground_collision_shape = CollisionShape2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = get_collision_radius()
+	ground_collision_shape.shape = circle
+	ground_collision_area.add_child(ground_collision_shape)
+	_configure_collision_layers()
+
+
+func refresh_ground_collision() -> void:
+	if not ground_collision_shape:
+		return
+	if ground_collision_area:
+		ground_collision_area.position = ground_anchor_offset
+	var circle := ground_collision_shape.shape as CircleShape2D
+	if circle:
+		circle.radius = get_collision_radius()
+	_configure_collision_layers()
+	_update_collision_debug_ring()
+
+
+func _configure_collision_layers() -> void:
+	if not ground_collision_area:
+		return
+	if team == "player":
+		ground_collision_area.collision_layer = COLLISION_LAYER_PLAYER
+		ground_collision_area.collision_mask = COLLISION_LAYER_ENEMY
+	else:
+		ground_collision_area.collision_layer = COLLISION_LAYER_ENEMY
+		ground_collision_area.collision_mask = COLLISION_LAYER_PLAYER
+
+
+func _setup_collision_debug_ring() -> void:
+	collision_debug_ring = Line2D.new()
+	collision_debug_ring.name = "CollisionDebugRing"
+	collision_debug_ring.width = 2.0
+	collision_debug_ring.closed = true
+	collision_debug_ring.antialiased = true
+	collision_debug_ring.z_index = 50
+	add_child(collision_debug_ring)
+	_update_collision_debug_ring()
+
+
+func _update_collision_debug_ring() -> void:
+	if not collision_debug_ring:
+		return
+	collision_debug_ring.visible = show_collision_debug_ring
+	collision_debug_ring.position = ground_anchor_offset
+	collision_debug_ring.default_color = _get_collision_debug_ring_color()
+	var radius := get_collision_radius()
+	var points := PackedVector2Array()
+	var segments := 64
+	for i in range(segments):
+		var angle := TAU * float(i) / float(segments)
+		points.append(Vector2(cos(angle), sin(angle)) * radius)
+	collision_debug_ring.points = points
+
+
+func _get_collision_debug_ring_color() -> Color:
+	if team == "player":
+		return Color(0.15, 0.85, 1.0, 0.85)
+	return Color(1.0, 0.35, 0.18, 0.85)
+
+
 func _update_hp_bar(_current: int, _max_hp: int) -> void:
 	"""更新血条显示"""
 	if not hp_bar_fill:
@@ -242,6 +323,23 @@ func _update_hp_bar(_current: int, _max_hp: int) -> void:
 
 func get_team() -> String:
 	return team
+
+
+func get_collision_radius() -> float:
+	if collision_radius > 0.0:
+		return collision_radius
+	return unit_radius
+
+
+func get_ground_position() -> Vector2:
+	return global_position + ground_anchor_offset
+
+
+func is_touching_unit(other: UnitBase) -> bool:
+	if not other:
+		return false
+	var radius_sum := get_collision_radius() + other.get_collision_radius()
+	return get_ground_position().distance_squared_to(other.get_ground_position()) <= radius_sum * radius_sum
 
 
 func take_damage(amount: int, armor_pierce: float = 0.0) -> int:

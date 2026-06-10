@@ -31,6 +31,7 @@ func setup_from_template(template: Dictionary) -> void:
 	defense = template.get("def", 3)
 	attack_speed = template.get("attack_speed", 1.0)
 	move_speed = template.get("move_speed", 1.5)
+	collision_radius = float(template.get("collision_radius", 0.0))
 	attack_range = template.get("attack_range", 1.5)
 	search_range = template.get("search_range", 5.0)
 	set_base_stats_from_current()
@@ -47,6 +48,8 @@ func setup_from_template(template: Dictionary) -> void:
 		EnemyType.BOSS:
 			color = Color(0.8, 0.1, 0.5)
 			unit_radius = 40.0
+
+	refresh_ground_collision()
 
 	# 没有class_template时用默认索敌
 	for child in get_children():

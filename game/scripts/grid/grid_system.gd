@@ -101,7 +101,7 @@ func _apply_stage_layout(animated: bool) -> void:
 
 func _sync_unit_positions() -> void:
 	for unit in all_units:
-		if is_instance_valid(unit):
+		if is_instance_valid(unit) and _uses_grid_occupancy(unit):
 			unit.global_position = grid_to_world(unit.grid_position)
 
 
@@ -172,6 +172,10 @@ func can_place_at(grid_pos: Vector2i) -> bool:
 	return is_in_bounds(grid_pos) and not is_occupied(grid_pos) and is_deploy_zone(grid_pos)
 
 
+func _uses_grid_occupancy(unit: Node) -> bool:
+	return unit is UnitBase and (unit as UnitBase).team == "player"
+
+
 func occupy_cell(grid_pos: Vector2i, unit: Node) -> void:
 	"""占用一个格子"""
 	occupancy[grid_pos] = unit
@@ -184,9 +188,12 @@ func free_cell(grid_pos: Vector2i) -> void:
 
 func place_unit(unit: Node, grid_pos: Vector2i) -> bool:
 	"""放置单位到网格"""
-	if not can_place_at(grid_pos):
+	if _uses_grid_occupancy(unit):
+		if not can_place_at(grid_pos):
+			return false
+		occupy_cell(grid_pos, unit)
+	elif not is_in_bounds(grid_pos):
 		return false
-	occupy_cell(grid_pos, unit)
 	unit.grid_position = grid_pos
 	unit.global_position = grid_to_world(grid_pos)
 	if unit not in all_units:
@@ -198,7 +205,7 @@ func place_unit(unit: Node, grid_pos: Vector2i) -> bool:
 
 func remove_unit(unit: Node) -> void:
 	"""从网格移除单位"""
-	if unit.grid_position in occupancy:
+	if unit.grid_position in occupancy and occupancy[unit.grid_position] == unit:
 		free_cell(unit.grid_position)
 	all_units.erase(unit)
 	if unit.get_parent() == self:
@@ -214,9 +221,14 @@ func get_units_in_range(center: Vector2i, radius: float, team: String = "") -> A
 	"""获取范围内的单位"""
 	var result: Array = []
 	for unit in all_units:
+		if not is_instance_valid(unit):
+			continue
+		if unit is UnitBase and not (unit as UnitBase).is_alive:
+			continue
 		if team != "" and unit.has_method("get_team") and unit.get_team() != team:
 			continue
-		if get_distance(center, unit.grid_position) <= radius:
+		var unit_grid := _get_unit_query_grid_position(unit)
+		if get_distance(center, unit_grid) <= radius:
 			result.append(unit)
 	return result
 
@@ -226,13 +238,68 @@ func get_nearest_unit(center: Vector2i, team: String = "") -> Node:
 	var nearest: Node = null
 	var nearest_dist: float = INF
 	for unit in all_units:
+		if not is_instance_valid(unit):
+			continue
+		if unit is UnitBase and not (unit as UnitBase).is_alive:
+			continue
 		if team != "" and unit.has_method("get_team") and unit.get_team() != team:
 			continue
-		var d := get_distance(center, unit.grid_position)
+		var d := get_distance(center, _get_unit_query_grid_position(unit))
 		if d < nearest_dist:
 			nearest_dist = d
 			nearest = unit
 	return nearest
+
+
+func _get_unit_query_grid_position(unit: Node) -> Vector2i:
+	if unit is UnitBase and not _uses_grid_occupancy(unit):
+		var combat_unit := unit as UnitBase
+		combat_unit.grid_position = world_to_grid(combat_unit.get_ground_position())
+	return unit.grid_position
+
+
+func get_units_touching_circle(center: Vector2, radius: float, team: String = "", exclude: Node = null) -> Array:
+	"""获取与指定地面圆形接触的单位"""
+	var result: Array = []
+	for unit in all_units:
+		if unit == exclude or not is_instance_valid(unit):
+			continue
+		if not (unit is UnitBase):
+			continue
+		var combat_unit := unit as UnitBase
+		if not combat_unit.is_alive:
+			continue
+		if team != "" and combat_unit.get_team() != team:
+			continue
+		var radius_sum := radius + combat_unit.get_collision_radius()
+		if center.distance_squared_to(combat_unit.get_ground_position()) <= radius_sum * radius_sum:
+			result.append(combat_unit)
+	return result
+
+
+func get_touching_units(unit: UnitBase, team: String = "") -> Array:
+	if not unit:
+		return []
+	return get_units_touching_circle(unit.get_ground_position(), unit.get_collision_radius(), team, unit)
+
+
+func find_nearest_open_player_cell(world_pos: Vector2, preferred: Vector2i, unit: Node = null) -> Vector2i:
+	"""根据世界坐标查找最近的合法友方空格"""
+	if is_move_zone(preferred) and (not is_occupied(preferred) or occupancy.get(preferred) == unit):
+		return preferred
+
+	var best := Vector2i(-1, -1)
+	var best_dist := INF
+	for x in range(grid_width):
+		for y in range(deploy_rows.x, deploy_rows.y + 1):
+			var cell := Vector2i(x, y)
+			if is_occupied(cell) and occupancy.get(cell) != unit:
+				continue
+			var d := grid_to_world(cell).distance_squared_to(world_pos)
+			if d < best_dist:
+				best_dist = d
+				best = cell
+	return best
 
 
 func find_path(from: Vector2i, to: Vector2i) -> Array:
@@ -314,7 +381,6 @@ func spawn_enemy_wave(enemy_templates: Array, spawns: Array) -> void:
 					if found:
 						break
 
-		occupy_cell(spawn_pos, enemy)
 		enemy.grid_position = spawn_pos
 		enemy.global_position = grid_to_world(spawn_pos)
 		all_units.append(enemy)

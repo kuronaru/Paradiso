@@ -9,7 +9,8 @@ var owner_unit: UnitBase = null
 var state: String = "idle"       # idle | moving | attacking
 var path: Array = []
 var path_progress: float = 0.0
-var move_target_pos: Vector2 = Vector2.ZERO
+var move_target_pos: Vector2i = Vector2i.ZERO
+var move_origin_pos: Vector2i = Vector2i.ZERO
 var target_recheck_timer: float = 0.0
 const TARGET_RECHECK_INTERVAL: float = 1.0
 
@@ -18,7 +19,7 @@ func reset_ai_state() -> void:
 	state = "idle"
 	path.clear()
 	path_progress = 0.0
-	move_target_pos = Vector2.ZERO
+	move_target_pos = Vector2i.ZERO
 	target_recheck_timer = 0.0
 
 
@@ -35,17 +36,22 @@ func execute(delta: float) -> void:
 			_on_attacking(delta)
 
 
-func _on_idle(_delta: float) -> void:
+func _on_idle(delta: float) -> void:
+	_update_continuous_grid_position()
 	_find_target()
 	if owner_unit.target and is_instance_valid(owner_unit.target):
-		var dist := _distance_to(owner_unit.target)
-		if dist <= owner_unit.attack_range:
+		if _is_in_attack_range(owner_unit.target):
 			state = "attacking"
+		elif _uses_continuous_enemy_movement():
+			_move_enemy_toward(owner_unit.target, delta)
 		elif owner_unit.move_speed > 0:
 			_start_move_toward(owner_unit.target)
 	elif owner_unit.move_speed > 0 and owner_unit.stance != UnitBase.Stance.STATIONED:
 		# 没有目标时向敌人方向移动
-		_move_forward()
+		if _uses_continuous_enemy_movement():
+			_move_enemy_forward(delta)
+		else:
+			_move_forward()
 
 
 func _on_moving(delta: float) -> void:
@@ -73,11 +79,13 @@ func _on_moving(delta: float) -> void:
 	else:
 		var dir := (target_world - current_pos).normalized()
 		owner_unit.global_position += dir * move_dist
+		if _resolve_player_collision_during_move(grid):
+			return
 
 	# 移动中检查是否可以攻击
 	_find_target()
 	if owner_unit.target and is_instance_valid(owner_unit.target):
-		if _distance_to(owner_unit.target) <= owner_unit.attack_range:
+		if _is_in_attack_range(owner_unit.target):
 			path.clear()
 			state = "attacking"
 
@@ -88,9 +96,10 @@ func _on_attacking(_delta: float) -> void:
 		state = "idle"
 		return
 
-	var dist := _distance_to(owner_unit.target)
-	if dist <= owner_unit.attack_range:
+	if _is_in_attack_range(owner_unit.target):
 		owner_unit.perform_attack()
+	elif _uses_continuous_enemy_movement():
+		_move_enemy_toward(owner_unit.target, _delta)
 	elif owner_unit.move_speed > 0:
 		_start_move_toward(owner_unit.target)
 
@@ -100,6 +109,7 @@ func _find_target() -> void:
 	var grid: GridSystem = BattleManager.grid
 	if not grid:
 		return
+	_update_continuous_grid_position()
 
 	var target_team := _get_target_team()
 	var candidates := grid.get_units_in_range(owner_unit.grid_position, owner_unit.search_range, target_team)
@@ -158,7 +168,35 @@ func _distance_to(target: Node) -> float:
 	var grid: GridSystem = BattleManager.grid
 	if not grid:
 		return INF
+	if owner_unit is UnitBase and target is UnitBase:
+		return owner_unit.get_ground_position().distance_to((target as UnitBase).get_ground_position()) / maxf(grid.cell_size, 1.0)
 	return grid.get_distance(owner_unit.grid_position, target.grid_position)
+
+
+func _is_in_attack_range(target: Node) -> bool:
+	if not target or not is_instance_valid(target):
+		return false
+	if owner_unit is UnitBase and target is UnitBase:
+		var target_unit := target as UnitBase
+		if owner_unit.is_touching_unit(target_unit):
+			return true
+		if _requires_contact_attack():
+			return false
+	return _distance_to(target) <= owner_unit.attack_range
+
+
+func _requires_contact_attack() -> bool:
+	if not (owner_unit is EnemyUnit):
+		return false
+	var enemy := owner_unit as EnemyUnit
+	return enemy.enemy_type in [
+		EnemyUnit.EnemyType.MELEE,
+		EnemyUnit.EnemyType.BRUTE,
+	]
+
+
+func _uses_continuous_enemy_movement() -> bool:
+	return owner_unit is EnemyUnit
 
 
 func _start_move_toward(target: Node) -> void:
@@ -171,6 +209,7 @@ func _start_move_toward(target: Node) -> void:
 	if step == Vector2i.ZERO:
 		state = "attacking"
 		return
+	move_origin_pos = owner_unit.grid_position
 	var next_pos := owner_unit.grid_position + step
 	if grid.is_deploy_zone(next_pos) and grid.is_in_bounds(next_pos) and not grid.is_occupied(next_pos):
 		move_target_pos = next_pos
@@ -199,6 +238,80 @@ func _move_forward() -> void:
 	var direction := 1 if owner_unit.team == "player" else -1
 	var next_pos := owner_unit.grid_position + Vector2i(direction, 0)
 	if grid.is_deploy_zone(next_pos) and grid.is_in_bounds(next_pos) and not grid.is_occupied(next_pos):
+		move_origin_pos = owner_unit.grid_position
 		move_target_pos = next_pos
 		path = [next_pos]
 		state = "moving"
+
+
+func _move_enemy_toward(target: Node, delta: float) -> void:
+	if not (target is UnitBase):
+		state = "idle"
+		return
+	var target_unit := target as UnitBase
+	if owner_unit.is_touching_unit(target_unit):
+		state = "attacking"
+		return
+	var dir := target_unit.get_ground_position() - owner_unit.get_ground_position()
+	if dir.length_squared() <= 0.01:
+		state = "attacking"
+		return
+	var speed_px := owner_unit.move_speed * _cell_size()
+	var distance := dir.length()
+	var contact_distance := owner_unit.get_collision_radius() + target_unit.get_collision_radius()
+	var travel := minf(speed_px * delta, maxf(0.0, distance - contact_distance))
+	if travel > 0.0:
+		owner_unit.global_position += dir.normalized() * travel
+	if owner_unit.is_touching_unit(target_unit):
+		state = "attacking"
+	else:
+		var contacts: Array = BattleManager.grid.get_touching_units(owner_unit, "player") if BattleManager.grid else []
+		if not contacts.is_empty():
+			owner_unit.target = contacts[0]
+			state = "attacking"
+		else:
+			state = "idle"
+	_update_continuous_grid_position()
+
+
+func _move_enemy_forward(delta: float) -> void:
+	var old_pos := owner_unit.global_position
+	var direction := Vector2(-1.0, 0.0)
+	owner_unit.global_position += direction * owner_unit.move_speed * _cell_size() * delta
+	var contacts: Array = BattleManager.grid.get_touching_units(owner_unit, "player") if BattleManager.grid else []
+	if not contacts.is_empty():
+		owner_unit.global_position = old_pos
+		owner_unit.target = contacts[0]
+		state = "attacking"
+	_update_continuous_grid_position()
+
+
+func _resolve_player_collision_during_move(grid: GridSystem) -> bool:
+	if owner_unit.team != "player":
+		return false
+	var contacts := grid.get_touching_units(owner_unit, "enemy")
+	if contacts.is_empty():
+		return false
+	var safe_cell := grid.find_nearest_open_player_cell(owner_unit.global_position, move_origin_pos, owner_unit)
+	if safe_cell.x >= 0:
+		if safe_cell != owner_unit.grid_position:
+			grid.move_unit(owner_unit, safe_cell)
+		owner_unit.global_position = grid.grid_to_world(safe_cell)
+	else:
+		owner_unit.global_position = grid.grid_to_world(owner_unit.grid_position)
+	path.clear()
+	state = "idle"
+	return true
+
+
+func _update_continuous_grid_position() -> void:
+	if not _uses_continuous_enemy_movement():
+		return
+	var grid: GridSystem = BattleManager.grid
+	if grid:
+		owner_unit.grid_position = grid.world_to_grid(owner_unit.get_ground_position())
+
+
+func _cell_size() -> float:
+	var grid: GridSystem = BattleManager.grid
+	return grid.cell_size if grid else 64.0
