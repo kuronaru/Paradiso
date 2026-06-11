@@ -93,6 +93,8 @@ func _prepare_existing_player_units() -> void:
 		valid_units.append(unit)
 
 	if grid:
+		if grid.has_method("clear_move_reservations"):
+			grid.clear_move_reservations()
 		for unit in valid_units:
 			if unit.grid_position in grid.occupancy and grid.occupancy[unit.grid_position] == unit:
 				grid.free_cell(unit.grid_position)
@@ -107,6 +109,8 @@ func _prepare_existing_player_units() -> void:
 				grid.occupy_cell(target_pos, unit)
 				unit.grid_position = target_pos
 				unit.global_position = grid.grid_to_world(target_pos)
+				if unit is UnitBase:
+					(unit as UnitBase).finish_grid_move(target_pos)
 
 	for unit in valid_units:
 		if unit is HeroUnit:

@@ -26,6 +26,8 @@ signal unit_placed(unit: Node, grid_pos: Vector2i)
 
 ## 占据表 {Vector2i: Node}
 var occupancy: Dictionary = {}
+## 移动目标预留表 {Vector2i: Node}
+var movement_reservations: Dictionary = {}
 ## 所有单位引用
 var all_units: Array[Node] = []
 
@@ -101,7 +103,7 @@ func _apply_stage_layout(animated: bool) -> void:
 
 func _sync_unit_positions() -> void:
 	for unit in all_units:
-		if is_instance_valid(unit) and _uses_grid_occupancy(unit):
+		if is_instance_valid(unit) and _uses_grid_occupancy(unit) and (unit as UnitBase).is_standing():
 			unit.global_position = grid_to_world(unit.grid_position)
 
 
@@ -155,7 +157,7 @@ func is_in_bounds(grid_pos: Vector2i) -> bool:
 
 
 func is_occupied(grid_pos: Vector2i) -> bool:
-	return occupancy.has(grid_pos)
+	return occupancy.has(grid_pos) or movement_reservations.has(grid_pos)
 
 
 func is_deploy_zone(grid_pos: Vector2i) -> bool:
@@ -172,6 +174,16 @@ func can_place_at(grid_pos: Vector2i) -> bool:
 	return is_in_bounds(grid_pos) and not is_occupied(grid_pos) and is_deploy_zone(grid_pos)
 
 
+func can_reserve_move_target(grid_pos: Vector2i, unit: Node) -> bool:
+	if not is_move_zone(grid_pos):
+		return false
+	if occupancy.has(grid_pos) and occupancy[grid_pos] != unit:
+		return false
+	if movement_reservations.has(grid_pos) and movement_reservations[grid_pos] != unit:
+		return false
+	return true
+
+
 func _uses_grid_occupancy(unit: Node) -> bool:
 	return unit is UnitBase and (unit as UnitBase).team == "player"
 
@@ -179,11 +191,71 @@ func _uses_grid_occupancy(unit: Node) -> bool:
 func occupy_cell(grid_pos: Vector2i, unit: Node) -> void:
 	"""占用一个格子"""
 	occupancy[grid_pos] = unit
+	if movement_reservations.get(grid_pos) == unit:
+		movement_reservations.erase(grid_pos)
 
 
 func free_cell(grid_pos: Vector2i) -> void:
 	"""释放一个格子"""
 	occupancy.erase(grid_pos)
+
+
+func release_move_reservation(unit: Node) -> void:
+	for reserved_pos in movement_reservations.keys():
+		if movement_reservations[reserved_pos] == unit:
+			movement_reservations.erase(reserved_pos)
+
+
+func clear_move_reservations() -> void:
+	movement_reservations.clear()
+
+
+func begin_unit_move(unit: Node, target_pos: Vector2i) -> bool:
+	"""让友方单位离开当前站位，并预留一个目标格中心"""
+	if not _uses_grid_occupancy(unit):
+		return false
+	if not can_reserve_move_target(target_pos, unit):
+		return false
+	release_move_reservation(unit)
+	if unit.grid_position in occupancy and occupancy[unit.grid_position] == unit:
+		free_cell(unit.grid_position)
+	movement_reservations[target_pos] = unit
+	if unit is UnitBase:
+		(unit as UnitBase).begin_grid_move(target_pos)
+	return true
+
+
+func finish_unit_move(unit: Node, final_pos: Vector2i) -> bool:
+	"""提交移动结果：单位站到目标格中心并重新占格"""
+	if not _uses_grid_occupancy(unit):
+		return false
+	if movement_reservations.has(final_pos) and movement_reservations[final_pos] != unit:
+		return false
+	if occupancy.has(final_pos) and occupancy[final_pos] != unit:
+		return false
+	release_move_reservation(unit)
+	occupy_cell(final_pos, unit)
+	unit.grid_position = final_pos
+	unit.global_position = grid_to_world(final_pos)
+	if unit is UnitBase:
+		(unit as UnitBase).finish_grid_move(final_pos)
+	return true
+
+
+func cancel_unit_move(unit: Node, preferred_pos: Vector2i) -> bool:
+	"""取消移动并把单位吸附回一个合法站立格"""
+	if not _uses_grid_occupancy(unit):
+		return false
+	release_move_reservation(unit)
+	var fallback := find_nearest_open_player_cell(unit.global_position, preferred_pos, unit)
+	if fallback.x < 0:
+		return false
+	occupy_cell(fallback, unit)
+	unit.grid_position = fallback
+	unit.global_position = grid_to_world(fallback)
+	if unit is UnitBase:
+		(unit as UnitBase).finish_grid_move(fallback)
+	return true
 
 
 func place_unit(unit: Node, grid_pos: Vector2i) -> bool:
@@ -196,6 +268,8 @@ func place_unit(unit: Node, grid_pos: Vector2i) -> bool:
 		return false
 	unit.grid_position = grid_pos
 	unit.global_position = grid_to_world(grid_pos)
+	if unit is UnitBase and _uses_grid_occupancy(unit):
+		(unit as UnitBase).finish_grid_move(grid_pos)
 	if unit not in all_units:
 		all_units.append(unit)
 		add_child(unit)
@@ -207,6 +281,7 @@ func remove_unit(unit: Node) -> void:
 	"""从网格移除单位"""
 	if unit.grid_position in occupancy and occupancy[unit.grid_position] == unit:
 		free_cell(unit.grid_position)
+	release_move_reservation(unit)
 	all_units.erase(unit)
 	if unit.get_parent() == self:
 		remove_child(unit)
@@ -252,9 +327,13 @@ func get_nearest_unit(center: Vector2i, team: String = "") -> Node:
 
 
 func _get_unit_query_grid_position(unit: Node) -> Vector2i:
-	if unit is UnitBase and not _uses_grid_occupancy(unit):
+	if unit is UnitBase:
 		var combat_unit := unit as UnitBase
-		combat_unit.grid_position = world_to_grid(combat_unit.get_ground_position())
+		if not _uses_grid_occupancy(unit):
+			combat_unit.grid_position = world_to_grid(combat_unit.get_ground_position())
+			return combat_unit.grid_position
+		if combat_unit.is_moving():
+			return world_to_grid(combat_unit.get_ground_position())
 	return unit.grid_position
 
 
@@ -283,9 +362,39 @@ func get_touching_units(unit: UnitBase, team: String = "") -> Array:
 	return get_units_touching_circle(unit.get_ground_position(), unit.get_collision_radius(), team, unit)
 
 
+func would_unit_collide_on_segment(unit: UnitBase, from_ground: Vector2, to_ground: Vector2, team: String = "") -> bool:
+	"""检测单位地面圆从 from 到 to 的移动线段是否会碰到其他单位"""
+	if not unit:
+		return false
+	for other in all_units:
+		if other == unit or not is_instance_valid(other):
+			continue
+		if not (other is UnitBase):
+			continue
+		var other_unit := other as UnitBase
+		if not other_unit.is_alive:
+			continue
+		if team != "" and other_unit.get_team() != team:
+			continue
+		var radius_sum := unit.get_collision_radius() + other_unit.get_collision_radius()
+		if _distance_point_to_segment_squared(other_unit.get_ground_position(), from_ground, to_ground) <= radius_sum * radius_sum:
+			return true
+	return false
+
+
+func _distance_point_to_segment_squared(point: Vector2, segment_start: Vector2, segment_end: Vector2) -> float:
+	var segment := segment_end - segment_start
+	var length_sq := segment.length_squared()
+	if length_sq <= 0.0001:
+		return point.distance_squared_to(segment_start)
+	var t := clampf((point - segment_start).dot(segment) / length_sq, 0.0, 1.0)
+	var closest := segment_start + segment * t
+	return point.distance_squared_to(closest)
+
+
 func find_nearest_open_player_cell(world_pos: Vector2, preferred: Vector2i, unit: Node = null) -> Vector2i:
 	"""根据世界坐标查找最近的合法友方空格"""
-	if is_move_zone(preferred) and (not is_occupied(preferred) or occupancy.get(preferred) == unit):
+	if is_move_zone(preferred) and _is_cell_available_for_unit(preferred, unit):
 		return preferred
 
 	var best := Vector2i(-1, -1)
@@ -293,13 +402,23 @@ func find_nearest_open_player_cell(world_pos: Vector2, preferred: Vector2i, unit
 	for x in range(grid_width):
 		for y in range(deploy_rows.x, deploy_rows.y + 1):
 			var cell := Vector2i(x, y)
-			if is_occupied(cell) and occupancy.get(cell) != unit:
+			if not _is_cell_available_for_unit(cell, unit):
 				continue
 			var d := grid_to_world(cell).distance_squared_to(world_pos)
 			if d < best_dist:
 				best_dist = d
 				best = cell
 	return best
+
+
+func _is_cell_available_for_unit(cell: Vector2i, unit: Node = null) -> bool:
+	if not is_move_zone(cell):
+		return false
+	if occupancy.has(cell) and occupancy[cell] != unit:
+		return false
+	if movement_reservations.has(cell) and movement_reservations[cell] != unit:
+		return false
+	return true
 
 
 func find_path(from: Vector2i, to: Vector2i) -> Array:
@@ -331,12 +450,20 @@ func find_path(from: Vector2i, to: Vector2i) -> Array:
 
 func move_unit(unit: Node, new_pos: Vector2i) -> bool:
 	"""移动单位到新格子"""
-	if not is_in_bounds(new_pos) or (is_occupied(new_pos) and occupancy[new_pos] != unit):
+	if not is_in_bounds(new_pos):
+		return false
+	if occupancy.has(new_pos) and occupancy[new_pos] != unit:
+		return false
+	if movement_reservations.has(new_pos) and movement_reservations[new_pos] != unit:
 		return false
 	var old_pos: Vector2i = unit.grid_position
-	free_cell(old_pos)
+	if occupancy.get(old_pos) == unit:
+		free_cell(old_pos)
+	release_move_reservation(unit)
 	occupy_cell(new_pos, unit)
 	unit.grid_position = new_pos
+	if unit is UnitBase:
+		(unit as UnitBase).finish_grid_move(new_pos)
 	return true
 
 

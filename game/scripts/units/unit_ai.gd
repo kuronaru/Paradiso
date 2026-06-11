@@ -16,6 +16,9 @@ const TARGET_RECHECK_INTERVAL: float = 1.0
 
 
 func reset_ai_state() -> void:
+	var grid: GridSystem = BattleManager.grid
+	if owner_unit and owner_unit.is_moving() and grid:
+		grid.cancel_unit_move(owner_unit, owner_unit.movement_origin_grid_position)
 	state = "idle"
 	path.clear()
 	path_progress = 0.0
@@ -26,6 +29,8 @@ func reset_ai_state() -> void:
 func execute(delta: float) -> void:
 	if not owner_unit or not owner_unit.is_alive:
 		return
+	if owner_unit.is_moving() and state != "moving":
+		state = "moving"
 
 	match state:
 		"idle":
@@ -55,37 +60,44 @@ func _on_idle(delta: float) -> void:
 
 
 func _on_moving(delta: float) -> void:
-	if path.is_empty():
-		state = "idle"
-		return
-
 	var grid: GridSystem = BattleManager.grid
 	if not grid:
 		return
+	if not owner_unit.is_moving():
+		state = "idle"
+		return
 
-	var target_world := grid.grid_to_world(move_target_pos)
+	var target_grid := owner_unit.movement_target_grid_position
+	var target_world := grid.grid_to_world(target_grid)
 	var current_pos := owner_unit.global_position
 	var move_dist := owner_unit.move_speed * delta * grid.cell_size
 
 	if current_pos.distance_to(target_world) <= move_dist + 1.0:
 		# 到达目标格子
-		grid.move_unit(owner_unit, move_target_pos)
-		owner_unit.global_position = grid.grid_to_world(move_target_pos)
-		path.pop_front()
-		if path.is_empty():
-			state = "idle"
+		var target_ground := target_world + owner_unit.ground_anchor_offset
+		if grid.would_unit_collide_on_segment(owner_unit, owner_unit.get_ground_position(), target_ground, owner_unit.team):
+			grid.cancel_unit_move(owner_unit, owner_unit.movement_origin_grid_position)
 		else:
-			move_target_pos = path[0]
+			grid.finish_unit_move(owner_unit, target_grid)
+		path.clear()
+		state = "idle"
 	else:
 		var dir := (target_world - current_pos).normalized()
-		owner_unit.global_position += dir * move_dist
+		var next_pos := owner_unit.global_position + dir * move_dist
+		var next_ground := next_pos + owner_unit.ground_anchor_offset
+		if grid.would_unit_collide_on_segment(owner_unit, owner_unit.get_ground_position(), next_ground, owner_unit.team):
+			grid.cancel_unit_move(owner_unit, owner_unit.movement_origin_grid_position)
+			path.clear()
+			state = "idle"
+			return
+		owner_unit.global_position = next_pos
 		if _resolve_player_collision_during_move(grid):
 			return
 
 	# 移动中检查是否可以攻击
 	_find_target()
 	if owner_unit.target and is_instance_valid(owner_unit.target):
-		if _is_in_attack_range(owner_unit.target):
+		if owner_unit.is_standing() and _is_in_attack_range(owner_unit.target):
 			path.clear()
 			state = "attacking"
 
@@ -211,7 +223,7 @@ func _start_move_toward(target: Node) -> void:
 		return
 	move_origin_pos = owner_unit.grid_position
 	var next_pos := owner_unit.grid_position + step
-	if grid.is_deploy_zone(next_pos) and grid.is_in_bounds(next_pos) and not grid.is_occupied(next_pos):
+	if grid.begin_unit_move(owner_unit, next_pos):
 		move_target_pos = next_pos
 		path = [next_pos]
 		state = "moving"
@@ -222,7 +234,7 @@ func _start_move_toward(target: Node) -> void:
 			owner_unit.grid_position + Vector2i(0, step.y),
 		]
 		for alt in alts:
-			if alt != next_pos and grid.is_deploy_zone(alt) and grid.is_in_bounds(alt) and not grid.is_occupied(alt):
+			if alt != next_pos and grid.begin_unit_move(owner_unit, alt):
 				move_target_pos = alt
 				path = [alt]
 				state = "moving"
@@ -237,7 +249,7 @@ func _move_forward() -> void:
 		return
 	var direction := 1 if owner_unit.team == "player" else -1
 	var next_pos := owner_unit.grid_position + Vector2i(direction, 0)
-	if grid.is_deploy_zone(next_pos) and grid.is_in_bounds(next_pos) and not grid.is_occupied(next_pos):
+	if grid.begin_unit_move(owner_unit, next_pos):
 		move_origin_pos = owner_unit.grid_position
 		move_target_pos = next_pos
 		path = [next_pos]
@@ -292,13 +304,7 @@ func _resolve_player_collision_during_move(grid: GridSystem) -> bool:
 	var contacts := grid.get_touching_units(owner_unit, "enemy")
 	if contacts.is_empty():
 		return false
-	var safe_cell := grid.find_nearest_open_player_cell(owner_unit.global_position, move_origin_pos, owner_unit)
-	if safe_cell.x >= 0:
-		if safe_cell != owner_unit.grid_position:
-			grid.move_unit(owner_unit, safe_cell)
-		owner_unit.global_position = grid.grid_to_world(safe_cell)
-	else:
-		owner_unit.global_position = grid.grid_to_world(owner_unit.grid_position)
+	grid.cancel_unit_move(owner_unit, owner_unit.movement_origin_grid_position)
 	path.clear()
 	state = "idle"
 	return true

@@ -16,8 +16,16 @@ enum Stance {
 	STATIONED   ## 驻扎 — 定身/缓速，防御提升，范围扩大
 }
 
+enum MovementState {
+	STANDING,   ## 站立 — 必定位于一个网格中心，并占用该格
+	MOVING      ## 移动 — 目标是一个网格中心，途中按地面圆形碰撞移动
+}
+
 ## 网格位置
 var grid_position: Vector2i = Vector2i.ZERO
+var movement_state: MovementState = MovementState.STANDING
+var movement_origin_grid_position: Vector2i = Vector2i.ZERO
+var movement_target_grid_position: Vector2i = Vector2i.ZERO
 
 ## 基础属性
 var unit_name: String = ""
@@ -340,6 +348,27 @@ func is_touching_unit(other: UnitBase) -> bool:
 		return false
 	var radius_sum := get_collision_radius() + other.get_collision_radius()
 	return get_ground_position().distance_squared_to(other.get_ground_position()) <= radius_sum * radius_sum
+
+
+func is_standing() -> bool:
+	return movement_state == MovementState.STANDING
+
+
+func is_moving() -> bool:
+	return movement_state == MovementState.MOVING
+
+
+func begin_grid_move(target_grid_pos: Vector2i) -> void:
+	movement_state = MovementState.MOVING
+	movement_origin_grid_position = grid_position
+	movement_target_grid_position = target_grid_pos
+
+
+func finish_grid_move(final_grid_pos: Vector2i) -> void:
+	movement_state = MovementState.STANDING
+	grid_position = final_grid_pos
+	movement_origin_grid_position = final_grid_pos
+	movement_target_grid_position = final_grid_pos
 
 
 func take_damage(amount: int, armor_pierce: float = 0.0) -> int:

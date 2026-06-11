@@ -116,6 +116,8 @@ func _clear_grid_units() -> void:
 			unit.queue_free()
 	grid.all_units.clear()
 	grid.occupancy.clear()
+	if grid.has_method("clear_move_reservations"):
+		grid.clear_move_reservations()
 
 
 func _place_configured_units() -> void:
