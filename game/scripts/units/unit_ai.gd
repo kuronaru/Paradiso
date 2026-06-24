@@ -17,6 +17,7 @@ const TARGET_RECHECK_INTERVAL: float = 1.0
 const WAIT_RETRY_INTERVAL: float = 0.35
 
 
+## 重置AI状态。
 func reset_ai_state() -> void:
 	var grid: GridSystem = BattleManager.grid
 	if owner_unit and owner_unit.is_moving() and grid:
@@ -31,6 +32,7 @@ func reset_ai_state() -> void:
 	wait_retry_timer = 0.0
 
 
+## 处理force攻击目标逻辑。
 func force_attack_target(target_unit: Node) -> void:
 	if not owner_unit or not target_unit or not is_instance_valid(target_unit):
 		return
@@ -42,6 +44,7 @@ func force_attack_target(target_unit: Node) -> void:
 	state = "attacking"
 
 
+## 执行当前 AI 行为。
 func execute(delta: float) -> void:
 	if not owner_unit or not owner_unit.is_alive:
 		return
@@ -61,6 +64,7 @@ func execute(delta: float) -> void:
 			_on_attacking(delta)
 
 
+## 处理 AI 空闲状态。
 func _on_idle(delta: float) -> void:
 	_update_continuous_grid_position()
 	_find_target()
@@ -79,6 +83,7 @@ func _on_idle(delta: float) -> void:
 			_move_forward()
 
 
+## 处理 AI 移动状态。
 func _on_moving(delta: float) -> void:
 	var grid: GridSystem = BattleManager.grid
 	if not grid:
@@ -131,6 +136,7 @@ func _on_moving(delta: float) -> void:
 			state = "attacking"
 
 
+## 处理 AI 等待状态。
 func _on_waiting(delta: float) -> void:
 	if _uses_continuous_enemy_movement():
 		state = "idle"
@@ -155,6 +161,7 @@ func _on_waiting(delta: float) -> void:
 		return
 
 
+## 处理 AI 攻击状态。
 func _on_attacking(_delta: float) -> void:
 	if not owner_unit.target or not is_instance_valid(owner_unit.target):
 		owner_unit.target = null
@@ -169,6 +176,7 @@ func _on_attacking(_delta: float) -> void:
 		_start_move_toward(owner_unit.target)
 
 
+## 根据职业模板的索敌优先级寻找目标
 func _find_target() -> void:
 	"""根据职业模板的索敌优先级寻找目标"""
 	var grid: GridSystem = BattleManager.grid
@@ -209,16 +217,19 @@ func _find_target() -> void:
 			owner_unit.target = candidates[0] if not candidates.is_empty() else null
 
 
+## 判断治疗者状态。
 func _is_healer() -> bool:
 	return owner_unit.class_template and owner_unit.class_template.attack_mode == ClassTemplate.AttackMode.HEAL
 
 
+## 获取目标队伍。
 func _get_target_team() -> String:
 	if _is_healer():
 		return owner_unit.team
 	return "enemy" if owner_unit.team == "player" else "player"
 
 
+## 按指定评分函数选择目标。
 func _select_by(candidates: Array, value_fn: Callable, highest: bool) -> void:
 	var best = null
 	var best_val = -INF if highest else INF
@@ -230,6 +241,7 @@ func _select_by(candidates: Array, value_fn: Callable, highest: bool) -> void:
 	owner_unit.target = best
 
 
+## 计算到目标的距离。
 func _distance_to(target: Node) -> float:
 	var grid: GridSystem = BattleManager.grid
 	if not grid:
@@ -239,6 +251,7 @@ func _distance_to(target: Node) -> float:
 	return grid.get_distance(owner_unit.grid_position, target.grid_position)
 
 
+## 判断攻击范围状态。
 func _is_in_attack_range(target: Node) -> bool:
 	if not target or not is_instance_valid(target):
 		return false
@@ -251,6 +264,7 @@ func _is_in_attack_range(target: Node) -> bool:
 	return _distance_to(target) <= owner_unit.attack_range
 
 
+## 获取攻击入口目标。
 func _get_attack_entry_target(entry_ground_position: Vector2) -> UnitBase:
 	if not owner_unit.target or not is_instance_valid(owner_unit.target):
 		return null
@@ -265,6 +279,7 @@ func _get_attack_entry_target(entry_ground_position: Vector2) -> UnitBase:
 	return null
 
 
+## 判断在指定地面位置是否能攻击目标。
 func _would_attack_from_ground_position(target_unit: UnitBase, entry_ground_position: Vector2) -> bool:
 	if not target_unit or not is_instance_valid(target_unit):
 		return false
@@ -275,14 +290,17 @@ func _would_attack_from_ground_position(target_unit: UnitBase, entry_ground_posi
 	return distance / _cell_size() <= owner_unit.attack_range
 
 
+## 判断单位是否需要接触目标才能攻击。
 func _requires_contact_attack() -> bool:
 	return false
 
 
+## 判断敌人是否使用连续移动。
 func _uses_continuous_enemy_movement() -> bool:
 	return owner_unit is EnemyUnit
 
 
+## 开始向目标移动。
 func _start_move_toward(target: Node) -> void:
 	var grid: GridSystem = BattleManager.grid
 	if not grid:
@@ -298,6 +316,7 @@ func _start_move_toward(target: Node) -> void:
 		_enter_waiting()
 
 
+## 没有目标时向敌方半场推进
 func _move_forward() -> void:
 	"""没有目标时向敌方半场推进"""
 	var grid: GridSystem = BattleManager.grid
@@ -310,6 +329,7 @@ func _move_forward() -> void:
 		_enter_waiting()
 
 
+## 构建前往目标的路径。
 func _build_path_to_target(target_unit: UnitBase) -> Array:
 	var grid: GridSystem = BattleManager.grid
 	if not grid:
@@ -317,6 +337,7 @@ func _build_path_to_target(target_unit: UnitBase) -> Array:
 	return grid.find_path_to_attack_position(owner_unit.grid_position, target_unit, owner_unit.attack_range, owner_unit)
 
 
+## 尝试开始路径中的下一步移动。
 func _try_start_next_path_step() -> bool:
 	var grid: GridSystem = BattleManager.grid
 	if not grid or path.is_empty():
@@ -342,6 +363,7 @@ func _try_start_next_path_step() -> bool:
 	return true
 
 
+## 进入waiting。
 func _enter_waiting() -> void:
 	var grid: GridSystem = BattleManager.grid
 	if grid:
@@ -352,6 +374,7 @@ func _enter_waiting() -> void:
 	state = "waiting"
 
 
+## 推进敌人向目标移动。
 func _move_enemy_toward(target: Node, delta: float) -> void:
 	if not (target is UnitBase):
 		state = "idle"
@@ -377,16 +400,19 @@ func _move_enemy_toward(target: Node, delta: float) -> void:
 	_update_continuous_grid_position()
 
 
+## 处理移动敌人forward逻辑。
 func _move_enemy_forward(delta: float) -> void:
 	var direction := Vector2(-1.0, 0.0)
 	owner_unit.global_position += direction * owner_unit.move_speed * _cell_size() * delta
 	_update_continuous_grid_position()
 
 
+## 处理移动过程中的玩家碰撞。
 func _resolve_player_collision_during_move(grid: GridSystem) -> bool:
 	return false
 
 
+## 更新连续网格位置。
 func _update_continuous_grid_position() -> void:
 	if not _uses_continuous_enemy_movement():
 		return
@@ -395,6 +421,7 @@ func _update_continuous_grid_position() -> void:
 		owner_unit.grid_position = grid.world_to_grid(owner_unit.get_ground_position())
 
 
+## 获取当前网格尺寸。
 func _cell_size() -> float:
 	var grid: GridSystem = BattleManager.grid
 	return grid.cell_size if grid else 64.0

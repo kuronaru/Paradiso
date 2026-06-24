@@ -14,11 +14,13 @@ var enemy_type: EnemyType = EnemyType.MELEE
 var enemy_template_name: String = ""
 
 
+## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
 	team = "enemy"
 	super._ready()
 
 
+## 从敌人模板字典初始化
 func setup_from_template(template: Dictionary) -> void:
 	"""从敌人模板字典初始化"""
 	enemy_template_name = template.get("name", "Unknown")
@@ -62,7 +64,7 @@ func setup_from_template(template: Dictionary) -> void:
 	hp_changed.emit(current_hp, max_hp)
 
 
-## 预定义敌人模板
+## 获取敌人池。
 static func get_enemy_pool() -> Array:
 	return [
 		{

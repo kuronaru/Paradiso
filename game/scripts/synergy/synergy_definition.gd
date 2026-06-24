@@ -21,6 +21,7 @@ var fixed_modifiers: Array[Dictionary] = []
 var mechanic_id: String = ""
 
 
+## 初始化实例数据。
 func _init(
 		p_id: String = "",
 		p_name: String = "",
@@ -46,6 +47,7 @@ func _init(
 	mechanic_id = p_mechanic_id
 
 
+## 获取激活档位。
 func get_active_tier(count: int) -> int:
 	var result := 0
 	for threshold in thresholds:
@@ -54,6 +56,7 @@ func get_active_tier(count: int) -> int:
 	return result
 
 
+## 获取下一threshold。
 func get_next_threshold(count: int) -> int:
 	for threshold in thresholds:
 		if count < threshold:
@@ -61,5 +64,6 @@ func get_next_threshold(count: int) -> int:
 	return thresholds[-1] if not thresholds.is_empty() else 0
 
 
+## 获取maxthreshold。
 func get_max_threshold() -> int:
 	return thresholds[-1] if not thresholds.is_empty() else 0

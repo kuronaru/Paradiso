@@ -39,6 +39,7 @@ var enemy_units: Array = []                    # 场上敌人单位
 var enemy_spawn_points: Array = []
 
 
+## 初始化一场战斗
 func setup_battle(_party_data: Array, enemies: Array, wave_count: int = 3, preserve_player_units: bool = false) -> void:
 	"""初始化一场战斗"""
 	# 清除上一场状态
@@ -61,6 +62,7 @@ func setup_battle(_party_data: Array, enemies: Array, wave_count: int = 3, prese
 	battle_started.emit()
 
 
+## 战斗结束后保留玩家部署，并把角色放回部署时的位置。
 func prepare_player_units_for_next_round() -> void:
 	"""战斗结束后保留玩家部署，并把角色放回部署时的位置。"""
 	_clear_enemy_units()
@@ -68,6 +70,7 @@ func prepare_player_units_for_next_round() -> void:
 	state = BattleState.PREPARING
 
 
+## 清理敌人单位。
 func _clear_enemy_units() -> void:
 	if grid:
 		for unit in enemy_units.duplicate():
@@ -78,6 +81,7 @@ func _clear_enemy_units() -> void:
 	wave_enemies.clear()
 
 
+## 准备现有玩家单位。
 func _prepare_existing_player_units() -> void:
 	if player_units.is_empty():
 		return
@@ -117,6 +121,7 @@ func _prepare_existing_player_units() -> void:
 			(unit as HeroUnit).prepare_for_next_round()
 
 
+## 开始下一波敌人
 func start_next_wave() -> bool:
 	"""开始下一波敌人"""
 	if current_wave >= total_waves:
@@ -136,6 +141,7 @@ func start_next_wave() -> bool:
 	return true
 
 
+## 生成波次敌人（由EnemySpawner实际处理）
 func _spawn_wave_enemies(wave_index: int) -> void:
 	"""生成波次敌人（由EnemySpawner实际处理）"""
 	wave_enemies.clear()
@@ -154,6 +160,7 @@ func _spawn_wave_enemies(wave_index: int) -> void:
 	wave_enemies.clear()
 
 
+## 检查战斗是否结束
 func check_battle_end() -> void:
 	"""检查战斗是否结束"""
 	if state != BattleState.IN_PROGRESS:
@@ -173,6 +180,7 @@ func check_battle_end() -> void:
 		_battle_lost()
 
 
+## 所有波次完成
 func _all_waves_cleared() -> void:
 	"""所有波次完成"""
 	state = BattleState.VICTORY
@@ -181,6 +189,7 @@ func _all_waves_cleared() -> void:
 	Log.i(M, "战斗胜利!")
 
 
+## 战斗失败
 func _battle_lost() -> void:
 	"""战斗失败"""
 	state = BattleState.DEFEAT
@@ -188,21 +197,25 @@ func _battle_lost() -> void:
 	Log.i(M, "战斗失败!")
 
 
+## 注册玩家单位。
 func register_player_unit(unit: Node) -> void:
 	if unit not in player_units:
 		player_units.append(unit)
 
 
+## 注册敌人单位。
 func register_enemy_unit(unit: Node) -> void:
 	if unit not in enemy_units:
 		enemy_units.append(unit)
 
 
+## 注销玩家单位。
 func unregister_player_unit(unit: Node) -> void:
 	player_units.erase(unit)
 	check_battle_end()
 
 
+## 注销敌人单位。
 func unregister_enemy_unit(unit: Node) -> void:
 	enemy_units.erase(unit)
 	check_battle_end()

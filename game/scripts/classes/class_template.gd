@@ -91,6 +91,7 @@ enum TargetPriority {
 @export var skill_ids: Array = []
 
 
+## 返回攻击间隔（秒）
 func get_attack_speed_interval() -> float:
 	"""返回攻击间隔（秒）"""
 	if attack_speed <= 0:

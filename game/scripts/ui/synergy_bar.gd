@@ -19,6 +19,7 @@ var detail_label: RichTextLabel = null
 var selected_synergy_id: String = ""
 
 
+## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	z_index = 2000
@@ -30,16 +31,19 @@ func _ready() -> void:
 		_on_synergy_changed(SynergyManager.get_synergy_summary())
 
 
+## 响应 Godot 通知并刷新相关状态。
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:
 		_reposition()
 
 
+## 处理reposition逻辑。
 func _reposition() -> void:
 	var viewport_size := get_viewport_rect().size
 	position = Vector2((viewport_size.x - panel_width) * 0.5, top_margin)
 
 
+## 初始化详情panel。
 func _setup_detail_panel() -> void:
 	detail_panel = PanelContainer.new()
 	detail_panel.visible = false
@@ -61,6 +65,7 @@ func _setup_detail_panel() -> void:
 	detail_panel.add_child(detail_label)
 
 
+## 处理羁绊变化回调。
 func _on_synergy_changed(next_summaries: Array) -> void:
 	summaries = next_summaries.duplicate(true)
 	summaries.sort_custom(_sort_summaries_for_display)
@@ -68,6 +73,7 @@ func _on_synergy_changed(next_summaries: Array) -> void:
 	_refresh_detail()
 
 
+## 刷新图标。
 func _refresh_icons() -> void:
 	for item in icon_items:
 		if is_instance_valid(item):
@@ -122,10 +128,12 @@ func _refresh_icons() -> void:
 	detail_panel.position.y = float(row_count) * (item_height + icon_spacing) + 6.0
 
 
+## 获取条目height。
 func _get_item_height() -> float:
 	return progress_lamp_height + progress_lamp_gap + icon_size
 
 
+## 处理添加进度进度灯逻辑。
 func _add_progress_lamps(parent: Control, summary: Dictionary) -> void:
 	var count: int = maxi(0, int(summary.get("count", 0)))
 	var lamp_count: int = maxi(1, int(summary.get("activation_count", 1)))
@@ -145,6 +153,7 @@ func _add_progress_lamps(parent: Control, summary: Dictionary) -> void:
 		parent.add_child(lamp)
 
 
+## 创建进度lamp样式。
 func _create_progress_lamp_style(is_lit: bool) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.20, 0.75, 1.0, 0.95) if is_lit else Color(0.24, 0.26, 0.30, 0.85)
@@ -156,6 +165,7 @@ func _create_progress_lamp_style(is_lit: bool) -> StyleBoxFlat:
 	return style
 
 
+## 应用图标样式。
 func _apply_icon_style(btn: Button, is_active: bool) -> void:
 	var normal := StyleBoxFlat.new()
 	normal.bg_color = Color(0.15, 0.68, 1.0, 0.92) if is_active else Color(0.28, 0.30, 0.34, 0.82)
@@ -174,6 +184,7 @@ func _apply_icon_style(btn: Button, is_active: bool) -> void:
 	btn.add_theme_stylebox_override("disabled", normal)
 
 
+## 按显示优先级排序羁绊摘要。
 func _sort_summaries_for_display(a: Dictionary, b: Dictionary) -> bool:
 	var a_active := bool(a.get("is_active", false))
 	var b_active := bool(b.get("is_active", false))
@@ -188,6 +199,7 @@ func _sort_summaries_for_display(a: Dictionary, b: Dictionary) -> bool:
 	return int(a.get("order", 0)) < int(b.get("order", 0))
 
 
+## 切换详情。
 func _toggle_detail(synergy_id: String) -> void:
 	if selected_synergy_id == synergy_id and detail_panel.visible:
 		selected_synergy_id = ""
@@ -197,6 +209,7 @@ func _toggle_detail(synergy_id: String) -> void:
 	_refresh_detail()
 
 
+## 刷新详情。
 func _refresh_detail() -> void:
 	if selected_synergy_id == "":
 		return
@@ -209,6 +222,7 @@ func _refresh_detail() -> void:
 	selected_synergy_id = ""
 
 
+## 格式化详情富文本。
 func _format_detail_rich(summary: Dictionary) -> String:
 	var count: int = int(summary.get("count", 0))
 	var max_threshold: int = int(summary.get("max_threshold", 0))
@@ -235,6 +249,7 @@ func _format_detail_rich(summary: Dictionary) -> String:
 	]
 
 
+## 格式化effect文本行。
 func _format_effect_lines(summary: Dictionary) -> String:
 	var active_tier: int = int(summary.get("active_tier", 0))
 	var layer: int = int(summary.get("layer", 0))
@@ -258,6 +273,7 @@ func _format_effect_lines(summary: Dictionary) -> String:
 	return "当前层数数值：" + "  ".join(lines)
 
 
+## 格式化可缩放修正文本行。
 func _format_scalable_modifier_line(modifier: Dictionary, active_tier: int, layer: int) -> String:
 	var min_tier: int = int(modifier.get("min_tier", 0))
 	var stat: String = str(modifier.get("stat", ""))
@@ -272,6 +288,7 @@ func _format_scalable_modifier_line(modifier: Dictionary, active_tier: int, laye
 	]
 
 
+## 格式化固定修正文本行。
 func _format_fixed_modifier_line(modifier: Dictionary, active_tier: int) -> String:
 	var min_tier: int = int(modifier.get("min_tier", 0))
 	var stat: String = str(modifier.get("stat", ""))
@@ -283,12 +300,14 @@ func _format_fixed_modifier_line(modifier: Dictionary, active_tier: int) -> Stri
 	]
 
 
+## 格式化档位标签。
 func _format_tier_tag(min_tier: int, active_tier: int) -> String:
 	if active_tier >= min_tier:
 		return "[color=#9df7b5]已生效[/color]"
 	return "[color=#8d98a8]%d人解锁[/color]" % min_tier
 
 
+## 格式化修正值。
 func _format_modifier_value(stat: String, value: float) -> String:
 	var text: String = ""
 	if _is_multiplier_stat(stat):
@@ -308,11 +327,13 @@ func _format_modifier_value(stat: String, value: float) -> String:
 	return "[color=#ffd166][b]%s[/b][/color]" % text
 
 
+## 格式化percent。
 func _format_percent(value: float) -> String:
 	var _sign: String = "+" if value >= 0.0 else ""
 	return "%s%s%%" % [_sign, _format_number(value * 100.0)]
 
 
+## 格式化数值。
 func _format_number(value: float) -> String:
 	var rounded: float = snappedf(value, 0.1)
 	if is_equal_approx(rounded, round(rounded)):
@@ -320,6 +341,7 @@ func _format_number(value: float) -> String:
 	return "%.1f" % rounded
 
 
+## 判断multiplier属性状态。
 func _is_multiplier_stat(stat: String) -> bool:
 	return stat in [
 		"max_hp_multiplier",
@@ -335,6 +357,7 @@ func _is_multiplier_stat(stat: String) -> bool:
 	]
 
 
+## 判断fraction属性状态。
 func _is_fraction_stat(stat: String) -> bool:
 	return stat in [
 		"armor_pierce",
@@ -344,6 +367,7 @@ func _is_fraction_stat(stat: String) -> bool:
 	]
 
 
+## 处理属性显示name逻辑。
 func _stat_display_name(stat: String) -> String:
 	match stat:
 		"max_hp_multiplier":
@@ -385,6 +409,7 @@ func _stat_display_name(stat: String) -> String:
 	return stat
 
 
+## 处理BBCodeescape逻辑。
 func _bbcode_escape(value: String) -> String:
 	var result := ""
 	for i in range(value.length()):
@@ -399,6 +424,7 @@ func _bbcode_escape(value: String) -> String:
 	return result
 
 
+## 格式化详情。
 func _format_detail(summary: Dictionary) -> String:
 	var count := int(summary.get("count", 0))
 	var max_threshold := int(summary.get("max_threshold", 0))

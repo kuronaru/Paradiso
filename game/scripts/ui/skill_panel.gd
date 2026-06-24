@@ -15,6 +15,7 @@ var deployment_system: DeploymentSystem = null
 @export var panel_width: float = 220.0
 
 
+## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
 	# 确保 Control 覆盖全屏（面板内容锚定到右侧）
 	# 全屏容器不拦截鼠标事件，由子按钮自行处理
@@ -34,6 +35,7 @@ func _ready() -> void:
 	_update_visibility()
 
 
+## 初始化ui。
 func _setup_ui() -> void:
 	# 面板背景
 	var bg := ColorRect.new()
@@ -82,6 +84,7 @@ func _setup_ui() -> void:
 	add_child(retreat_btn)
 
 
+## 处理单位选中回调。
 func _on_unit_selected(unit: HeroUnit) -> void:
 	selected_unit = unit
 	_update_visibility()
@@ -89,15 +92,18 @@ func _on_unit_selected(unit: HeroUnit) -> void:
 	_update_info()
 
 
+## 处理单位取消选中回调。
 func _on_unit_deselected() -> void:
 	selected_unit = null
 	_update_visibility()
 
 
+## 更新可见性。
 func _update_visibility() -> void:
 	visible = selected_unit != null and is_instance_valid(selected_unit)
 
 
+## 更新信息。
 func _update_info() -> void:
 	if not selected_unit:
 		return
@@ -115,6 +121,7 @@ ATK: %d  DEF: %d
 	stance_text]
 
 
+## 更新技能。
 func _update_skills() -> void:
 	if not selected_unit:
 		return
@@ -134,6 +141,7 @@ func _update_skills() -> void:
 			skill_buttons[i].disabled = true
 
 
+## 处理技能pressed回调。
 func _on_skill_pressed(index: int) -> void:
 	if deployment_system:
 		deployment_system.use_selected_skill(index)
@@ -141,18 +149,21 @@ func _on_skill_pressed(index: int) -> void:
 	_update_info()
 
 
+## 处理姿态pressed回调。
 func _on_stance_pressed() -> void:
 	if deployment_system:
 		deployment_system.toggle_selected_stance()
 	_update_info()
 
 
+## 处理retreatpressed回调。
 func _on_retreat_pressed() -> void:
 	if deployment_system:
 		deployment_system.retreat_selected()
 	_update_visibility()
 
 
+## 每帧更新运行状态。
 func _process(_delta: float) -> void:
 	if selected_unit and is_instance_valid(selected_unit):
 		_update_skills()

@@ -17,6 +17,7 @@ var selected_button_style: StyleBoxFlat = null
 var return_callback: Callable = Callable()
 
 
+## 创建图鉴界面
 func _ready() -> void:
 	"""创建图鉴界面"""
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -28,6 +29,7 @@ func _ready() -> void:
 	_populate_enemies()
 
 
+## 让图鉴界面铺满窗口
 func _set_full_rect() -> void:
 	"""让图鉴界面铺满窗口"""
 	anchor_left = 0.0
@@ -41,6 +43,7 @@ func _set_full_rect() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
 
+## 创建深色背景
 func _build_background() -> void:
 	"""创建深色背景"""
 	var bg := ColorRect.new()
@@ -53,6 +56,7 @@ func _build_background() -> void:
 	add_child(bg)
 
 
+## 创建图鉴主布局
 func _build_layout() -> void:
 	"""创建图鉴主布局"""
 	var margin := MarginContainer.new()
@@ -102,6 +106,7 @@ func _build_layout() -> void:
 	enemy_detail = enemy_tab.get_node("Columns/DetailText")
 
 
+## 创建带左右两栏的标签页
 func _create_tab_page(tab_name: String) -> Control:
 	"""创建带左右两栏的标签页"""
 	var page := Control.new()
@@ -150,6 +155,7 @@ func _create_tab_page(tab_name: String) -> Control:
 	return page
 
 
+## 创建普通与选中状态的列表按钮样式
 func _build_button_styles() -> void:
 	"""创建普通与选中状态的列表按钮样式"""
 	normal_button_style = StyleBoxFlat.new()
@@ -170,6 +176,7 @@ func _build_button_styles() -> void:
 	selected_button_style.border_color = Color(0.95, 0.85, 0.45, 1.0)
 
 
+## 填充角色图鉴列表
 func _populate_heroes() -> void:
 	"""填充角色图鉴列表"""
 	var first_button: Button = null
@@ -186,6 +193,7 @@ func _populate_heroes() -> void:
 		_select_hero(first_button, first_ct)
 
 
+## 填充敌人图鉴列表
 func _populate_enemies() -> void:
 	"""填充敌人图鉴列表"""
 	var first_button: Button = null
@@ -202,6 +210,7 @@ func _populate_enemies() -> void:
 		_select_enemy(first_button, enemy_pool[0])
 
 
+## 创建左侧列表按钮
 func _create_list_button(text: String) -> Button:
 	"""创建左侧列表按钮"""
 	var button := Button.new()
@@ -214,6 +223,7 @@ func _create_list_button(text: String) -> Button:
 	return button
 
 
+## 选中一个角色并显示详情
 func _select_hero(button: Button, ct: ClassTemplate) -> void:
 	"""选中一个角色并显示详情"""
 	if selected_hero_button:
@@ -223,6 +233,7 @@ func _select_hero(button: Button, ct: ClassTemplate) -> void:
 	hero_detail.text = _format_hero_detail(ct)
 
 
+## 选中一个敌人并显示详情
 func _select_enemy(button: Button, enemy_template: Dictionary) -> void:
 	"""选中一个敌人并显示详情"""
 	if selected_enemy_button:
@@ -232,6 +243,7 @@ func _select_enemy(button: Button, enemy_template: Dictionary) -> void:
 	enemy_detail.text = _format_enemy_detail(enemy_template)
 
 
+## 更新列表按钮的选中内轮廓
 func _apply_button_selected(button: Button, selected: bool) -> void:
 	"""更新列表按钮的选中内轮廓"""
 	var style: StyleBox
@@ -249,6 +261,7 @@ func _apply_button_selected(button: Button, selected: bool) -> void:
 	button.add_theme_stylebox_override("focus", focus_style)
 
 
+## 格式化角色职业数据
 func _format_hero_detail(ct: ClassTemplate) -> String:
 	"""格式化角色职业数据"""
 	return "\n".join([
@@ -283,6 +296,7 @@ func _format_hero_detail(ct: ClassTemplate) -> String:
 	])
 
 
+## 格式化敌人模板数据
 func _format_enemy_detail(enemy_template: Dictionary) -> String:
 	"""格式化敌人模板数据"""
 	return "\n".join([
@@ -302,6 +316,7 @@ func _format_enemy_detail(enemy_template: Dictionary) -> String:
 	])
 
 
+## 处理攻击modename逻辑。
 func _attack_mode_name(value: int) -> String:
 	match value:
 		ClassTemplate.AttackMode.MELEE_SINGLE:
@@ -318,6 +333,7 @@ func _attack_mode_name(value: int) -> String:
 			return "未知"
 
 
+## 处理目标typename逻辑。
 func _target_type_name(value: int) -> String:
 	match value:
 		ClassTemplate.TargetType.GROUND:
@@ -330,6 +346,7 @@ func _target_type_name(value: int) -> String:
 			return "未知"
 
 
+## 处理范围形状name逻辑。
 func _range_shape_name(value: int) -> String:
 	match value:
 		ClassTemplate.RangeShape.CIRCLE:
@@ -346,6 +363,7 @@ func _range_shape_name(value: int) -> String:
 			return "未知"
 
 
+## 处理目标priorityname逻辑。
 func _target_priority_name(value: int) -> String:
 	match value:
 		ClassTemplate.TargetPriority.NEAREST:
@@ -362,6 +380,7 @@ func _target_priority_name(value: int) -> String:
 			return "未知"
 
 
+## 处理敌人typename逻辑。
 func _enemy_type_name(value: int) -> String:
 	match value:
 		EnemyUnit.EnemyType.MELEE:
@@ -376,19 +395,23 @@ func _enemy_type_name(value: int) -> String:
 			return "未知"
 
 
+## 处理bool文本逻辑。
 func _bool_text(value: bool) -> String:
 	return "是" if value else "否"
 
 
+## 处理array文本逻辑。
 func _array_text(values: Array) -> String:
 	return "无" if values.is_empty() else ", ".join(values)
 
 
+## 设置返回按钮回调；用于游戏内覆盖层关闭后回到原游戏状态
 func set_return_callback(callback: Callable) -> void:
 	"""设置返回按钮回调；用于游戏内覆盖层关闭后回到原游戏状态"""
 	return_callback = callback
 
 
+## 返回开始菜单
 func _on_back_pressed() -> void:
 	"""返回开始菜单"""
 	if return_callback.is_valid():

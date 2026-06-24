@@ -16,6 +16,7 @@ var info_panel: PanelContainer
 var start_button_margin: MarginContainer
 
 
+## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
 	# 确保 Control 有足够尺寸捕获鼠标事件
 	size = get_viewport_rect().size
@@ -102,6 +103,7 @@ func _ready() -> void:
 	_on_dp_changed(ResourceManager.current_dp, ResourceManager.max_dp)
 
 
+## 每帧更新运行状态。
 func _process(_delta: float) -> void:
 	var viewport_size := get_viewport_rect().size
 	if viewport_size != size:
@@ -139,6 +141,7 @@ func _process(_delta: float) -> void:
 	_update_wave_button()
 
 
+## 更新波次按钮。
 func _update_wave_button() -> void:
 	if not wave_start_btn:
 		return
@@ -152,12 +155,14 @@ func _update_wave_button() -> void:
 			wave_start_btn.visible = false
 
 
+## 处理波次startpressed回调。
 func _on_wave_start_pressed() -> void:
 	if BattleManager.state == BattleManager.BattleState.PREPARING or \
 	   BattleManager.state == BattleManager.BattleState.WAVE_BREAK:
 		BattleManager.start_next_wave()
 
 
+## 处理部署点变化回调。
 func _on_dp_changed(current: int, max_val: int) -> void:
 	dp_label.text = "DP: %d / %d" % [current, max_val]
 	if dp_bar:

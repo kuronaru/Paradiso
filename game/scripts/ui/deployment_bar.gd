@@ -40,6 +40,7 @@ var last_prepare_layout: bool = true
 var cached_viewport_size: Vector2 = Vector2.ZERO
 
 
+## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
 	# 确保 Control 占据底部区域
 	add_to_group("deployment_bar")
@@ -61,6 +62,7 @@ func _ready() -> void:
 	_refresh_ui()
 
 
+## 设置阶段感知的手牌栏布局
 func _setup_layout() -> void:
 	"""设置阶段感知的手牌栏布局"""
 	cached_viewport_size = get_viewport_rect().size
@@ -87,6 +89,7 @@ func _setup_layout() -> void:
 	hand_center.add_child(hand_row)
 
 
+## 重建卡牌按钮
 func _refresh_ui() -> void:
 	"""重建卡牌按钮"""
 	if hand_row:
@@ -179,6 +182,7 @@ func _refresh_ui() -> void:
 	_update_button_states()
 
 
+## 根据 DP、战斗状态和选中状态更新按钮表现
 func _update_button_states() -> void:
 	"""根据 DP、战斗状态和选中状态更新按钮表现"""
 	if not deployment_system:
@@ -208,6 +212,7 @@ func _update_button_states() -> void:
 			cards[i].modulate = Color.WHITE
 
 
+## 更新选中卡牌的上提位置
 func _update_card_selection_visual(index: int, is_selected: bool) -> void:
 	"""更新选中卡牌的上提位置"""
 	if index < 0 or index >= cards.size() or index >= card_base_positions.size():
@@ -220,6 +225,7 @@ func _update_card_selection_visual(index: int, is_selected: bool) -> void:
 	btn.z_index = 20 if is_selected else 0
 
 
+## 应用卡牌样式。
 func _apply_card_style(btn: Button, is_golden: bool) -> void:
 	var base_color := Color(0.11, 0.12, 0.16, 0.96)
 	var border_color := Color(0.28, 0.32, 0.42, 1.0)
@@ -237,6 +243,7 @@ func _apply_card_style(btn: Button, is_golden: bool) -> void:
 	btn.add_theme_stylebox_override("disabled", disabled)
 
 
+## 生成卡牌样式。
 func _make_card_style(bg_color: Color, border_color: Color) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = bg_color
@@ -249,10 +256,12 @@ func _make_card_style(bg_color: Color, border_color: Color) -> StyleBoxFlat:
 	return style
 
 
+## 获取职业图标color。
 func _get_class_icon_color(class_id: String) -> Color:
 	return ClassDefinitions.get_template_color(class_id)
 
 
+## 生成简化手牌文字。
 func _get_card_text(ct: ClassTemplate, card_data: Dictionary) -> String:
 	"""生成简化手牌文字。"""
 	var shop_level := int(card_data.get("shop_level", card_data.get("star_level", 1)))
@@ -262,12 +271,14 @@ func _get_card_text(ct: ClassTemplate, card_data: Dictionary) -> String:
 	]
 
 
+## 获取deploy消耗。
 func _get_deploy_cost(ct: ClassTemplate) -> int:
 	if SynergyManager and SynergyManager.has_method("get_discounted_deploy_cost"):
 		return SynergyManager.get_discounted_deploy_cost(ct.deploy_cost)
 	return ct.deploy_cost
 
 
+## 获取羁绊文本行。
 func _get_synergy_line(ct: ClassTemplate) -> String:
 	var tags: Array[String] = []
 	if ct.class_group != "":
@@ -279,10 +290,12 @@ func _get_synergy_line(ct: ClassTemplate) -> String:
 	return " / ".join(tags)
 
 
+## 处理main分组标签逻辑。
 func _main_group_label(class_group: String) -> String:
 	return ClassDefinitions.get_class_group_label(class_group)
 
 
+## 处理阵营标签逻辑。
 func _alignment_label(tag: String) -> String:
 	match tag:
 		"LAWFUL":
@@ -298,6 +311,7 @@ func _alignment_label(tag: String) -> String:
 	return tag
 
 
+## 计算当前DP相对部署费用的进度
 func _get_deploy_progress(deploy_cost: int) -> float:
 	"""计算当前DP相对部署费用的进度"""
 	if deploy_cost <= 0:
@@ -305,6 +319,7 @@ func _get_deploy_progress(deploy_cost: int) -> float:
 	return clamp(float(ResourceManager.current_dp) / float(deploy_cost), 0.0, 1.0)
 
 
+## 更新单张手牌的暗色遮罩与文字状态
 func _update_card_progress_visual(index: int, progress: float, can_afford: bool) -> void:
 	"""更新单张手牌的暗色遮罩与文字状态"""
 	if index < 0 or index >= card_shades.size():
@@ -327,6 +342,7 @@ func _update_card_progress_visual(index: int, progress: float, can_afford: bool)
 	label.modulate = Color.WHITE if can_afford else Color(0.72, 0.72, 0.72, 1.0)
 
 
+## 处理单张卡牌上的鼠标输入
 func _on_card_gui_input(event: InputEvent, index: int) -> void:
 	"""处理单张卡牌上的鼠标输入"""
 	if event is InputEventMouseButton:
@@ -344,6 +360,7 @@ func _on_card_gui_input(event: InputEvent, index: int) -> void:
 		_update_pending_drag(index)
 
 
+## 记录鼠标按下，暂不立即进入拖拽
 func _begin_card_press(index: int) -> void:
 	"""记录鼠标按下，暂不立即进入拖拽"""
 	if not deployment_system or not deployment_system.can_deploy_now():
@@ -357,6 +374,7 @@ func _begin_card_press(index: int) -> void:
 	press_started_drag = false
 
 
+## 鼠标短按释放时选中卡牌；拖拽释放交给部署系统处理
 func _finish_card_press(index: int) -> void:
 	"""鼠标短按释放时选中卡牌；拖拽释放交给部署系统处理"""
 	if press_card_index != index:
@@ -370,6 +388,7 @@ func _finish_card_press(index: int) -> void:
 	_clear_pending_press()
 
 
+## 鼠标移动超过阈值时将短按判定切换为拖拽
 func _update_pending_drag(index: int) -> void:
 	"""鼠标移动超过阈值时将短按判定切换为拖拽"""
 	if press_card_index != index or press_started_drag:
@@ -383,6 +402,7 @@ func _update_pending_drag(index: int) -> void:
 		_start_drag_from_press()
 
 
+## 鼠标按住超过阈值时开始拖拽
 func _update_pending_hold() -> void:
 	"""鼠标按住超过阈值时开始拖拽"""
 	if press_card_index < 0 or press_started_drag:
@@ -396,6 +416,7 @@ func _update_pending_hold() -> void:
 		_start_drag_from_press()
 
 
+## 从待判定按压状态进入拖拽部署
 func _start_drag_from_press() -> void:
 	"""从待判定按压状态进入拖拽部署"""
 	if not deployment_system:
@@ -413,6 +434,7 @@ func _start_drag_from_press() -> void:
 		card_clicked.emit(press_card_index, class_id)
 
 
+## 短按卡牌时高亮选中，并将卡牌向上提起
 func _select_card(index: int) -> void:
 	"""短按卡牌时高亮选中，并将卡牌向上提起"""
 	if not deployment_system:
@@ -427,6 +449,7 @@ func _select_card(index: int) -> void:
 		card_clicked.emit(index, class_id)
 
 
+## 清除鼠标按下待判定状态
 func _clear_pending_press() -> void:
 	"""清除鼠标按下待判定状态"""
 	press_card_index = -1
@@ -435,6 +458,7 @@ func _clear_pending_press() -> void:
 	press_started_drag = false
 
 
+## 取消当前拖拽或选中
 func _cancel_drag() -> void:
 	"""取消当前拖拽或选中"""
 	if deployment_system:
@@ -444,11 +468,13 @@ func _cancel_drag() -> void:
 	_update_button_states()
 
 
+## 手牌变化时刷新
 func _on_hand_updated(_cards: Array) -> void:
 	"""手牌变化时刷新"""
 	_refresh_ui()
 
 
+## 拖拽完成（成功或失败），清除高亮
 func _on_drag_ended() -> void:
 	"""拖拽完成（成功或失败），清除高亮"""
 	_clear_pending_press()
@@ -456,18 +482,22 @@ func _on_drag_ended() -> void:
 	_update_button_states()
 
 
+## 处理单位选中回调。
 func _on_unit_selected(_unit: HeroUnit) -> void:
 	_refresh_ui()
 
 
+## 处理单位取消选中回调。
 func _on_unit_deselected() -> void:
 	_refresh_ui()
 
 
+## 处理部署点变化回调。
 func _on_dp_changed(_current: int, _max_val: int) -> void:
 	_update_button_states()
 
 
+## 每帧更新运行状态。
 func _process(_delta: float) -> void:
 	# 持续更新按钮状态（DP变化、状态变化）并检测长按拖拽
 	_update_stage_layout()
@@ -475,6 +505,7 @@ func _process(_delta: float) -> void:
 	_update_button_states()
 
 
+## 更新阶段布局。
 func _update_stage_layout() -> void:
 	var viewport_size := get_viewport_rect().size
 	if viewport_size != cached_viewport_size:
@@ -490,10 +521,12 @@ func _update_stage_layout() -> void:
 		_apply_stage_layout(true)
 
 
+## 判断布局状态。
 func _is_prepare_layout() -> bool:
 	return GameManager.is_roguelike_run and BattleManager.state == BattleManager.BattleState.PREPARING
 
 
+## 应用阶段布局。
 func _apply_stage_layout(animated: bool) -> void:
 	var target_y := _prepare_y() if _is_prepare_layout() else _battle_y()
 	if layout_tween and layout_tween.is_valid():
@@ -505,14 +538,17 @@ func _apply_stage_layout(animated: bool) -> void:
 		position.y = target_y
 
 
+## 准备Y 坐标。
 func _prepare_y() -> float:
 	return get_viewport_rect().size.y - SHOP_PANEL_HEIGHT - SHOP_BOTTOM_MARGIN - bar_height - HAND_GAP_ABOVE_SHOP
 
 
+## 处理战斗Y 坐标逻辑。
 func _battle_y() -> float:
 	return get_viewport_rect().size.y - SHOP_PANEL_HEIGHT - SHOP_BOTTOM_MARGIN + (SHOP_PANEL_HEIGHT - bar_height) * 0.5
 
 
+## 处理fill父节点逻辑。
 func _fill_parent(control: Control) -> void:
 	control.anchor_left = 0.0
 	control.anchor_top = 0.0

@@ -25,6 +25,7 @@ var map_generator: MapGenerator = null
 var recruit_system: RecruitSystem = null
 
 
+## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
 	add_to_group("roguelike_manager")
 	map_generator = MapGenerator.new()
@@ -32,6 +33,7 @@ func _ready() -> void:
 	add_child(recruit_system)
 
 
+## 开始新的肉鸽流程
 func start_run() -> void:
 	"""开始新的肉鸽流程"""
 	GameManager.start_roguelike_run()
@@ -41,6 +43,7 @@ func start_run() -> void:
 	_enter_recruit_phase()
 
 
+## 进入酒馆招募阶段
 func _enter_recruit_phase() -> void:
 	"""进入酒馆招募阶段"""
 	phase = RunPhase.RECRUIT
@@ -51,6 +54,7 @@ func _enter_recruit_phase() -> void:
 	Log.i(M, "进入招募阶段，%d 个选项" % options.size())
 
 
+## 购买招募选项
 func purchase_recruit(option_index: int) -> bool:
 	"""购买招募选项"""
 	var options := recruit_system.get_current_options()
@@ -70,6 +74,7 @@ func purchase_recruit(option_index: int) -> bool:
 	return true
 
 
+## 手动刷新酒馆。
 func refresh_recruit_options() -> bool:
 	"""手动刷新酒馆。"""
 	if not GameManager.spend_run_gold(recruit_system.get_refresh_cost()):
@@ -78,6 +83,7 @@ func refresh_recruit_options() -> bool:
 	return true
 
 
+## 升级酒馆，并立即刷新一次招募列表。
 func upgrade_tavern() -> bool:
 	"""升级酒馆，并立即刷新一次招募列表。"""
 	var cost := recruit_system.get_upgrade_cost()
@@ -92,6 +98,7 @@ func upgrade_tavern() -> bool:
 	return true
 
 
+## 兼容旧入口：准备阶段内直接开始战斗。
 func skip_recruit() -> void:
 	"""兼容旧入口：准备阶段内直接开始战斗。"""
 	recruit_system.clear_options()
@@ -99,11 +106,13 @@ func skip_recruit() -> void:
 		BattleManager.start_next_wave()
 
 
+## 开始回合战斗。
 func _start_round_battle() -> void:
 	var node := _build_round_node(GameManager.current_run_round)
 	_start_battle(node)
 
 
+## 初始化本回合战斗，但保留在准备/招募阶段让玩家部署。
 func _setup_round_preparation() -> void:
 	"""初始化本回合战斗，但保留在准备/招募阶段让玩家部署。"""
 	var node := _build_round_node(GameManager.current_run_round)
@@ -120,12 +129,14 @@ func _setup_round_preparation() -> void:
 	ResourceManager.reset_dp(20, 100)
 
 
+## 同步deployment手牌。
 func _sync_deployment_hand() -> void:
 	var deployment := _get_deployment_system()
 	if deployment:
 		deployment.setup_hand(GameManager.get_battle_party_data())
 
 
+## 进入地图推进阶段
 func _enter_map_phase() -> void:
 	"""进入地图推进阶段"""
 	phase = RunPhase.MAP
@@ -134,6 +145,7 @@ func _enter_map_phase() -> void:
 	_advance_to_next_node()
 
 
+## 推进到下一个地图节点
 func _advance_to_next_node() -> void:
 	"""推进到下一个地图节点"""
 	if current_node_index >= map_data.size():
@@ -163,6 +175,7 @@ func _advance_to_next_node() -> void:
 			_advance_to_next_node()
 
 
+## 开始战斗
 func _start_battle(node: Dictionary) -> void:
 	"""开始战斗"""
 	phase = RunPhase.BATTLE
@@ -190,6 +203,7 @@ func _start_battle(node: Dictionary) -> void:
 	# 不自动开始战斗——等待玩家部署后按 F 键手动推进
 
 
+## 获取deploymentsystem。
 func _get_deployment_system() -> DeploymentSystem:
 	var tree := get_tree()
 	if tree:
@@ -199,6 +213,7 @@ func _get_deployment_system() -> DeploymentSystem:
 	return null
 
 
+## 战斗胜利
 func _on_battle_won() -> void:
 	"""战斗胜利"""
 	var reward := _calculate_reward()
@@ -217,6 +232,7 @@ func _on_battle_won() -> void:
 	_enter_recruit_phase()
 
 
+## 战斗失败
 func _on_battle_lost() -> void:
 	"""战斗失败"""
 	GameManager.earn_run_gold(2)
@@ -224,16 +240,19 @@ func _on_battle_lost() -> void:
 	_end_run(false)
 
 
+## 计算奖励金币
 func _calculate_reward() -> int:
 	"""计算奖励金币"""
 	return 4
 
 
+## 处理restandadvance逻辑。
 func _rest_and_advance() -> void:
 	current_node_index += 1
 	_advance_to_next_node()
 
 
+## 处理end肉鸽流程逻辑。
 func _end_run(victory: bool) -> void:
 	phase = RunPhase.ENDED
 	GameManager.is_roguelike_run = false
@@ -244,6 +263,7 @@ func _end_run(victory: bool) -> void:
 		Log.i(M, "冒险失败...")
 
 
+## 构建回合节点。
 func _build_round_node(round_number: int) -> Dictionary:
 	var is_boss := round_number >= GameManager.max_run_rounds
 	var is_elite := not is_boss and round_number % 4 == 0
@@ -255,6 +275,7 @@ func _build_round_node(round_number: int) -> Dictionary:
 	}
 
 
+## 获取scaled敌人池。
 func _get_scaled_enemy_pool(round_number: int, is_elite: bool, is_boss: bool) -> Array:
 	var source_pool := EnemyUnit.get_enemy_pool()
 	var result: Array = []

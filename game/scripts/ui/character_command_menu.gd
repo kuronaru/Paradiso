@@ -19,6 +19,7 @@ var skill_button: Button = null
 var reserved_button: Button = null
 
 
+## 初始化角色菜单并连接部署系统
 func _ready() -> void:
 	"""初始化角色菜单并连接部署系统"""
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -34,6 +35,7 @@ func _ready() -> void:
 		deployment_system.unit_deselected.connect(_on_unit_deselected)
 
 
+## 让菜单覆盖整个窗口，用于接收菜单外点击
 func _set_full_rect() -> void:
 	"""让菜单覆盖整个窗口，用于接收菜单外点击"""
 	anchor_left = 0.0
@@ -47,6 +49,7 @@ func _set_full_rect() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
 
+## 创建正方形角色菜单和四角按钮
 func _build_menu() -> void:
 	"""创建正方形角色菜单和四角按钮"""
 	menu_panel = Control.new()
@@ -71,6 +74,7 @@ func _build_menu() -> void:
 	_layout_menu()
 
 
+## 创建仅有轮廓的菜单样式
 func _create_outline_style() -> StyleBoxFlat:
 	"""创建仅有轮廓的菜单样式"""
 	var style := StyleBoxFlat.new()
@@ -87,6 +91,7 @@ func _create_outline_style() -> StyleBoxFlat:
 	return style
 
 
+## 创建菜单四角的方形按钮
 func _create_corner_button(text: String, callback: Callable) -> Button:
 	"""创建菜单四角的方形按钮"""
 	var button := Button.new()
@@ -99,6 +104,7 @@ func _create_corner_button(text: String, callback: Callable) -> Button:
 	return button
 
 
+## 根据网格尺寸把菜单放在被选中角色的位置上
 func _layout_menu() -> void:
 	"""根据网格尺寸把菜单放在被选中角色的位置上"""
 	if not BattleManager.grid:
@@ -123,11 +129,13 @@ func _layout_menu() -> void:
 	skill_button.position = panel_size - button_size
 
 
+## 获取角色在屏幕/UI坐标中的中心点，用于定位角色命令菜单
 func _get_unit_screen_position(unit: Node2D) -> Vector2:
 	"""获取角色在屏幕/UI坐标中的中心点，用于定位角色命令菜单"""
 	return unit.get_global_transform_with_canvas().origin
 
 
+## 选中角色后暂停游戏并显示菜单
 func _on_unit_selected(unit: HeroUnit) -> void:
 	"""选中角色后暂停游戏并显示菜单"""
 	Log.d(M, "收到选中的角色信号: unit=%s valid=%s" % [unit, is_instance_valid(unit)])
@@ -149,11 +157,13 @@ func _on_unit_selected(unit: HeroUnit) -> void:
 	_update_unit_display()
 
 
+## 部署系统取消选择时隐藏菜单
 func _on_unit_deselected() -> void:
 	"""部署系统取消选择时隐藏菜单"""
 	_hide_menu(true)
 
 
+## 刷新角色菜单按钮文字和可用状态
 func _update_unit_display() -> void:
 	"""刷新角色菜单按钮文字和可用状态"""
 	if not selected_unit or not is_instance_valid(selected_unit):
@@ -163,6 +173,7 @@ func _update_unit_display() -> void:
 	skill_button.disabled = not _can_use_first_skill()
 
 
+## 检查当前角色是否有可释放的第一个技能
 func _can_use_first_skill() -> bool:
 	"""检查当前角色是否有可释放的第一个技能"""
 	if not selected_unit or not selected_unit.class_template:
@@ -177,6 +188,7 @@ func _can_use_first_skill() -> bool:
 	return sd != null and ResourceManager.can_afford(sd.dp_cost)
 
 
+## 隐藏角色菜单，并按需恢复打开前的暂停状态
 func _hide_menu(restore_pause: bool) -> void:
 	"""隐藏角色菜单，并按需恢复打开前的暂停状态"""
 	visible = false
@@ -185,6 +197,7 @@ func _hide_menu(restore_pause: bool) -> void:
 		get_tree().paused = was_paused_before_open
 
 
+## 取消角色选中并关闭菜单
 func _clear_selection_and_hide() -> void:
 	"""取消角色选中并关闭菜单"""
 	if deployment_system and deployment_system.selected_unit:
@@ -193,6 +206,7 @@ func _clear_selection_and_hide() -> void:
 		_hide_menu(true)
 
 
+## 撤退：从战场移除角色并收回手牌
 func _on_retreat_pressed() -> void:
 	"""撤退：从战场移除角色并收回手牌"""
 	if deployment_system:
@@ -200,6 +214,7 @@ func _on_retreat_pressed() -> void:
 	_hide_menu(true)
 
 
+## 切换驻扎/移动状态
 func _on_stance_pressed() -> void:
 	"""切换驻扎/移动状态"""
 	if deployment_system:
@@ -207,6 +222,7 @@ func _on_stance_pressed() -> void:
 	_update_unit_display()
 
 
+## 释放角色第一个技能
 func _on_skill_pressed() -> void:
 	"""释放角色第一个技能"""
 	if deployment_system:
@@ -214,11 +230,13 @@ func _on_skill_pressed() -> void:
 	_update_unit_display()
 
 
+## 右上角预留功能入口
 func _on_reserved_pressed() -> void:
 	"""右上角预留功能入口"""
 	Log.i(M, "角色菜单右上角功能待实现")
 
 
+## 点击角色菜单区域外时取消角色选中
 func _gui_input(event: InputEvent) -> void:
 	"""点击角色菜单区域外时取消角色选中"""
 	if not visible:
@@ -230,6 +248,7 @@ func _gui_input(event: InputEvent) -> void:
 			accept_event()
 
 
+## 每帧更新运行状态。
 func _process(_delta: float) -> void:
 	if visible:
 		if selected_unit and is_instance_valid(selected_unit):

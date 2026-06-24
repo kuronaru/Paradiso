@@ -13,6 +13,7 @@ var encyclopedia_overlay: EncyclopediaUI = null
 var settings_overlay: SettingsUI = null
 
 
+## 创建游戏内菜单UI
 func _ready() -> void:
 	"""创建游戏内菜单UI"""
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -21,6 +22,7 @@ func _ready() -> void:
 	_build_top_buttons()
 
 
+## 让菜单UI铺满窗口，便于放置右上角按钮和居中暂停菜单
 func _set_full_rect() -> void:
 	"""让菜单UI铺满窗口，便于放置右上角按钮和居中暂停菜单"""
 	anchor_left = 0.0
@@ -34,6 +36,7 @@ func _set_full_rect() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
+## 创建右上角从左到右排列的游戏内按钮
 func _build_top_buttons() -> void:
 	"""创建右上角从左到右排列的游戏内按钮"""
 	var bar := HBoxContainer.new()
@@ -57,6 +60,7 @@ func _build_top_buttons() -> void:
 	bar.add_child(pause_shortcut_button)
 
 
+## 创建暂停时显示在画面中央的菜单
 func _build_pause_overlay() -> void:
 	"""创建暂停时显示在画面中央的菜单"""
 	pause_overlay = Control.new()
@@ -99,6 +103,7 @@ func _build_pause_overlay() -> void:
 	menu.add_child(_create_pause_button("退出游戏", _on_quit_pressed))
 
 
+## 创建右上角快捷按钮
 func _create_top_button(text: String, callback: Callable) -> Button:
 	"""创建右上角快捷按钮"""
 	var button := Button.new()
@@ -110,6 +115,7 @@ func _create_top_button(text: String, callback: Callable) -> Button:
 	return button
 
 
+## 创建暂停菜单按钮
 func _create_pause_button(text: String, callback: Callable) -> Button:
 	"""创建暂停菜单按钮"""
 	var button := Button.new()
@@ -122,6 +128,7 @@ func _create_pause_button(text: String, callback: Callable) -> Button:
 	return button
 
 
+## 切换游戏暂停状态和暂停菜单显示
 func _set_paused(paused: bool) -> void:
 	"""切换游戏暂停状态和暂停菜单显示"""
 	get_tree().paused = paused
@@ -130,11 +137,13 @@ func _set_paused(paused: bool) -> void:
 		pause_shortcut_button.text = "继续" if paused else "暂停"
 
 
+## 进入角色/敌人图鉴界面
 func _on_catalog_pressed() -> void:
 	"""进入角色/敌人图鉴界面"""
 	_open_encyclopedia_overlay()
 
 
+## 在游戏内以覆盖层打开图鉴，不切换场景也不改变暂停状态
 func _open_encyclopedia_overlay() -> void:
 	"""在游戏内以覆盖层打开图鉴，不切换场景也不改变暂停状态"""
 	if encyclopedia_overlay and is_instance_valid(encyclopedia_overlay):
@@ -152,6 +161,7 @@ func _open_encyclopedia_overlay() -> void:
 	add_child(encyclopedia_overlay)
 
 
+## 关闭游戏内图鉴覆盖层，保持打开前的游戏暂停/运行状态
 func _close_encyclopedia_overlay() -> void:
 	"""关闭游戏内图鉴覆盖层，保持打开前的游戏暂停/运行状态"""
 	if encyclopedia_overlay and is_instance_valid(encyclopedia_overlay):
@@ -159,21 +169,25 @@ func _close_encyclopedia_overlay() -> void:
 	encyclopedia_overlay = null
 
 
+## 右上角暂停/继续快捷按钮
 func _on_pause_shortcut_pressed() -> void:
 	"""右上角暂停/继续快捷按钮"""
 	_set_paused(not get_tree().paused)
 
 
+## 继续游戏
 func _on_continue_pressed() -> void:
 	"""继续游戏"""
 	_set_paused(false)
 
 
+## 打开游戏设置界面
 func _on_settings_pressed() -> void:
 	"""打开游戏设置界面"""
 	_open_settings_overlay()
 
 
+## 在游戏内打开设置覆盖层，保持当前暂停状态
 func _open_settings_overlay() -> void:
 	"""在游戏内打开设置覆盖层，保持当前暂停状态"""
 	if settings_overlay and is_instance_valid(settings_overlay):
@@ -186,6 +200,7 @@ func _open_settings_overlay() -> void:
 	add_child(settings_overlay)
 
 
+## 关闭游戏内设置覆盖层
 func _close_settings_overlay() -> void:
 	"""关闭游戏内设置覆盖层"""
 	if settings_overlay and is_instance_valid(settings_overlay):
@@ -193,12 +208,14 @@ func _close_settings_overlay() -> void:
 	settings_overlay = null
 
 
+## 返回开始菜单
 func _on_return_menu_pressed() -> void:
 	"""返回开始菜单"""
 	_set_paused(false)
 	get_tree().change_scene_to_file(START_MENU_PATH)
 
 
+## 退出游戏
 func _on_quit_pressed() -> void:
 	"""退出游戏"""
 	_set_paused(false)

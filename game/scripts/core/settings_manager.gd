@@ -16,11 +16,13 @@ var vsync_enabled: bool = true
 var show_floating_numbers: bool = true
 
 
+## 启动游戏时加载并应用全局设置
 func _enter_tree() -> void:
 	"""启动游戏时加载并应用全局设置"""
 	load_settings()
 
 
+## 从全局配置文件读取玩家设置
 func load_settings() -> void:
 	"""从全局配置文件读取玩家设置"""
 	_ensure_config_directory()
@@ -42,6 +44,7 @@ func load_settings() -> void:
 	settings_changed.emit()
 
 
+## 保存玩家设置到全局配置文件
 func save_settings() -> bool:
 	"""保存玩家设置到全局配置文件"""
 	_ensure_config_directory()
@@ -61,6 +64,7 @@ func save_settings() -> bool:
 	return true
 
 
+## 把当前设置应用到引擎运行状态
 func apply_settings() -> void:
 	"""把当前设置应用到引擎运行状态"""
 	_apply_bus_volume("Master", master_volume)
@@ -77,48 +81,56 @@ func apply_settings() -> void:
 		DisplayServer.window_set_mode(mode)
 
 
+## 设置主音量
 func set_master_volume(value: float) -> void:
 	"""设置主音量"""
 	master_volume = clampf(value, 0.0, 1.0)
 	_commit_settings()
 
 
+## 设置音乐音量
 func set_music_volume(value: float) -> void:
 	"""设置音乐音量"""
 	music_volume = clampf(value, 0.0, 1.0)
 	_commit_settings()
 
 
+## 设置音效音量
 func set_sfx_volume(value: float) -> void:
 	"""设置音效音量"""
 	sfx_volume = clampf(value, 0.0, 1.0)
 	_commit_settings()
 
 
+## 设置是否静音
 func set_muted(value: bool) -> void:
 	"""设置是否静音"""
 	muted = value
 	_commit_settings()
 
 
+## 设置是否全屏
 func set_fullscreen(value: bool) -> void:
 	"""设置是否全屏"""
 	fullscreen = value
 	_commit_settings()
 
 
+## 设置是否启用垂直同步
 func set_vsync_enabled(value: bool) -> void:
 	"""设置是否启用垂直同步"""
 	vsync_enabled = value
 	_commit_settings()
 
 
+## 设置是否显示伤害和治疗飘字
 func set_show_floating_numbers(value: bool) -> void:
 	"""设置是否显示伤害和治疗飘字"""
 	show_floating_numbers = value
 	_commit_settings()
 
 
+## 应用并保存一次设置变更
 func _commit_settings() -> void:
 	"""应用并保存一次设置变更"""
 	apply_settings()
@@ -126,6 +138,7 @@ func _commit_settings() -> void:
 	settings_changed.emit()
 
 
+## 按总线名称应用线性音量
 func _apply_bus_volume(bus_name: String, value: float) -> void:
 	"""按总线名称应用线性音量"""
 	var bus_index := AudioServer.get_bus_index(bus_name)
@@ -135,6 +148,7 @@ func _apply_bus_volume(bus_name: String, value: float) -> void:
 	AudioServer.set_bus_volume_db(bus_index, linear_to_db(linear) if linear > 0.0 else -80.0)
 
 
+## 确保全局配置目录存在
 func _ensure_config_directory() -> void:
 	"""确保全局配置目录存在"""
 	var dir_path := _get_config_dir_absolute_path()
@@ -145,11 +159,13 @@ func _ensure_config_directory() -> void:
 		push_warning("创建设置目录失败: %s error=%d" % [dir_path, error])
 
 
+## 获取全局配置目录的绝对路径
 func _get_config_dir_absolute_path() -> String:
 	"""获取全局配置目录的绝对路径"""
 	return ProjectSettings.globalize_path(CONFIG_DIR_PATH)
 
 
+## 获取全局配置文件的绝对路径
 func _get_config_file_absolute_path() -> String:
 	"""获取全局配置文件的绝对路径"""
 	return ProjectSettings.globalize_path(CONFIG_FILE_PATH)

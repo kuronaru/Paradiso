@@ -7,6 +7,7 @@ const M = "Startup"
 var roguelike_manager: RoguelikeManager = null
 
 
+## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
 	# 等待Autoload都初始化完毕
 	await get_tree().process_frame
@@ -31,6 +32,7 @@ func _ready() -> void:
 	ResourceManager.reset_dp(30, 100)
 
 
+## 处理输入事件。
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed:
 		match event.physical_keycode:

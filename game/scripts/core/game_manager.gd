@@ -49,17 +49,20 @@ var blessings: Array = []           # 祝福/遗物
 var _next_run_card_instance_id: int = 1
 
 
+## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	load_last_selected_save()
 
 
+## 开始一场战斗
 func start_battle(party_data: Array, enemy_pool: Array, wave_count: int = 3) -> void:
 	"""开始一场战斗"""
 	BattleManager.setup_battle(party_data, enemy_pool, wave_count)
 	current_mode = GameMode.BATTLE
 
 
+## 开始一次新的肉鸽流程
 func start_roguelike_run() -> void:
 	"""开始一次新的肉鸽流程"""
 	_ensure_save_data()
@@ -78,22 +81,26 @@ func start_roguelike_run() -> void:
 	_enter_recruit_phase()
 
 
+## 添加初始队伍（战士+游侠）
 func _add_starter_party() -> void:
 	"""添加初始队伍（战士+游侠）"""
 	add_to_party("warrior", 1)
 	add_to_party("ranger", 1)
 
 
+## 进入酒馆招募阶段
 func _enter_recruit_phase() -> void:
 	"""进入酒馆招募阶段"""
 	current_mode = GameMode.RECRUIT
 
 
+## 推进到下一层
 func proceed_to_next_floor() -> void:
 	"""推进到下一层"""
 	current_floor += 1
 
 
+## 推进肉鸽单局回合，并同步旧楼层字段供现有UI显示。
 func advance_roguelike_round() -> void:
 	"""推进肉鸽单局回合，并同步旧楼层字段供现有UI显示。"""
 	current_run_round += 1
@@ -101,6 +108,7 @@ func advance_roguelike_round() -> void:
 	run_round_changed.emit(current_run_round, max_run_rounds)
 
 
+## 检查当前单局手牌区是否还能加入角色。
 func can_add_to_party(card_count: int = 1) -> bool:
 	"""检查当前单局手牌区是否还能加入角色。"""
 	if not is_roguelike_run:
@@ -108,6 +116,7 @@ func can_add_to_party(card_count: int = 1) -> bool:
 	return party.size() + card_count <= ROGUELIKE_MAX_HAND_CARDS
 
 
+## 添加角色到本次冒险队伍；level 表示局内招募星级
 func add_to_party(class_id: String, star_level: int = 1, shop_level: int = 1, upgrade_tier: int = 1) -> bool:
 	"""添加角色到本次冒险队伍；level 表示局内招募星级"""
 	if not can_add_to_party():
@@ -133,6 +142,7 @@ func add_to_party(class_id: String, star_level: int = 1, shop_level: int = 1, up
 	return true
 
 
+## 从单局手牌数据中移除一张卡，部署成功时调用。
 func remove_from_party_card(card_data: Dictionary) -> bool:
 	"""从单局手牌数据中移除一张卡，部署成功时调用。"""
 	if not is_roguelike_run:
@@ -163,6 +173,7 @@ func remove_from_party_card(card_data: Dictionary) -> bool:
 	return false
 
 
+## 撤回部署角色时，把卡牌放回单局手牌区。
 func return_card_to_party(card_data: Dictionary) -> bool:
 	"""撤回部署角色时，把卡牌放回单局手牌区。"""
 	if not can_add_to_party():
@@ -186,6 +197,7 @@ func return_card_to_party(card_data: Dictionary) -> bool:
 	return true
 
 
+## 同名同等阶三张手牌合成为一张金色晋升卡。
 func _try_promote_party_cards(class_id: String, star_level: int, shop_level: int, upgrade_tier: int) -> bool:
 	"""同名同等阶三张手牌合成为一张金色晋升卡。"""
 	var canonical_id := ClassDefinitions.canonicalize_class_id(class_id)
@@ -226,6 +238,7 @@ func _try_promote_party_cards(class_id: String, star_level: int, shop_level: int
 	return true
 
 
+## 消费金币，返回是否成功
 func spend_gold(amount: int, auto_save: bool = true) -> bool:
 	"""消费金币，返回是否成功"""
 	if gold >= amount:
@@ -237,6 +250,7 @@ func spend_gold(amount: int, auto_save: bool = true) -> bool:
 	return false
 
 
+## 获取金币
 func earn_gold(amount: int) -> void:
 	"""获取金币"""
 	gold += amount
@@ -244,11 +258,13 @@ func earn_gold(amount: int) -> void:
 	save_game()
 
 
+## 获取当前界面应显示和消费的金币。
 func get_active_gold() -> int:
 	"""获取当前界面应显示和消费的金币。"""
 	return run_gold if is_roguelike_run else gold
 
 
+## 消费单局肉鸽金币，不写入存档。
 func spend_run_gold(amount: int) -> bool:
 	"""消费单局肉鸽金币，不写入存档。"""
 	if amount < 0:
@@ -260,12 +276,14 @@ func spend_run_gold(amount: int) -> bool:
 	return false
 
 
+## 获得单局肉鸽金币，不写入存档。
 func earn_run_gold(amount: int) -> void:
 	"""获得单局肉鸽金币，不写入存档。"""
 	run_gold += max(0, amount)
 	run_gold_changed.emit(run_gold)
 
 
+## 初始化存档持有角色数据
 func _ensure_save_data() -> void:
 	"""初始化存档持有角色数据"""
 	var level_by_class: Dictionary = {}
@@ -297,6 +315,7 @@ func _ensure_save_data() -> void:
 		owned_characters_changed.emit(owned_characters)
 
 
+## 运行游戏后自动加载上次选择的存档槽位
 func load_last_selected_save() -> void:
 	"""运行游戏后自动加载上次选择的存档槽位"""
 	_ensure_save_directory()
@@ -318,6 +337,7 @@ func load_last_selected_save() -> void:
 	save_slot_changed.emit(current_save_id)
 
 
+## 加载指定存档槽位；不存在时保持为空白存档
 func load_save(save_id: String = "") -> void:
 	"""加载指定存档槽位；不存在时保持为空白存档"""
 	_ensure_save_directory()
@@ -352,6 +372,7 @@ func load_save(save_id: String = "") -> void:
 	Log.i(M, "已加载存档 %s: 金币 %d, 角色 %d" % [current_save_id, gold, owned_characters.size()])
 
 
+## 保存玩家存档资源和角色仓库到当前存档槽位
 func save_game() -> bool:
 	"""保存玩家存档资源和角色仓库到当前存档槽位"""
 	if not has_active_save:
@@ -367,12 +388,14 @@ func save_game() -> bool:
 	return true
 
 
+## 切换当前使用的存档槽位
 func switch_save_slot(save_id: String) -> void:
 	"""切换当前使用的存档槽位"""
 	save_game()
 	load_save(save_id)
 
 
+## 在指定槽位创建新的默认存档
 func create_new_save(save_id: String = "") -> void:
 	"""在指定槽位创建新的默认存档"""
 	current_save_id = _normalize_save_id(save_id if save_id != "" else current_save_id)
@@ -385,16 +408,19 @@ func create_new_save(save_id: String = "") -> void:
 	save_slot_changed.emit(current_save_id)
 
 
+## 获取当前版本可用的存档槽位
 func get_save_slot_ids() -> Array[String]:
 	"""获取当前版本可用的存档槽位"""
 	return SAVE_SLOT_IDS.duplicate()
 
 
+## 判断指定存档槽位是否已有存档文件
 func has_save_slot(save_id: String) -> bool:
 	"""判断指定存档槽位是否已有存档文件"""
 	return FileAccess.file_exists(_get_save_file_absolute_path(save_id))
 
 
+## 判断三个存档槽位中是否存在任意存档
 func has_any_save_slot() -> bool:
 	"""判断三个存档槽位中是否存在任意存档"""
 	for save_id in SAVE_SLOT_IDS:
@@ -403,6 +429,7 @@ func has_any_save_slot() -> bool:
 	return false
 
 
+## 获取继续游戏应使用的存档槽位
 func get_continue_save_id() -> String:
 	"""获取继续游戏应使用的存档槽位"""
 	if has_save_slot(current_save_id):
@@ -418,6 +445,7 @@ func get_continue_save_id() -> String:
 	return current_save_id
 
 
+## 读取存档槽位摘要，用于主菜单选择界面
 func get_save_slot_summary(save_id: String) -> Dictionary:
 	"""读取存档槽位摘要，用于主菜单选择界面"""
 	var normalized := _normalize_save_id(save_id)
@@ -447,6 +475,7 @@ func get_save_slot_summary(save_id: String) -> Dictionary:
 	return summary
 
 
+## 把存档数据应用到全局玩家数据
 func _apply_save_data(data: Dictionary) -> void:
 	"""把存档数据应用到全局玩家数据"""
 	var resources: Dictionary = data.get("resources", {})
@@ -463,6 +492,7 @@ func _apply_save_data(data: Dictionary) -> void:
 		})
 
 
+## 构建当前版本的存档数据
 func _build_save_data() -> Dictionary:
 	"""构建当前版本的存档数据"""
 	return {
@@ -474,6 +504,7 @@ func _build_save_data() -> Dictionary:
 	}
 
 
+## 重置为新存档的默认玩家数据
 func _reset_default_save_data() -> void:
 	"""重置为新存档的默认玩家数据"""
 	gold = 100
@@ -481,6 +512,7 @@ func _reset_default_save_data() -> void:
 	_ensure_save_data()
 
 
+## 确保存档目录存在
 func _ensure_save_directory() -> void:
 	"""确保存档目录存在"""
 	var dir_path := _get_save_dir_absolute_path()
@@ -491,22 +523,26 @@ func _ensure_save_directory() -> void:
 		Log.w(M, "创建存档目录失败: %s error=%d" % [dir_path, error])
 
 
+## 获取项目根目录下 userdata 的绝对路径
 func _get_save_dir_absolute_path() -> String:
 	"""获取项目根目录下 userdata 的绝对路径"""
 	return ProjectSettings.globalize_path(SAVE_DIR_PATH)
 
 
+## 获取指定存档槽位文件的绝对路径
 func _get_save_file_absolute_path(save_id: String = "") -> String:
 	"""获取指定存档槽位文件的绝对路径"""
 	var normalized := _normalize_save_id(save_id if save_id != "" else current_save_id)
 	return ProjectSettings.globalize_path("%s/%s" % [SAVE_DIR_PATH, normalized])
 
 
+## 获取上次使用存档记录文件的绝对路径
 func _get_last_save_file_absolute_path() -> String:
 	"""获取上次使用存档记录文件的绝对路径"""
 	return ProjectSettings.globalize_path(LAST_SAVE_FILE_PATH)
 
 
+## 读取上次使用的存档槽位
 func _read_last_save_id() -> String:
 	"""读取上次使用的存档槽位"""
 	var path := _get_last_save_file_absolute_path()
@@ -520,6 +556,7 @@ func _read_last_save_id() -> String:
 	return _normalize_save_id(file.get_as_text().strip_edges())
 
 
+## 记录上次使用的存档槽位
 func _write_last_save_id(save_id: String) -> void:
 	"""记录上次使用的存档槽位"""
 	_ensure_save_directory()
@@ -528,11 +565,13 @@ func _write_last_save_id(save_id: String) -> void:
 		file.store_string(_normalize_save_id(save_id))
 
 
+## 规范化存档槽位ID
 func _normalize_save_id(save_id: String) -> String:
 	"""规范化存档槽位ID"""
 	return save_id if save_id in SAVE_SLOT_IDS else "save1"
 
 
+## 获取存档中的角色养成等级
 func get_owned_character_level(class_id: String) -> int:
 	"""获取存档中的角色养成等级"""
 	_ensure_save_data()
@@ -543,6 +582,7 @@ func get_owned_character_level(class_id: String) -> int:
 	return 1
 
 
+## 获取局内招募星级对应的战斗等级上限
 func get_star_level_cap(star_level: int) -> int:
 	"""获取局内招募星级对应的战斗等级上限"""
 	match clampi(star_level, 1, 3):
@@ -554,12 +594,14 @@ func get_star_level_cap(star_level: int) -> int:
 			return 100
 
 
+## 根据养成等级和星级上限计算本次战斗实际等级
 func get_effective_level_for_star(class_id: String, star_level: int) -> int:
 	"""根据养成等级和星级上限计算本次战斗实际等级"""
 	var canonical_id := ClassDefinitions.canonicalize_class_id(class_id)
 	return min(get_owned_character_level(canonical_id), get_star_level_cap(star_level))
 
 
+## 生成用于部署和战斗的队伍数据
 func get_battle_party_data() -> Array:
 	"""生成用于部署和战斗的队伍数据"""
 	var result: Array = []
@@ -574,6 +616,7 @@ func get_battle_party_data() -> Array:
 	return result
 
 
+## 计算从当前等级升到目标等级所需金币
 func calculate_upgrade_cost(current_level: int, target_level: int) -> int:
 	"""计算从当前等级升到目标等级所需金币"""
 	var from_level := clampi(current_level, 1, MAX_CHARACTER_LEVEL)
@@ -587,6 +630,7 @@ func calculate_upgrade_cost(current_level: int, target_level: int) -> int:
 	return total
 
 
+## 将指定存档持有角色升级到目标等级
 func upgrade_owned_character(index: int, target_level: int) -> bool:
 	"""将指定存档持有角色升级到目标等级"""
 	_ensure_save_data()

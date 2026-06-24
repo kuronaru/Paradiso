@@ -16,6 +16,7 @@ var _active_modifiers: Dictionary = {}
 var _active_fixed_modifiers: Dictionary = {}
 
 
+## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
 	_build_definitions()
 	if not BattleManager.battle_started.is_connected(_on_battle_state_changed):
@@ -29,6 +30,7 @@ func _ready() -> void:
 	recalculate()
 
 
+## 处理recalculate逻辑。
 func recalculate() -> void:
 	var count_by_id: Dictionary = {}
 	var layer_by_id: Dictionary = {}
@@ -76,36 +78,44 @@ func recalculate() -> void:
 	synergy_changed.emit(get_synergy_summary())
 
 
+## 获取羁绊摘要。
 func get_synergy_summary() -> Array:
 	return _summaries.duplicate(true)
 
 
+## 获取激活修正。
 func get_active_modifiers() -> Dictionary:
 	return _active_modifiers.duplicate(true)
 
 
+## 获取固定修正。
 func get_fixed_modifiers() -> Dictionary:
 	return _active_fixed_modifiers.duplicate(true)
 
 
+## 获取discounteddeploy消耗。
 func get_discounted_deploy_cost(base_cost: int) -> int:
 	var discount := clampf(float(_active_fixed_modifiers.get("deploy_cost_discount", 0.0)), 0.0, 0.75)
 	return maxi(1, int(ceil(float(base_cost) * (1.0 - discount))))
 
 
+## 应用victory金币bonus。
 func apply_victory_gold_bonus(base_reward: int) -> int:
 	var multiplier := float(_active_fixed_modifiers.get("victory_gold_multiplier", 1.0))
 	return maxi(0, int(round(float(base_reward) * multiplier)))
 
 
+## 处理战斗状态变化回调。
 func _on_battle_state_changed() -> void:
 	recalculate()
 
 
+## 处理单位roster变化回调。
 func _on_unit_roster_changed(_unit: Node) -> void:
 	recalculate()
 
 
+## 获取单位羁绊ids。
 func _get_unit_synergy_ids(hero: HeroUnit) -> Array[String]:
 	var ids: Array[String] = []
 	var ct := hero.class_template
@@ -119,6 +129,7 @@ func _get_unit_synergy_ids(hero: HeroUnit) -> Array[String]:
 	return ids
 
 
+## 构建摘要。
 func _build_summary(definition: SynergyDefinition, count: int, active_tier: int, layer: int, members: Array) -> Dictionary:
 	return {
 		"id": definition.synergy_id,
@@ -143,6 +154,7 @@ func _build_summary(definition: SynergyDefinition, count: int, active_tier: int,
 	}
 
 
+## 处理typename逻辑。
 func _type_name(type: SynergyDefinition.SynergyType) -> String:
 	match type:
 		SynergyDefinition.SynergyType.MAIN_NATION:
@@ -154,6 +166,7 @@ func _type_name(type: SynergyDefinition.SynergyType) -> String:
 	return "羁绊"
 
 
+## 处理sort摘要逻辑。
 func _sort_summaries(a: Dictionary, b: Dictionary) -> bool:
 	var a_active := bool(a.get("is_active", false))
 	var b_active := bool(b.get("is_active", false))
@@ -168,6 +181,7 @@ func _sort_summaries(a: Dictionary, b: Dictionary) -> bool:
 	return int(a.get("order", 0)) < int(b.get("order", 0))
 
 
+## 处理默认修正逻辑。
 func _default_modifiers() -> Dictionary:
 	return {
 		"max_hp_multiplier": 1.0,
@@ -188,6 +202,7 @@ func _default_modifiers() -> Dictionary:
 	}
 
 
+## 应用definition修正。
 func _apply_definition_modifiers(definition: SynergyDefinition, active_tier: int, layer: int) -> void:
 	for modifier in definition.scalable_modifiers:
 		if active_tier < int(modifier.get("min_tier", 0)):
@@ -207,6 +222,7 @@ func _apply_definition_modifiers(definition: SynergyDefinition, active_tier: int
 		_merge_fixed_value(stat, value)
 
 
+## 处理merge修正值逻辑。
 func _merge_modifier_value(target: Dictionary, stat: String, value: float) -> void:
 	if stat == "":
 		return
@@ -228,6 +244,7 @@ func _merge_modifier_value(target: Dictionary, stat: String, value: float) -> vo
 		target[stat] = float(target.get(stat, 0.0)) + value
 
 
+## 处理merge固定值逻辑。
 func _merge_fixed_value(stat: String, value: float) -> void:
 	if stat == "":
 		return
@@ -238,18 +255,21 @@ func _merge_fixed_value(stat: String, value: float) -> void:
 			_active_fixed_modifiers[stat] = float(_active_fixed_modifiers.get(stat, 0.0)) + value
 
 
+## 应用修正单位。
 func _apply_modifiers_to_units() -> void:
 	for unit in BattleManager.player_units:
 		if is_instance_valid(unit) and unit is UnitBase:
 			(unit as UnitBase).apply_synergy_modifiers(_active_modifiers)
 
 
+## 应用资源修正。
 func _apply_resource_modifiers() -> void:
 	if ResourceManager.has_method("apply_synergy_modifiers"):
 		ResourceManager.apply_synergy_modifiers(_active_fixed_modifiers)
 	resource_bonus_ready.emit(_active_fixed_modifiers.duplicate(true))
 
 
+## 构建definitions。
 func _build_definitions() -> void:
 	_definitions.clear()
 	_definition_order.clear()
@@ -316,6 +336,7 @@ func _build_definitions() -> void:
 	])); order += 1
 
 
+## 处理添加逻辑。
 func _add(definition: SynergyDefinition) -> void:
 	_definitions[definition.synergy_id] = definition
 	_definition_order.append(definition.synergy_id)

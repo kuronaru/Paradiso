@@ -8,6 +8,7 @@ const M = "SettingsUI"
 var return_callback: Callable = Callable()
 
 
+## 创建游戏设置界面
 func _ready() -> void:
 	"""创建游戏设置界面"""
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -15,11 +16,13 @@ func _ready() -> void:
 	_build_ui()
 
 
+## 设置返回按钮回调
 func set_return_callback(callback: Callable) -> void:
 	"""设置返回按钮回调"""
 	return_callback = callback
 
 
+## 让设置界面铺满窗口
 func _set_full_rect() -> void:
 	"""让设置界面铺满窗口"""
 	anchor_left = 0.0
@@ -33,6 +36,7 @@ func _set_full_rect() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
 
+## 创建设置面板和设置项
 func _build_ui() -> void:
 	"""创建设置面板和设置项"""
 	var dim := ColorRect.new()
@@ -101,6 +105,7 @@ func _build_ui() -> void:
 	list.add_child(_create_check_row("显示伤害数字", SettingsManager.show_floating_numbers, SettingsManager.set_show_floating_numbers))
 
 
+## 创建百分比滑动设置项
 func _create_slider_row(text: String, value: float, setter: Callable) -> Control:
 	"""创建百分比滑动设置项"""
 	var row := HBoxContainer.new()
@@ -138,6 +143,7 @@ func _create_slider_row(text: String, value: float, setter: Callable) -> Control
 	return row
 
 
+## 创建开关设置项
 func _create_check_row(text: String, value: bool, setter: Callable) -> Control:
 	"""创建开关设置项"""
 	var row := HBoxContainer.new()
@@ -161,6 +167,7 @@ func _create_check_row(text: String, value: bool, setter: Callable) -> Control:
 	return row
 
 
+## 返回打开设置前的界面
 func _on_return_pressed() -> void:
 	"""返回打开设置前的界面"""
 	SettingsManager.save_settings()

@@ -36,6 +36,7 @@ var skill_normal_style: StyleBoxFlat = null
 var skill_selected_style: StyleBoxFlat = null
 
 
+## 初始化冒险小队界面
 func _ready() -> void:
 	"""初始化冒险小队界面"""
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -47,12 +48,14 @@ func _ready() -> void:
 	_connect_game_manager_signals()
 
 
+## 窗口或容器尺寸变化时同步刷新角色列表内容尺寸
 func _notification(what: int) -> void:
 	"""窗口或容器尺寸变化时同步刷新角色列表内容尺寸"""
 	if what == NOTIFICATION_RESIZED:
 		_update_card_grid_size()
 
 
+## 让仓库界面铺满窗口并拦截鼠标输入
 func _set_full_rect() -> void:
 	"""让仓库界面铺满窗口并拦截鼠标输入"""
 	anchor_left = 0.0
@@ -66,6 +69,7 @@ func _set_full_rect() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
 
+## 创建仓库背景
 func _build_background() -> void:
 	"""创建仓库背景"""
 	var bg := ColorRect.new()
@@ -78,6 +82,7 @@ func _build_background() -> void:
 	add_child(bg)
 
 
+## 创建冒险小队主布局
 func _build_layout() -> void:
 	"""创建冒险小队主布局"""
 	var margin := MarginContainer.new()
@@ -184,6 +189,7 @@ func _build_layout() -> void:
 	_update_gold_label()
 
 
+## 创建右侧详情滚动页面内容
 func _build_detail_content() -> void:
 	"""创建右侧详情滚动页面内容"""
 	var first_row := HBoxContainer.new()
@@ -275,6 +281,7 @@ func _build_detail_content() -> void:
 	controls.add_child(upgrade_button)
 
 
+## 创建卡牌和技能标签的选中样式
 func _build_styles() -> void:
 	"""创建卡牌和技能标签的选中样式"""
 	normal_card_style = StyleBoxFlat.new()
@@ -312,6 +319,7 @@ func _build_styles() -> void:
 	skill_selected_style.border_width_bottom = 2
 
 
+## 连接全局金币和角色数据变化信号
 func _connect_game_manager_signals() -> void:
 	"""连接全局金币和角色数据变化信号"""
 	if not GameManager.gold_changed.is_connected(_on_gold_changed):
@@ -320,6 +328,7 @@ func _connect_game_manager_signals() -> void:
 		GameManager.owned_characters_changed.connect(_on_owned_characters_changed)
 
 
+## 处理卡牌上的点击和拖拽滚动输入
 func _on_card_button_gui_input(event: InputEvent, index: int, button: Button) -> void:
 	"""处理卡牌上的点击和拖拽滚动输入"""
 	if not card_scroll:
@@ -331,6 +340,7 @@ func _on_card_button_gui_input(event: InputEvent, index: int, button: Button) ->
 		accept_event()
 
 
+## 计算两排横向卡牌列表内容尺寸，超出宽度交给滚动容器处理
 func _get_card_grid_size(columns: int) -> Vector2:
 	"""计算两排横向卡牌列表内容尺寸，超出宽度交给滚动容器处理"""
 	var safe_columns: int = max(1, columns)
@@ -344,6 +354,7 @@ func _get_card_grid_size(columns: int) -> Vector2:
 	)
 
 
+## 根据列表内容格高度计算单张卡牌尺寸
 func _get_card_size_for_grid_height(grid_height: float) -> Vector2:
 	"""根据列表内容格高度计算单张卡牌尺寸"""
 	var available_height: float = max(CARD_SIZE.y * 2.0 + CARD_SPACING, grid_height)
@@ -352,6 +363,7 @@ func _get_card_size_for_grid_height(grid_height: float) -> Vector2:
 	return Vector2(card_width, card_height)
 
 
+## 获取当前角色列表中应使用的单张卡牌尺寸
 func _get_current_card_size() -> Vector2:
 	"""获取当前角色列表中应使用的单张卡牌尺寸"""
 	var grid_height := CARD_SIZE.y * 2.0 + CARD_SPACING
@@ -362,6 +374,7 @@ func _get_current_card_size() -> Vector2:
 	return _get_card_size_for_grid_height(grid_height)
 
 
+## 根据卡牌尺寸计算图片框尺寸
 func _get_card_image_size(card_size: Vector2) -> Vector2:
 	"""根据卡牌尺寸计算图片框尺寸"""
 	var image_height: float = card_size.y * CARD_IMAGE_HEIGHT_RATIO
@@ -369,6 +382,7 @@ func _get_card_image_size(card_size: Vector2) -> Vector2:
 	return Vector2(max(1.0, image_width), max(1.0, image_height))
 
 
+## 刷新角色列表内容格尺寸，使其垂直撑满滚动区域
 func _update_card_grid_size() -> void:
 	"""刷新角色列表内容格尺寸，使其垂直撑满滚动区域"""
 	if not card_grid:
@@ -380,6 +394,7 @@ func _update_card_grid_size() -> void:
 	_update_all_card_layouts()
 
 
+## 根据当前列表高度刷新所有卡牌按钮尺寸
 func _update_all_card_layouts() -> void:
 	"""根据当前列表高度刷新所有卡牌按钮尺寸"""
 	if not card_grid:
@@ -389,6 +404,7 @@ func _update_all_card_layouts() -> void:
 			_update_card_button_layout(child)
 
 
+## 根据当前card_grid高度设置单张卡牌按钮和图片框尺寸
 func _update_card_button_layout(button: Button) -> void:
 	"""根据当前card_grid高度设置单张卡牌按钮和图片框尺寸"""
 	var card_size: Vector2 = _get_current_card_size()
@@ -408,6 +424,7 @@ func _update_card_button_layout(button: Button) -> void:
 		label.position = Vector2(0.0, label_top)
 
 
+## 刷新玩家持有角色卡牌列表
 func _refresh_cards() -> void:
 	"""刷新玩家持有角色卡牌列表"""
 	for child in card_grid.get_children():
@@ -434,6 +451,7 @@ func _refresh_cards() -> void:
 	call_deferred("_update_card_grid_size")
 
 
+## 创建单张冒险小队卡牌
 func _create_character_card(index: int, ct: ClassTemplate, level: int) -> Button:
 	"""创建单张冒险小队卡牌"""
 	var button := Button.new()
@@ -464,6 +482,7 @@ func _create_character_card(index: int, ct: ClassTemplate, level: int) -> Button
 	return button
 
 
+## 选中仓库中的一张角色卡牌并打开右侧详情
 func _select_card(index: int, button: Button) -> void:
 	"""选中仓库中的一张角色卡牌并打开右侧详情"""
 	if selected_card_button:
@@ -477,6 +496,7 @@ func _select_card(index: int, button: Button) -> void:
 	_refresh_detail()
 
 
+## 刷新右侧角色详情和升级目标
 func _refresh_detail() -> void:
 	"""刷新右侧角色详情和升级目标"""
 	if selected_index < 0 or selected_index >= GameManager.owned_characters.size():
@@ -491,6 +511,7 @@ func _refresh_detail() -> void:
 	_update_upgrade_controls()
 
 
+## 刷新技能色块标签和默认技能说明
 func _refresh_skill_tabs(ct: ClassTemplate) -> void:
 	"""刷新技能色块标签和默认技能说明"""
 	for child in skill_tab_box.get_children():
@@ -513,6 +534,7 @@ func _refresh_skill_tabs(ct: ClassTemplate) -> void:
 			_select_skill(skill_id, button, i)
 
 
+## 选中一个技能标签并展示技能文本
 func _select_skill(skill_id: String, button: Button, index: int) -> void:
 	"""选中一个技能标签并展示技能文本"""
 	if selected_skill_button:
@@ -542,6 +564,7 @@ func _select_skill(skill_id: String, button: Button, index: int) -> void:
 		skill_detail.text = "技能名称: 待定\n效果: 文字占位"
 
 
+## 通过左右三角按钮调整目标升级等级
 func _change_target_level(delta: int) -> void:
 	"""通过左右三角按钮调整目标升级等级"""
 	if selected_index < 0 or selected_index >= GameManager.owned_characters.size():
@@ -551,6 +574,7 @@ func _change_target_level(delta: int) -> void:
 	_update_upgrade_controls()
 
 
+## 处理目标等级滑动轮盘的鼠标拖动
 func _on_level_wheel_gui_input(event: InputEvent) -> void:
 	"""处理目标等级滑动轮盘的鼠标拖动"""
 	if selected_index < 0 or selected_index >= GameManager.owned_characters.size():
@@ -578,6 +602,7 @@ func _on_level_wheel_gui_input(event: InputEvent) -> void:
 		accept_event()
 
 
+## 刷新目标等级文本和升级按钮状态
 func _update_upgrade_controls() -> void:
 	"""刷新目标等级文本和升级按钮状态"""
 	if selected_index < 0 or selected_index >= GameManager.owned_characters.size():
@@ -590,6 +615,7 @@ func _update_upgrade_controls() -> void:
 	upgrade_button.disabled = cost <= 0 or GameManager.gold < cost
 
 
+## 点击升级按钮后将角色升到目标等级
 func _on_upgrade_pressed() -> void:
 	"""点击升级按钮后将角色升到目标等级"""
 	if selected_index < 0:
@@ -599,23 +625,27 @@ func _on_upgrade_pressed() -> void:
 		_refresh_detail()
 
 
+## 金币变化时刷新仓库显示
 func _on_gold_changed(_gold: int) -> void:
 	"""金币变化时刷新仓库显示"""
 	_update_gold_label()
 	_update_upgrade_controls()
 
 
+## 持有角色变化时刷新仓库卡牌
 func _on_owned_characters_changed(_characters: Array) -> void:
 	"""持有角色变化时刷新仓库卡牌"""
 	_refresh_cards()
 
 
+## 刷新金币文本
 func _update_gold_label() -> void:
 	"""刷新金币文本"""
 	if gold_label:
 		gold_label.text = "金币: %d" % GameManager.gold
 
 
+## 更新角色卡牌选中状态
 func _apply_card_selected(button: Button, selected: bool) -> void:
 	"""更新角色卡牌选中状态"""
 	var style := selected_card_style if selected else normal_card_style
@@ -625,6 +655,7 @@ func _apply_card_selected(button: Button, selected: bool) -> void:
 	button.add_theme_stylebox_override("focus", style if selected else StyleBoxEmpty.new())
 
 
+## 格式化角色职业定义和当前等级信息
 func _format_class_info(ct: ClassTemplate, level: int) -> String:
 	"""格式化角色职业定义和当前等级信息"""
 	var _scale := 1.0 + float(level - 1) * 0.05
@@ -658,6 +689,7 @@ func _format_class_info(ct: ClassTemplate, level: int) -> String:
 	])
 
 
+## 按技能序号生成色块标签样式
 func _skill_style_for_index(index: int, selected: bool) -> StyleBoxFlat:
 	"""按技能序号生成色块标签样式"""
 	var colors := [
@@ -671,10 +703,12 @@ func _skill_style_for_index(index: int, selected: bool) -> StyleBoxFlat:
 	return style
 
 
+## 处理职业color逻辑。
 func _class_color(class_id: String) -> Color:
 	return ClassDefinitions.get_template_color(class_id)
 
 
+## 处理攻击modename逻辑。
 func _attack_mode_name(value: int) -> String:
 	match value:
 		ClassTemplate.AttackMode.MELEE_SINGLE:
@@ -691,6 +725,7 @@ func _attack_mode_name(value: int) -> String:
 			return "未知"
 
 
+## 处理目标typename逻辑。
 func _target_type_name(value: int) -> String:
 	match value:
 		ClassTemplate.TargetType.GROUND:
@@ -703,6 +738,7 @@ func _target_type_name(value: int) -> String:
 			return "未知"
 
 
+## 处理范围形状name逻辑。
 func _range_shape_name(value: int) -> String:
 	match value:
 		ClassTemplate.RangeShape.CIRCLE:
@@ -719,6 +755,7 @@ func _range_shape_name(value: int) -> String:
 			return "未知"
 
 
+## 处理目标priorityname逻辑。
 func _target_priority_name(value: int) -> String:
 	match value:
 		ClassTemplate.TargetPriority.NEAREST:
@@ -735,19 +772,23 @@ func _target_priority_name(value: int) -> String:
 			return "未知"
 
 
+## 处理bool文本逻辑。
 func _bool_text(value: bool) -> String:
 	return "是" if value else "否"
 
 
+## 处理array文本逻辑。
 func _array_text(values: Array) -> String:
 	return "无" if values.is_empty() else ", ".join(values)
 
 
+## 设置返回按钮回调，用于关闭游戏内仓库覆盖层
 func set_return_callback(callback: Callable) -> void:
 	"""设置返回按钮回调，用于关闭游戏内仓库覆盖层"""
 	return_callback = callback
 
 
+## 关闭冒险小队界面
 func _on_back_pressed() -> void:
 	"""关闭冒险小队界面"""
 	if return_callback.is_valid():

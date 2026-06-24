@@ -33,11 +33,13 @@ var enemy_specs: Array = [
 @onready var grid: GridSystem = $"../GridSystem"
 
 
+## 测试场景启动时自动创建默认对战双方
 func _ready() -> void:
 	"""测试场景启动时自动创建默认对战双方"""
 	call_deferred("restart_test")
 
 
+## 清空当前场面并按配置重新开始测试
 func restart_test() -> void:
 	"""清空当前场面并按配置重新开始测试"""
 	_prepare_test_battle()
@@ -46,16 +48,19 @@ func restart_test() -> void:
 	_start_unit_ai()
 
 
+## 设置玩家角色测试配置
 func set_hero_specs(specs: Array) -> void:
 	"""设置玩家角色测试配置"""
 	hero_specs = specs.duplicate(true)
 
 
+## 设置敌人测试配置
 func set_enemy_specs(specs: Array) -> void:
 	"""设置敌人测试配置"""
 	enemy_specs = specs.duplicate(true)
 
 
+## 通过代码放置一个玩家角色
 func spawn_hero(class_id: String, level: int, grid_pos: Vector2i) -> HeroUnit:
 	"""通过代码放置一个玩家角色"""
 	if not grid:
@@ -75,6 +80,7 @@ func spawn_hero(class_id: String, level: int, grid_pos: Vector2i) -> HeroUnit:
 	return hero
 
 
+## 通过代码放置一个敌人
 func spawn_enemy(template: Dictionary, grid_pos: Vector2i) -> EnemyUnit:
 	"""通过代码放置一个敌人"""
 	if not grid:
@@ -92,6 +98,7 @@ func spawn_enemy(template: Dictionary, grid_pos: Vector2i) -> EnemyUnit:
 	return enemy
 
 
+## 重置战斗全局状态，避免测试场景受到肉鸽流程影响
 func _prepare_test_battle() -> void:
 	"""重置战斗全局状态，避免测试场景受到肉鸽流程影响"""
 	BattleManager.state = BattleManager.BattleState.IN_PROGRESS
@@ -106,6 +113,7 @@ func _prepare_test_battle() -> void:
 		SynergyManager.recalculate()
 
 
+## 清空网格中的旧单位
 func _clear_grid_units() -> void:
 	"""清空网格中的旧单位"""
 	if not grid:
@@ -120,6 +128,7 @@ func _clear_grid_units() -> void:
 		grid.clear_move_reservations()
 
 
+## 按测试配置批量放置双方单位
 func _place_configured_units() -> void:
 	"""按测试配置批量放置双方单位"""
 	for spec in hero_specs:
@@ -135,6 +144,7 @@ func _place_configured_units() -> void:
 		spawn_enemy(template, grid_pos)
 
 
+## 确保测试开始后双方单位都进入自动AI
 func _start_unit_ai() -> void:
 	"""确保测试开始后双方单位都进入自动AI"""
 	for unit in BattleManager.player_units:
@@ -145,6 +155,7 @@ func _start_unit_ai() -> void:
 			unit.activate_ai()
 
 
+## 默认玩家测试位置：地图左侧中央
 func _default_hero_pos() -> Vector2i:
 	"""默认玩家测试位置：地图左侧中央"""
 	if not grid:
@@ -152,6 +163,7 @@ func _default_hero_pos() -> Vector2i:
 	return Vector2i(4, _center_deploy_row())
 
 
+## 默认敌人测试位置：地图右侧中央
 func _default_enemy_pos() -> Vector2i:
 	"""默认敌人测试位置：地图右侧中央"""
 	if not grid:
@@ -159,6 +171,7 @@ func _default_enemy_pos() -> Vector2i:
 	return Vector2i(grid.grid_width - 5, _center_deploy_row())
 
 
+## 获取可部署区域的中央行
 func _center_deploy_row() -> int:
 	"""获取可部署区域的中央行"""
 	return int(round((grid.deploy_rows.x + grid.deploy_rows.y) * 0.5))

@@ -11,11 +11,13 @@ var run_card_data: Dictionary = {}
 @export var hero_color: Color = Color(0.3, 0.6, 1.0)
 
 
+## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
 	team = "player"
 	super._ready()
 
 
+## 初始化单位或组件数据。
 func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 	super.setup(class_data, lvl)
 	deploy_cost = class_data.deploy_cost
@@ -35,6 +37,7 @@ func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 			activate_ai()
 
 
+## 处理未被界面消费的输入事件。
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_selected or not is_alive:
 		return
@@ -60,16 +63,19 @@ func _unhandled_input(event: InputEvent) -> void:
 			retreat()
 
 
+## 切换姿态。
 func toggle_stance() -> void:
 	super.toggle_stance()
 	Log.d(M, "[%s] 切换姿态: %s" % [unit_name, "驻扎" if stance == Stance.STATIONED else "行进"])
 
 
+## 标记英雄的部署卡牌和格子。
 func mark_deployed(card_data: Dictionary, grid_pos: Vector2i) -> void:
 	run_card_data = card_data.duplicate(true)
 	deployed_grid_position = grid_pos
 
 
+## 准备单位进入下一回合。
 func prepare_for_next_round() -> void:
 	target = null
 	attack_cooldown = 0.0
@@ -80,6 +86,7 @@ func prepare_for_next_round() -> void:
 		ai_controller.reset_ai_state()
 
 
+## 撤回已部署英雄。
 func retreat() -> void:
 	if not is_alive:
 		return

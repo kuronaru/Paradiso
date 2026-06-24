@@ -25,6 +25,7 @@ var drag_over_grid: bool = false
 @onready var grid: GridSystem = null
 
 
+## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
 	add_to_group("deployment_system")
 	grid = BattleManager.grid
@@ -33,12 +34,14 @@ func _ready() -> void:
 		grid.unit_clicked.connect(_on_unit_clicked)
 
 
+## 拖拽中持续刷新预览位置
 func _process(_delta: float) -> void:
 	"""拖拽中持续刷新预览位置"""
 	if is_dragging:
 		_update_drag_preview()
 
 
+## 处理拖拽释放与右键取消
 func _input(event: InputEvent) -> void:
 	"""处理拖拽释放与右键取消"""
 	if not is_dragging:
@@ -53,6 +56,7 @@ func _input(event: InputEvent) -> void:
 		_update_drag_preview()
 
 
+## 初始化手牌（从肉鸽队伍数据）
 func setup_hand(party_data: Array) -> void:
 	"""初始化手牌（从肉鸽队伍数据）"""
 	selected_card_index = -1
@@ -67,12 +71,14 @@ func setup_hand(party_data: Array) -> void:
 	hand_updated.emit(hand_cards)
 
 
+## 检查是否可以部署指定职业
 func can_deploy_card(class_id: String) -> bool:
 	"""检查是否可以部署指定职业"""
 	var ct := ClassDefinitions.get_template(class_id)
 	return ResourceManager.can_afford(_get_deploy_cost(ct))
 
 
+## 检查当前战斗阶段是否允许部署
 func can_deploy_now() -> bool:
 	"""检查当前战斗阶段是否允许部署"""
 	return BattleManager.state in [
@@ -82,6 +88,7 @@ func can_deploy_now() -> bool:
 	]
 
 
+## 获取deployed数量。
 func get_deployed_count() -> int:
 	var count := 0
 	for unit in BattleManager.player_units:
@@ -90,10 +97,12 @@ func get_deployed_count() -> int:
 	return count
 
 
+## 判断是否可以deploymore。
 func can_deploy_more() -> bool:
 	return get_deployed_count() < GameManager.ROGUELIKE_MAX_DEPLOYED_UNITS
 
 
+## 开始拖拽手牌，将卡牌从手牌队列中临时移除
 func begin_drag(card_index: int) -> bool:
 	"""开始拖拽手牌，将卡牌从手牌队列中临时移除"""
 	if card_index < 0 or card_index >= hand_cards.size():
@@ -123,6 +132,7 @@ func begin_drag(card_index: int) -> bool:
 	return true
 
 
+## 高亮选中一张手牌，用于随后点击网格部署
 func select_card(card_index: int) -> bool:
 	"""高亮选中一张手牌，用于随后点击网格部署"""
 	if card_index < 0 or card_index >= hand_cards.size():
@@ -136,11 +146,13 @@ func select_card(card_index: int) -> bool:
 	return true
 
 
+## 清除当前高亮选中的手牌
 func clear_selected_card() -> void:
 	"""清除当前高亮选中的手牌"""
 	selected_card_index = -1
 
 
+## 取消拖拽，将卡牌放回原来的手牌位置
 func cancel_drag() -> void:
 	"""取消拖拽，将卡牌放回原来的手牌位置"""
 	if not is_dragging:
@@ -150,6 +162,7 @@ func cancel_drag() -> void:
 	drag_ended.emit()
 
 
+## 部署手牌到网格
 func deploy_card(card_index: int, grid_pos: Vector2i) -> bool:
 	"""部署手牌到网格"""
 	if card_index < 0 or card_index >= hand_cards.size():
@@ -168,6 +181,7 @@ func deploy_card(card_index: int, grid_pos: Vector2i) -> bool:
 	return true
 
 
+## 根据卡牌数据创建角色并放置到网格
 func _deploy_card_data(card_data: Dictionary, grid_pos: Vector2i) -> bool:
 	"""根据卡牌数据创建角色并放置到网格"""
 	if not grid:
@@ -216,12 +230,14 @@ func _deploy_card_data(card_data: Dictionary, grid_pos: Vector2i) -> bool:
 	return true
 
 
+## 获取deploy消耗。
 func _get_deploy_cost(ct: ClassTemplate) -> int:
 	if SynergyManager and SynergyManager.has_method("get_discounted_deploy_cost"):
 		return SynergyManager.get_discounted_deploy_cost(ct.deploy_cost)
 	return ct.deploy_cost
 
 
+## 点击格子选中玩家单位
 func select_unit_at(grid_pos: Vector2i) -> void:
 	"""点击格子选中玩家单位"""
 	if not grid:
@@ -240,6 +256,7 @@ func select_unit_at(grid_pos: Vector2i) -> void:
 			unit_selected.emit(unit)
 
 
+## 战场单位点击处理；不依赖网格坐标
 func _on_unit_clicked(unit: Node) -> void:
 	"""战场单位点击处理；不依赖网格坐标"""
 	var unit_valid := is_instance_valid(unit)
@@ -264,6 +281,7 @@ func _on_unit_clicked(unit: Node) -> void:
 		Log.d(M, "战场单位点击未选中角色: 角色已死亡 name=%s" % hero.unit_name)
 
 
+## 网格点击处理
 func _on_cell_clicked(grid_pos: Vector2i) -> void:
 	"""网格点击处理"""
 	if is_dragging:
@@ -286,11 +304,13 @@ func _on_cell_clicked(grid_pos: Vector2i) -> void:
 		select_unit_at(grid_pos)
 
 
+## 切换选中姿态。
 func toggle_selected_stance() -> void:
 	if selected_unit and is_instance_valid(selected_unit):
 		selected_unit.toggle_stance()
 
 
+## 使用选中技能。
 func use_selected_skill(skill_index: int) -> void:
 	if selected_unit and is_instance_valid(selected_unit):
 		var skills: Array = selected_unit.class_template.skill_ids
@@ -298,6 +318,7 @@ func use_selected_skill(skill_index: int) -> void:
 			selected_unit.use_skill(skills[skill_index])
 
 
+## 处理retreat选中逻辑。
 func retreat_selected() -> void:
 	if selected_unit and is_instance_valid(selected_unit):
 		if GameManager.is_roguelike_run and hand_cards.size() >= GameManager.ROGUELIKE_MAX_HAND_CARDS:
@@ -315,6 +336,7 @@ func retreat_selected() -> void:
 		unit_deselected.emit()
 
 
+## 处理卡牌数据单位逻辑。
 func _card_data_from_unit(unit: HeroUnit) -> Dictionary:
 	if not unit:
 		return {}
@@ -329,6 +351,7 @@ func _card_data_from_unit(unit: HeroUnit) -> Dictionary:
 	return {}
 
 
+## 根据鼠标当前位置完成拖拽：网格内部署，手牌区或其他区域取消
 func _finish_drag() -> void:
 	"""根据鼠标当前位置完成拖拽：网格内部署，手牌区或其他区域取消"""
 	if drag_over_grid:
@@ -337,6 +360,7 @@ func _finish_drag() -> void:
 		cancel_drag()
 
 
+## 在指定网格位置结束拖拽并尝试部署
 func _finish_drag_at(grid_pos: Vector2i) -> void:
 	"""在指定网格位置结束拖拽并尝试部署"""
 	if not is_dragging:
@@ -349,6 +373,7 @@ func _finish_drag_at(grid_pos: Vector2i) -> void:
 	drag_ended.emit()
 
 
+## 将正在拖拽的卡牌恢复到原手牌位置
 func _restore_dragged_card() -> void:
 	"""将正在拖拽的卡牌恢复到原手牌位置"""
 	if drag_card_data.is_empty():
@@ -359,6 +384,7 @@ func _restore_dragged_card() -> void:
 	hand_updated.emit(hand_cards)
 
 
+## 清理拖拽状态和预览节点
 func _clear_drag_state() -> void:
 	"""清理拖拽状态和预览节点"""
 	is_dragging = false
@@ -372,6 +398,7 @@ func _clear_drag_state() -> void:
 	drag_preview = null
 
 
+## 根据鼠标区域切换卡牌预览或战斗形象预览
 func _update_drag_preview() -> void:
 	"""根据鼠标区域切换卡牌预览或战斗形象预览"""
 	if not is_dragging or drag_card_data.is_empty():
@@ -396,6 +423,7 @@ func _update_drag_preview() -> void:
 		_show_card_drag_preview(mouse_pos)
 
 
+## 显示跟随鼠标移动的卡牌预览
 func _show_card_drag_preview(mouse_pos: Vector2) -> void:
 	"""显示跟随鼠标移动的卡牌预览"""
 	if drag_preview_mode != "card":
@@ -405,6 +433,7 @@ func _show_card_drag_preview(mouse_pos: Vector2) -> void:
 	drag_preview.modulate = Color.WHITE
 
 
+## 显示吸附在网格中心的角色色块预览
 func _show_unit_drag_preview(grid_pos: Vector2i) -> void:
 	"""显示吸附在网格中心的角色色块预览"""
 	if drag_preview_mode != "unit":
@@ -416,6 +445,7 @@ func _show_unit_drag_preview(grid_pos: Vector2i) -> void:
 	drag_preview.modulate = Color(1, 1, 1, 0.85) if grid.can_place_at(grid_pos) else Color(1, 0.35, 0.35, 0.75)
 
 
+## 替换当前拖拽预览节点
 func _replace_drag_preview(new_preview: Control) -> void:
 	"""替换当前拖拽预览节点"""
 	if drag_preview and is_instance_valid(drag_preview):
@@ -426,6 +456,7 @@ func _replace_drag_preview(new_preview: Control) -> void:
 	_get_drag_preview_parent().add_child(drag_preview)
 
 
+## 创建卡牌形态的拖拽预览
 func _create_card_preview() -> Control:
 	"""创建卡牌形态的拖拽预览"""
 	var size := _get_card_preview_size()
@@ -450,6 +481,7 @@ func _create_card_preview() -> Control:
 	return card
 
 
+## 创建战斗形象形态的拖拽预览（当前以色块占位）
 func _create_unit_preview() -> Control:
 	"""创建战斗形象形态的拖拽预览（当前以色块占位）"""
 	var size := Vector2(48, 48)
@@ -465,6 +497,7 @@ func _create_unit_preview() -> Control:
 	return root
 
 
+## 获取拖拽预览挂载节点，优先放到UI画布上
 func _get_drag_preview_parent() -> Node:
 	"""获取拖拽预览挂载节点，优先放到UI画布上"""
 	var tree := get_tree()
@@ -475,6 +508,7 @@ func _get_drag_preview_parent() -> Node:
 	return get_tree().root
 
 
+## 递归查找指定名称的节点
 func _find_node_by_name(node: Node, target_name: String) -> Node:
 	"""递归查找指定名称的节点"""
 	if node.name == target_name:
@@ -486,6 +520,7 @@ func _find_node_by_name(node: Node, target_name: String) -> Node:
 	return null
 
 
+## 获取卡牌预览尺寸，默认与手牌卡牌一致
 func _get_card_preview_size() -> Vector2:
 	"""获取卡牌预览尺寸，默认与手牌卡牌一致"""
 	var bar := _get_deployment_bar()
@@ -494,12 +529,14 @@ func _get_card_preview_size() -> Vector2:
 	return Vector2(80, 100)
 
 
+## 检查鼠标是否位于底部手牌区域
 func _is_mouse_over_hand_area(mouse_pos: Vector2) -> bool:
 	"""检查鼠标是否位于底部手牌区域"""
 	var bar := _get_deployment_bar()
 	return bar != null and bar.is_visible_in_tree() and bar.get_global_rect().has_point(mouse_pos)
 
 
+## 获取手牌栏节点
 func _get_deployment_bar() -> DeploymentBar:
 	"""获取手牌栏节点"""
 	var tree := get_tree()
@@ -511,6 +548,7 @@ func _get_deployment_bar() -> DeploymentBar:
 	return null
 
 
+## 获取鼠标所在网格坐标；不在网格内时返回null
 func _get_mouse_grid_position():
 	"""获取鼠标所在网格坐标；不在网格内时返回null"""
 	if not grid:
@@ -528,6 +566,7 @@ func _get_mouse_grid_position():
 	return grid.world_to_grid(local_pos)
 
 
+## 将网格中心点转换为屏幕坐标，用于UI预览定位
 func _grid_cell_to_screen(grid_pos: Vector2i) -> Vector2:
 	"""将网格中心点转换为屏幕坐标，用于UI预览定位"""
 	var local_center := grid.grid_to_world(grid_pos)

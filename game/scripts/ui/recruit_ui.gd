@@ -31,6 +31,7 @@ var last_prepare_layout: bool = true
 var cached_viewport_size: Vector2 = Vector2.ZERO
 
 
+## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var tree := get_tree()
@@ -50,6 +51,7 @@ func _ready() -> void:
 	hide()
 
 
+## 初始化ui。
 func _setup_ui() -> void:
 	cached_viewport_size = get_viewport_rect().size
 	size = Vector2(cached_viewport_size.x - PANEL_MARGIN * 2.0, PANEL_HEIGHT)
@@ -150,6 +152,7 @@ func _setup_ui() -> void:
 	add_child(skip_btn)
 
 
+## 处理show逻辑。
 func _show() -> void:
 	_refresh()
 	show()
@@ -157,6 +160,7 @@ func _show() -> void:
 	_apply_stage_layout(false)
 
 
+## 处理refresh逻辑。
 func _refresh() -> void:
 	if not roguelike_manager:
 		return
@@ -208,6 +212,7 @@ func _refresh() -> void:
 			option_buttons[i].visible = true
 
 
+## 获取羁绊文本行。
 func _get_synergy_line(ct: ClassTemplate) -> String:
 	var tags: Array[String] = []
 	if ct.class_group != "":
@@ -219,10 +224,12 @@ func _get_synergy_line(ct: ClassTemplate) -> String:
 	return "羁绊: %s" % " / ".join(tags)
 
 
+## 处理main分组标签逻辑。
 func _main_group_label(class_group: String) -> String:
 	return ClassDefinitions.get_class_group_label(class_group)
 
 
+## 处理阵营标签逻辑。
 func _alignment_label(tag: String) -> String:
 	match tag:
 		"LAWFUL":
@@ -238,6 +245,7 @@ func _alignment_label(tag: String) -> String:
 	return tag
 
 
+## 处理onpurchase回调。
 func _on_purchase(index: int) -> void:
 	if roguelike_manager:
 		if roguelike_manager.purchase_recruit(index):
@@ -245,22 +253,26 @@ func _on_purchase(index: int) -> void:
 			recruit_purchased.emit()
 
 
+## 处理pressed回调。
 func _on_refresh_pressed() -> void:
 	if roguelike_manager and roguelike_manager.refresh_recruit_options():
 		_refresh()
 
 
+## 处理pressed回调。
 func _on_upgrade_pressed() -> void:
 	if roguelike_manager and roguelike_manager.upgrade_tavern():
 		_refresh()
 
 
+## 处理skip回调。
 func _on_skip() -> void:
 	if roguelike_manager:
 		roguelike_manager.skip_recruit()
 	recruit_skipped.emit()
 
 
+## 获取deployed数量。
 func _get_deployed_count() -> int:
 	var tree := get_tree()
 	if not tree:
@@ -271,6 +283,7 @@ func _get_deployed_count() -> int:
 	return 0
 
 
+## 每帧更新运行状态。
 func _process(_delta: float) -> void:
 	if not visible:
 		return
@@ -283,10 +296,12 @@ func _process(_delta: float) -> void:
 		_apply_stage_layout(true)
 
 
+## 判断布局状态。
 func _is_prepare_layout() -> bool:
 	return GameManager.is_roguelike_run and BattleManager.state == BattleManager.BattleState.PREPARING
 
 
+## 应用阶段布局。
 func _apply_stage_layout(animated: bool) -> void:
 	var target_y := _prepare_y() if _is_prepare_layout() else _hidden_y()
 	if layout_tween and layout_tween.is_valid():
@@ -298,14 +313,17 @@ func _apply_stage_layout(animated: bool) -> void:
 		position.y = target_y
 
 
+## 准备Y 坐标。
 func _prepare_y() -> float:
 	return get_viewport_rect().size.y - PANEL_HEIGHT - 8.0
 
 
+## 处理hiddenY 坐标逻辑。
 func _hidden_y() -> float:
 	return get_viewport_rect().size.y + 12.0
 
 
+## 按视口尺寸重建界面布局。
 func _rebuild_for_viewport(viewport_size: Vector2) -> void:
 	cached_viewport_size = viewport_size
 	size = Vector2(viewport_size.x - PANEL_MARGIN * 2.0, PANEL_HEIGHT)
@@ -314,18 +332,22 @@ func _rebuild_for_viewport(viewport_size: Vector2) -> void:
 	_refresh()
 
 
+## 处理队伍变化回调。
 func _on_party_changed(_party: Array) -> void:
 	_refresh()
 
 
+## 处理肉鸽流程金币变化回调。
 func _on_run_gold_changed(_gold: int) -> void:
 	_refresh()
 
 
+## 处理肉鸽流程回合变化回调。
 func _on_run_round_changed(_round: int, _max_rounds: int) -> void:
 	_refresh()
 
 
+## 处理fill父节点逻辑。
 func _fill_parent(control: Control) -> void:
 	control.anchor_left = 0.0
 	control.anchor_top = 0.0

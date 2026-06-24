@@ -13,6 +13,7 @@ var settings_overlay: SettingsUI = null
 var primary_game_button: Button = null
 
 
+## 创建开始界面UI
 func _ready() -> void:
 	"""创建开始界面UI"""
 	_set_full_rect()
@@ -20,6 +21,7 @@ func _ready() -> void:
 	_build_menu()
 
 
+## 让开始界面铺满窗口
 func _set_full_rect() -> void:
 	"""让开始界面铺满窗口"""
 	anchor_left = 0.0
@@ -32,6 +34,7 @@ func _set_full_rect() -> void:
 	offset_bottom = 0.0
 
 
+## 创建深色背景
 func _build_background() -> void:
 	"""创建深色背景"""
 	var bg := ColorRect.new()
@@ -44,6 +47,7 @@ func _build_background() -> void:
 	add_child(bg)
 
 
+## 创建居中的标题与按钮列表
 func _build_menu() -> void:
 	"""创建居中的标题与按钮列表"""
 	var center := CenterContainer.new()
@@ -82,6 +86,7 @@ func _build_menu() -> void:
 	menu.add_child(_create_menu_button("退出游戏", _on_quit_pressed))
 
 
+## 创建统一样式的菜单按钮
 func _create_menu_button(text: String, callback: Callable) -> Button:
 	"""创建统一样式的菜单按钮"""
 	var button := Button.new()
@@ -93,17 +98,20 @@ func _create_menu_button(text: String, callback: Callable) -> Button:
 	return button
 
 
+## 获取主操作按钮显示文本
 func _get_primary_game_button_text() -> String:
 	"""获取主操作按钮显示文本"""
 	return "继续游戏" if GameManager.has_any_save_slot() else "开始游戏"
 
 
+## 刷新主操作按钮显示状态
 func _refresh_primary_game_button() -> void:
 	"""刷新主操作按钮显示状态"""
 	if primary_game_button:
 		primary_game_button.text = _get_primary_game_button_text()
 
 
+## 根据存档状态开始新游戏或继续已有游戏
 func _on_primary_game_pressed() -> void:
 	"""根据存档状态开始新游戏或继续已有游戏"""
 	if GameManager.has_save_slot(GameManager.current_save_id):
@@ -113,16 +121,19 @@ func _on_primary_game_pressed() -> void:
 	get_tree().change_scene_to_file(MAIN_SCENE_PATH)
 
 
+## 打开存档选择界面
 func _on_load_pressed() -> void:
 	"""打开存档选择界面"""
 	_open_load_overlay()
 
 
+## 进入角色/敌人图鉴界面
 func _on_catalog_pressed() -> void:
 	"""进入角色/敌人图鉴界面"""
 	get_tree().change_scene_to_file(ENCYCLOPEDIA_SCENE_PATH)
 
 
+## 打开局外冒险小队养成界面
 func _on_storage_pressed() -> void:
 	"""打开局外冒险小队养成界面"""
 	if storage_overlay and is_instance_valid(storage_overlay):
@@ -134,6 +145,7 @@ func _on_storage_pressed() -> void:
 	add_child(storage_overlay)
 
 
+## 关闭冒险小队养成界面
 func _close_storage_overlay() -> void:
 	"""关闭冒险小队养成界面"""
 	if storage_overlay and is_instance_valid(storage_overlay):
@@ -141,6 +153,7 @@ func _close_storage_overlay() -> void:
 	storage_overlay = null
 
 
+## 打开三槽位存档选择界面
 func _open_load_overlay() -> void:
 	"""打开三槽位存档选择界面"""
 	if load_overlay and is_instance_valid(load_overlay):
@@ -214,6 +227,7 @@ func _open_load_overlay() -> void:
 		slot_box.add_child(_create_save_slot_button(save_id))
 
 
+## 创建单个存档槽位按钮
 func _create_save_slot_button(save_id: String) -> Button:
 	"""创建单个存档槽位按钮"""
 	var summary := GameManager.get_save_slot_summary(save_id)
@@ -240,6 +254,7 @@ func _create_save_slot_button(save_id: String) -> Button:
 	return button
 
 
+## 选择一个存档槽位并返回主菜单
 func _select_save_slot(save_id: String) -> void:
 	"""选择一个存档槽位并返回主菜单"""
 	GameManager.switch_save_slot(save_id)
@@ -247,6 +262,7 @@ func _select_save_slot(save_id: String) -> void:
 	_close_load_overlay()
 
 
+## 关闭存档选择界面并返回主菜单
 func _close_load_overlay() -> void:
 	"""关闭存档选择界面并返回主菜单"""
 	if load_overlay and is_instance_valid(load_overlay):
@@ -254,11 +270,13 @@ func _close_load_overlay() -> void:
 	load_overlay = null
 
 
+## 打开游戏设置界面
 func _on_settings_pressed() -> void:
 	"""打开游戏设置界面"""
 	_open_settings_overlay()
 
 
+## 在主菜单中打开游戏设置覆盖层
 func _open_settings_overlay() -> void:
 	"""在主菜单中打开游戏设置覆盖层"""
 	if settings_overlay and is_instance_valid(settings_overlay):
@@ -275,6 +293,7 @@ func _open_settings_overlay() -> void:
 	add_child(settings_overlay)
 
 
+## 关闭游戏设置界面并返回主菜单
 func _close_settings_overlay() -> void:
 	"""关闭游戏设置界面并返回主菜单"""
 	if settings_overlay and is_instance_valid(settings_overlay):
@@ -282,6 +301,7 @@ func _close_settings_overlay() -> void:
 	settings_overlay = null
 
 
+## 退出游戏
 func _on_quit_pressed() -> void:
 	"""退出游戏"""
 	GameManager.save_game()

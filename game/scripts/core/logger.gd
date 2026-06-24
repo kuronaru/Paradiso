@@ -24,22 +24,27 @@ const LEVEL_NAMES: Array[String] = ["DEBUG", "INFO", "WARN", "ERROR"]
 @export var show_module: bool = true
 
 
+## 输出 debug 级别日志。
 func debug(module: String, msg: String) -> void:
 	_log(Level.DEBUG, module, msg)
 
 
+## 输出 info 级别日志。
 func info(module: String, msg: String) -> void:
 	_log(Level.INFO, module, msg)
 
 
+## 输出 warn 级别日志。
 func warn(module: String, msg: String) -> void:
 	_log(Level.WARN, module, msg)
 
 
+## 输出 error 级别日志。
 func error(module: String, msg: String) -> void:
 	_log(Level.ERROR, module, msg)
 
 
+## 按等级和模块输出日志。
 func _log(level: Level, module: String, msg: String) -> void:
 	if level < min_level:
 		return
@@ -60,24 +65,27 @@ func _log(level: Level, module: String, msg: String) -> void:
 	print(" ".join(parts))
 
 
-## 便捷：设置全局日志等级
+## 设置全局日志等级。
 func set_level(level: Level) -> void:
 	min_level = level
 	info("Log", "日志等级切换为: %s" % LEVEL_NAMES[level])
 
 
-## 便捷：临时关闭日志
+## 临时关闭日志输出。
 func silence() -> void:
 	min_level = Level.OFF
 
 
-## 便捷：恢复默认日志等级
+## 恢复默认日志等级。
 func verbose() -> void:
 	min_level = Level.DEBUG
 
 
-## 简写别名（配合 const M 使用: Log.d(M, "msg")）
+## 输出 debug 级别日志。
 func d(module: String, msg: String) -> void: debug(module, msg)
+## 输出 info 级别日志。
 func i(module: String, msg: String) -> void: info(module, msg)
+## 输出 warn 级别日志。
 func w(module: String, msg: String) -> void: warn(module, msg)
+## 输出 error 级别日志。
 func e(module: String, msg: String) -> void: error(module, msg)

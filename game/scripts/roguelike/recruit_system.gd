@@ -13,6 +13,7 @@ class RecruitOption:
 	var shop_level: int
 	var tavern_passive: String
 
+	## 初始化实例数据。
 	func _init(c_id: String, lvl: int, cst: int, s_level: int, passive: String) -> void:
 		class_id = c_id
 		job_name = ClassDefinitions.get_template(c_id).job_name
@@ -46,6 +47,7 @@ var tavern_level: int = 1
 var upgrade_discount: int = 0
 
 
+## 生成招募选项
 func generate_recruit_options(_round_number: int, _party_size: int) -> Array[RecruitOption]:
 	"""生成招募选项"""
 	current_options.clear()
@@ -70,19 +72,23 @@ func generate_recruit_options(_round_number: int, _party_size: int) -> Array[Rec
 	return current_options
 
 
+## 获取当前选项。
 func get_current_options() -> Array[RecruitOption]:
 	return current_options
 
 
+## 移除选项。
 func remove_option(index: int) -> void:
 	if index >= 0 and index < current_options.size():
 		current_options.remove_at(index)
 
 
+## 清理选项。
 func clear_options() -> void:
 	current_options.clear()
 
 
+## 重置单局酒馆状态。
 func reset_run() -> void:
 	"""重置单局酒馆状态。"""
 	tavern_level = 1
@@ -90,24 +96,29 @@ func reset_run() -> void:
 	clear_options()
 
 
+## 每经过一回合，当前升级费用减少1。
 func advance_round() -> void:
 	"""每经过一回合，当前升级费用减少1。"""
 	if tavern_level < MAX_TAVERN_LEVEL:
 		upgrade_discount += 1
 
 
+## 获取消耗。
 func get_refresh_cost() -> int:
 	return REFRESH_COST
 
 
+## 获取选项槽位数量。
 func get_option_slot_count() -> int:
 	return int(OPTION_SLOTS_BY_LEVEL.get(tavern_level, 3))
 
 
+## 判断酒馆是否已达最高等级。
 func is_max_level() -> bool:
 	return tavern_level >= MAX_TAVERN_LEVEL
 
 
+## 获取消耗。
 func get_upgrade_cost() -> int:
 	if is_max_level():
 		return 0
@@ -115,6 +126,7 @@ func get_upgrade_cost() -> int:
 	return max(MIN_UPGRADE_COST, base_cost - upgrade_discount)
 
 
+## 升级酒馆等级。
 func upgrade_tavern() -> bool:
 	if is_max_level():
 		return false
@@ -123,6 +135,7 @@ func upgrade_tavern() -> bool:
 	return true
 
 
+## 计算招募花费
 func _calculate_cost(class_id: String, level: int) -> int:
 	"""计算招募花费"""
 	var data: Dictionary = ClassDefinitions.get_tavern_data(class_id)
@@ -136,6 +149,7 @@ func _calculate_cost(class_id: String, level: int) -> int:
 			return max(6, base_cost + 4)
 
 
+## 构建可用选项池。
 func _build_available_option_pool() -> Array[Dictionary]:
 	var pool: Array[Dictionary] = []
 	for class_id in ClassDefinitions.get_all_class_ids():
@@ -158,6 +172,7 @@ func _build_available_option_pool() -> Array[Dictionary]:
 	return pool
 
 
+## 获取星级所需的酒馆等级。
 func _required_shop_level_for_star(star_level: int) -> int:
 	match clampi(star_level, 1, 3):
 		1:

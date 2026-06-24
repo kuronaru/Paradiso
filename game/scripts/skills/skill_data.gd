@@ -18,6 +18,7 @@ static var _skill_registry: Dictionary = {}
 static var _initialized: bool = false
 
 
+## 提供initregistry静态数据或工具逻辑。
 static func _init_registry() -> void:
 	if _initialized:
 		return
@@ -163,6 +164,7 @@ static func _init_registry() -> void:
 		10.0, 7, 1.7, 1.7, 0.0, 0.0, 0.0)
 
 
+## 提供添加技能静态数据或工具逻辑。
 static func _add_skill(id: String, name: String, desc: String,
 		cd: float, cost: int, dmg_mult: float, aoe: float,
 		heal: float, buff_def: float, dur: float) -> void:
@@ -180,6 +182,7 @@ static func _add_skill(id: String, name: String, desc: String,
 	_skill_registry[id] = s
 
 
+## 获取技能。
 static func get_skill(skill_id: String) -> SkillData:
 	_init_registry()
 	if _skill_registry.has(skill_id):

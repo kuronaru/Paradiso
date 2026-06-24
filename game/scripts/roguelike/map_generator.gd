@@ -18,6 +18,7 @@ const FLOOR_LAYOUTS := {
 }
 
 
+## 生成单层地图路线
 func generate_floor_map(_floor: int) -> Array:
 	"""生成单层地图路线"""
 	var layout: Array = FLOOR_LAYOUTS.get(_floor, FLOOR_LAYOUTS[1])
@@ -29,6 +30,7 @@ func generate_floor_map(_floor: int) -> Array:
 	return nodes
 
 
+## 创建单个节点数据
 func _create_node(type: String, _floor: int) -> Dictionary:
 	"""创建单个节点数据"""
 	var node := {"type": type}
@@ -51,6 +53,7 @@ func _create_node(type: String, _floor: int) -> Dictionary:
 	return node
 
 
+## 根据楼层获取敌人池
 func _get_enemy_pool_for_floor(_floor: int, is_elite: bool) -> Array:
 	"""根据楼层获取敌人池"""
 	var pool := EnemyUnit.get_enemy_pool()
@@ -76,6 +79,7 @@ func _get_enemy_pool_for_floor(_floor: int, is_elite: bool) -> Array:
 	return filtered
 
 
+## 获取Boss池
 func _get_boss_pool(_floor: int) -> Array:
 	"""获取Boss池"""
 	var pool := EnemyUnit.get_enemy_pool()

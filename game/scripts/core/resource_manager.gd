@@ -15,6 +15,7 @@ var dp_regen_timer: float = 0.0
 var dp_regen_enabled: bool = true
 
 
+## 每帧更新运行状态。
 func _process(delta: float) -> void:
 	if not dp_regen_enabled:
 		return
@@ -29,11 +30,13 @@ func _process(delta: float) -> void:
 			dp_changed.emit(current_dp, max_dp)
 
 
+## 检查是否有足够的DP
 func can_afford(cost: int) -> bool:
 	"""检查是否有足够的DP"""
 	return current_dp >= cost
 
 
+## 消耗DP，返回是否成功
 func spend(cost: int) -> bool:
 	"""消耗DP，返回是否成功"""
 	if current_dp >= cost:
@@ -43,12 +46,14 @@ func spend(cost: int) -> bool:
 	return false
 
 
+## 退还DP（撤退时）
 func refund(amount: int) -> void:
 	"""退还DP（撤退时）"""
 	current_dp = min(current_dp + amount, max_dp)
 	dp_changed.emit(current_dp, max_dp)
 
 
+## 重置DP（新战斗开始时）
 func reset_dp(initial: int = 20, max_val: int = 100) -> void:
 	"""重置DP（新战斗开始时）"""
 	current_dp = initial
@@ -59,10 +64,12 @@ func reset_dp(initial: int = 20, max_val: int = 100) -> void:
 	dp_changed.emit(current_dp, max_dp)
 
 
+## 设置regenenabled。
 func set_regen_enabled(enabled: bool) -> void:
 	dp_regen_enabled = enabled
 
 
+## 应用羁绊带来的固定资源修正
 func apply_synergy_modifiers(modifiers: Dictionary) -> void:
 	"""应用羁绊带来的固定资源修正"""
 	var max_dp_bonus := int(round(float(modifiers.get("max_dp_bonus", 0.0))))

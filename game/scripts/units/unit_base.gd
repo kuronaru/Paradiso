@@ -91,6 +91,7 @@ var attack_range_debug_ring: Line2D = null
 var attack_range_debug_ring_radius: float = -1.0
 
 
+## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
 	_setup_ground_collision()
 	_setup_visual()
@@ -101,6 +102,7 @@ func _ready() -> void:
 	_update_hp_bar(current_hp, max_hp)
 
 
+## 每帧更新运行状态。
 func _process(delta: float) -> void:
 	if not is_alive:
 		return
@@ -115,6 +117,7 @@ func _process(delta: float) -> void:
 	_update_attack_range_debug_ring()
 
 
+## 从职业模板初始化
 func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 	"""从职业模板初始化"""
 	class_template = class_data
@@ -144,6 +147,7 @@ func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 	refresh_ground_collision()
 
 
+## 敌人或测试单位直接写属性后，同步基础属性缓存
 func set_base_stats_from_current() -> void:
 	"""敌人或测试单位直接写属性后，同步基础属性缓存"""
 	base_max_hp = max_hp
@@ -157,6 +161,7 @@ func set_base_stats_from_current() -> void:
 		synergy_modifiers = _default_synergy_modifiers()
 
 
+## 应用全队羁绊数值修正
 func apply_synergy_modifiers(modifiers: Dictionary) -> void:
 	"""应用全队羁绊数值修正"""
 	if team != "player":
@@ -167,6 +172,7 @@ func apply_synergy_modifiers(modifiers: Dictionary) -> void:
 	_recalculate_stats(true)
 
 
+## 处理默认羁绊修正逻辑。
 func _default_synergy_modifiers() -> Dictionary:
 	return {
 		"max_hp_multiplier": 1.0,
@@ -187,6 +193,7 @@ func _default_synergy_modifiers() -> Dictionary:
 	}
 
 
+## 处理recalculatestats逻辑。
 func _recalculate_stats(preserve_hp_ratio: bool) -> void:
 	var old_max_hp := max_hp
 	var hp_ratio := float(current_hp) / float(max(old_max_hp, 1))
@@ -211,6 +218,7 @@ func _recalculate_stats(preserve_hp_ratio: bool) -> void:
 	hp_changed.emit(current_hp, max_hp)
 
 
+## 创建基本的占位可视化（含血条）
 func _setup_visual() -> void:
 	"""创建基本的占位可视化（含血条）"""
 	var bar_width := unit_radius * 2.0
@@ -247,12 +255,14 @@ func _setup_visual() -> void:
 	add_child(label)
 
 
+## 初始化AI。
 func _setup_ai() -> void:
 	ai_controller = UnitAI.new()
 	ai_controller.owner_unit = self
 	add_child(ai_controller)
 
 
+## 初始化地面碰撞。
 func _setup_ground_collision() -> void:
 	ground_collision_area = Area2D.new()
 	ground_collision_area.name = "GroundCollisionArea"
@@ -267,6 +277,7 @@ func _setup_ground_collision() -> void:
 	_configure_collision_layers()
 
 
+## 刷新地面碰撞。
 func refresh_ground_collision() -> void:
 	if not ground_collision_shape:
 		return
@@ -280,6 +291,7 @@ func refresh_ground_collision() -> void:
 	_update_attack_range_debug_ring(true)
 
 
+## 处理configure碰撞layers逻辑。
 func _configure_collision_layers() -> void:
 	if not ground_collision_area:
 		return
@@ -291,6 +303,7 @@ func _configure_collision_layers() -> void:
 		ground_collision_area.collision_mask = COLLISION_LAYER_PLAYER
 
 
+## 初始化碰撞调试圆环。
 func _setup_collision_debug_ring() -> void:
 	collision_debug_ring = Line2D.new()
 	collision_debug_ring.name = "CollisionDebugRing"
@@ -302,6 +315,7 @@ func _setup_collision_debug_ring() -> void:
 	_update_collision_debug_ring()
 
 
+## 更新碰撞调试圆环。
 func _update_collision_debug_ring() -> void:
 	if not collision_debug_ring:
 		return
@@ -317,12 +331,14 @@ func _update_collision_debug_ring() -> void:
 	collision_debug_ring.points = points
 
 
+## 获取碰撞调试圆环color。
 func _get_collision_debug_ring_color() -> Color:
 	if team == "player":
 		return Color(0.15, 0.85, 1.0, 0.85)
 	return Color(1.0, 0.35, 0.18, 0.85)
 
 
+## 初始化攻击范围调试圆环。
 func _setup_attack_range_debug_ring() -> void:
 	attack_range_debug_ring = Line2D.new()
 	attack_range_debug_ring.name = "AttackRangeDebugRing"
@@ -334,6 +350,7 @@ func _setup_attack_range_debug_ring() -> void:
 	_update_attack_range_debug_ring(true)
 
 
+## 更新攻击范围调试圆环。
 func _update_attack_range_debug_ring(force_rebuild: bool = false) -> void:
 	if not attack_range_debug_ring:
 		return
@@ -357,17 +374,20 @@ func _update_attack_range_debug_ring(force_rebuild: bool = false) -> void:
 	attack_range_debug_ring.points = points
 
 
+## 判断是否需要攻击范围调试圆环。
 func _should_show_attack_range_debug_ring() -> bool:
 	var grid: GridSystem = BattleManager.grid
 	return show_attack_range_debug_ring and grid != null and grid.debug_attack_ranges
 
 
+## 获取攻击范围调试圆环color。
 func _get_attack_range_debug_ring_color() -> Color:
 	if team == "player":
 		return Color(0.6, 1.0, 0.25, 0.45)
 	return Color(1.0, 0.55, 0.2, 0.45)
 
 
+## 更新血条显示
 func _update_hp_bar(_current: int, _max_hp: int) -> void:
 	"""更新血条显示"""
 	if not hp_bar_fill:
@@ -381,26 +401,31 @@ func _update_hp_bar(_current: int, _max_hp: int) -> void:
 		hp_bar_fill.color = Color(1.0, 0.2, 0.2, 0.9)
 
 
+## 获取队伍。
 func get_team() -> String:
 	return team
 
 
+## 获取碰撞radius。
 func get_collision_radius() -> float:
 	if collision_radius > 0.0:
 		return collision_radius
 	return unit_radius * 2.0 / 3.0
 
 
+## 获取攻击范围世界坐标radius。
 func get_attack_range_world_radius() -> float:
 	var grid: GridSystem = BattleManager.grid
 	var world_cell_size := grid.cell_size if grid else 64.0
 	return attack_range * world_cell_size
 
 
+## 获取地面位置。
 func get_ground_position() -> Vector2:
 	return global_position + ground_anchor_offset
 
 
+## 判断接触单位状态。
 func is_touching_unit(other: UnitBase) -> bool:
 	if not other:
 		return false
@@ -408,30 +433,36 @@ func is_touching_unit(other: UnitBase) -> bool:
 	return get_ground_position().distance_squared_to(other.get_ground_position()) <= radius_sum * radius_sum
 
 
+## 判断standing状态。
 func is_standing() -> bool:
 	return movement_state == MovementState.STANDING
 
 
+## 判断移动状态。
 func is_moving() -> bool:
 	return movement_state == MovementState.MOVING
 
 
+## 判断waiting状态。
 func is_waiting() -> bool:
 	return movement_state == MovementState.WAITING
 
 
+## 开始网格移动。
 func begin_grid_move(target_grid_pos: Vector2i) -> void:
 	movement_state = MovementState.MOVING
 	movement_origin_grid_position = grid_position
 	movement_target_grid_position = target_grid_pos
 
 
+## 开始网格wait。
 func begin_grid_wait(preferred_grid_pos: Vector2i) -> void:
 	movement_state = MovementState.WAITING
 	movement_origin_grid_position = preferred_grid_pos
 	movement_target_grid_position = preferred_grid_pos
 
 
+## 完成网格移动。
 func finish_grid_move(final_grid_pos: Vector2i) -> void:
 	movement_state = MovementState.STANDING
 	grid_position = final_grid_pos
@@ -439,6 +470,7 @@ func finish_grid_move(final_grid_pos: Vector2i) -> void:
 	movement_target_grid_position = final_grid_pos
 
 
+## 受到伤害
 func take_damage(amount: int, armor_pierce: float = 0.0) -> int:
 	"""受到伤害"""
 	var effective_defense := int(round(float(defense) * (1.0 - clampf(armor_pierce, 0.0, 0.95))))
@@ -452,6 +484,7 @@ func take_damage(amount: int, armor_pierce: float = 0.0) -> int:
 	return actual
 
 
+## 恢复生命
 func heal(amount: int) -> int:
 	"""恢复生命"""
 	var scaled_amount := int(round(float(amount) * float(synergy_modifiers.get("incoming_heal_multiplier", 1.0))))
@@ -464,6 +497,7 @@ func heal(amount: int) -> int:
 	return actual
 
 
+## 显示伤害/治疗飘字：从单位中心向上跳起后淡出
 func _show_floating_number(amount: int, text_color: Color) -> void:
 	"""显示伤害/治疗飘字：从单位中心向上跳起后淡出"""
 	if not SettingsManager.show_floating_numbers:
@@ -491,6 +525,7 @@ func _show_floating_number(amount: int, text_color: Color) -> void:
 	tween.finished.connect(label.queue_free)
 
 
+## 处理die逻辑。
 func _die() -> void:
 	is_alive = false
 	died.emit(self)
@@ -504,16 +539,19 @@ func _die() -> void:
 	timer.timeout.connect(_remove_from_grid)
 
 
+## 激活AI行为（波次开始/实时部署时调用）
 func activate_ai() -> void:
 	"""激活AI行为（波次开始/实时部署时调用）"""
 	ai_enabled = true
 
 
+## 暂停AI行为（静态部署时调用）
 func deactivate_ai() -> void:
 	"""暂停AI行为（静态部署时调用）"""
 	ai_enabled = false
 
 
+## 移除网格。
 func _remove_from_grid() -> void:
 	var g: GridSystem = BattleManager.grid
 	if g:
@@ -521,6 +559,7 @@ func _remove_from_grid() -> void:
 	queue_free()
 
 
+## 切换行进/驻扎状态
 func toggle_stance() -> void:
 	"""切换行进/驻扎状态"""
 	if stance == Stance.MARCH:
@@ -531,6 +570,7 @@ func toggle_stance() -> void:
 	stance_changed.emit(stance == Stance.STATIONED)
 
 
+## 使用技能
 func use_skill(skill_id: String) -> bool:
 	"""使用技能"""
 	var sd := SkillData.get_skill(skill_id)
@@ -547,6 +587,7 @@ func use_skill(skill_id: String) -> bool:
 	return true
 
 
+## 执行技能逻辑
 func _execute_skill(sd: SkillData) -> void:
 	"""执行技能逻辑"""
 	var grid: GridSystem = BattleManager.grid
@@ -589,10 +630,12 @@ func _execute_skill(sd: SkillData) -> void:
 	Log.i(M, "[%s] 使用了技能: %s" % [unit_name, sd.skill_name])
 
 
+## 处理敌人队伍逻辑。
 func _enemy_team() -> String:
 	return "enemy" if team == "player" else "player"
 
 
+## 执行普攻
 func perform_attack() -> void:
 	"""执行普攻"""
 	if attack_cooldown > 0:
@@ -611,6 +654,7 @@ func perform_attack() -> void:
 			_apply_life_steal(dealt)
 
 
+## 计算伤害。
 func _calculate_damage(base_amount: float, is_skill: bool) -> int:
 	var amount := base_amount * float(synergy_modifiers.get("damage_multiplier", 1.0))
 	if is_skill:
@@ -620,15 +664,18 @@ func _calculate_damage(base_amount: float, is_skill: bool) -> int:
 	return maxi(1, int(round(amount)))
 
 
+## 计算治疗。
 func _calculate_heal(base_amount: float) -> int:
 	var amount := base_amount * float(synergy_modifiers.get("heal_multiplier", 1.0))
 	return maxi(1, int(round(amount)))
 
 
+## 获取护甲穿透。
 func _get_armor_pierce() -> float:
 	return clampf(float(synergy_modifiers.get("armor_pierce", 0.0)), 0.0, 0.95)
 
 
+## 应用lifesteal。
 func _apply_life_steal(damage_dealt: int) -> void:
 	if team != "player" or damage_dealt <= 0:
 		return

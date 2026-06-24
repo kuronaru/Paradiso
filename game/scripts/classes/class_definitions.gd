@@ -458,12 +458,14 @@ const CHARACTER_DATA := {
 }
 
 
+## 提供canonicalize职业id静态数据或工具逻辑。
 static func canonicalize_class_id(class_id: String) -> String:
 	if CHARACTER_DATA.has(class_id):
 		return class_id
 	return str(LEGACY_ALIASES.get(class_id, "fighter_champion"))
 
 
+## 获取角色模板（带缓存）
 static func get_template(class_id: String) -> ClassTemplate:
 	"""获取角色模板（带缓存）"""
 	var canonical_id := canonicalize_class_id(class_id)
@@ -502,6 +504,7 @@ static func get_template(class_id: String) -> ClassTemplate:
 	return template
 
 
+## 获取酒馆招募数据。
 static func get_tavern_data(class_id: String) -> Dictionary:
 	var canonical_id := canonicalize_class_id(class_id)
 	var data: Dictionary = CHARACTER_DATA.get(canonical_id, CHARACTER_DATA["fighter_champion"])
@@ -512,10 +515,12 @@ static func get_tavern_data(class_id: String) -> Dictionary:
 	}
 
 
+## 获取全部职业ids。
 static func get_all_class_ids() -> Array[String]:
 	return CHARACTER_IDS.duplicate()
 
 
+## 随机获取count个不重复的角色模板
 static func get_random_classes(count: int, exclude: Array = []) -> Array:
 	"""随机获取count个不重复的角色模板"""
 	var pool: Array[String] = []
@@ -529,6 +534,7 @@ static func get_random_classes(count: int, exclude: Array = []) -> Array:
 	return result
 
 
+## 获取职业分组标签。
 static func get_class_group_label(class_group: String) -> String:
 	match class_group:
 		"nation_a":
@@ -546,6 +552,7 @@ static func get_class_group_label(class_group: String) -> String:
 	return class_group
 
 
+## 获取模板color。
 static func get_template_color(class_id: String) -> Color:
 	var ct := get_template(class_id)
 	match ct.class_group:
@@ -564,6 +571,7 @@ static func get_template_color(class_id: String) -> Color:
 	return Color(0.48, 0.52, 0.58, 1.0)
 
 
+## 提供stringarray静态数据或工具逻辑。
 static func _string_array(value) -> Array[String]:
 	var result: Array[String] = []
 	if value is Array:
@@ -572,6 +580,7 @@ static func _string_array(value) -> Array[String]:
 	return result
 
 
+## 提供攻击mode静态数据或工具逻辑。
 static func _attack_mode(value: String) -> int:
 	match value:
 		"ranged_single":
@@ -586,6 +595,7 @@ static func _attack_mode(value: String) -> int:
 			return ClassTemplate.AttackMode.MELEE_SINGLE
 
 
+## 提供目标type静态数据或工具逻辑。
 static func _target_type(value: String) -> int:
 	match value:
 		"air":
@@ -596,6 +606,7 @@ static func _target_type(value: String) -> int:
 			return ClassTemplate.TargetType.GROUND
 
 
+## 提供范围形状静态数据或工具逻辑。
 static func _range_shape(value: String) -> int:
 	match value:
 		"fan":
@@ -610,6 +621,7 @@ static func _range_shape(value: String) -> int:
 			return ClassTemplate.RangeShape.CIRCLE
 
 
+## 提供目标priority静态数据或工具逻辑。
 static func _target_priority(value: String) -> int:
 	match value:
 		"lowest_hp":
