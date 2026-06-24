@@ -62,9 +62,9 @@ enum RangeShape {
 @export var base_hp: int = 100
 @export var base_atk: int = 15
 @export var base_def: int = 5
-@export var attack_speed: float = 1.0      ## 每秒攻击次数
+@export var attack_speed: float = 1.0       ## 每秒攻击次数
 @export var move_speed: float = 2.0         ## 行进速度（格/秒）
-@export var collision_radius: float = 24.0  ## 地面圆形碰撞半径（像素）
+@export var collision_radius: float = 16.0  ## 地面圆形碰撞半径（像素）
 
 ## --- 状态修正 ---
 ## 驻扎状态下的属性修正

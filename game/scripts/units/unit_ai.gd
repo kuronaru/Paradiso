@@ -12,18 +12,34 @@ var path_progress: float = 0.0
 var move_target_pos: Vector2i = Vector2i.ZERO
 var move_origin_pos: Vector2i = Vector2i.ZERO
 var target_recheck_timer: float = 0.0
+var wait_retry_timer: float = 0.0
 const TARGET_RECHECK_INTERVAL: float = 1.0
+const WAIT_RETRY_INTERVAL: float = 0.35
 
 
 func reset_ai_state() -> void:
 	var grid: GridSystem = BattleManager.grid
 	if owner_unit and owner_unit.is_moving() and grid:
 		grid.cancel_unit_move(owner_unit, owner_unit.movement_origin_grid_position)
+	elif owner_unit and owner_unit.is_waiting():
+		owner_unit.finish_grid_move(owner_unit.grid_position)
 	state = "idle"
 	path.clear()
 	path_progress = 0.0
 	move_target_pos = Vector2i.ZERO
 	target_recheck_timer = 0.0
+	wait_retry_timer = 0.0
+
+
+func force_attack_target(target_unit: Node) -> void:
+	if not owner_unit or not target_unit or not is_instance_valid(target_unit):
+		return
+	owner_unit.target = target_unit
+	path.clear()
+	path_progress = 0.0
+	target_recheck_timer = 0.0
+	wait_retry_timer = 0.0
+	state = "attacking"
 
 
 func execute(delta: float) -> void:
@@ -31,12 +47,16 @@ func execute(delta: float) -> void:
 		return
 	if owner_unit.is_moving() and state != "moving":
 		state = "moving"
+	elif owner_unit.is_waiting() and state != "waiting":
+		state = "waiting"
 
 	match state:
 		"idle":
 			_on_idle(delta)
 		"moving":
 			_on_moving(delta)
+		"waiting":
+			_on_waiting(delta)
 		"attacking":
 			_on_attacking(delta)
 
@@ -75,20 +95,29 @@ func _on_moving(delta: float) -> void:
 	if current_pos.distance_to(target_world) <= move_dist + 1.0:
 		# 到达目标格子
 		var target_ground := target_world + owner_unit.ground_anchor_offset
-		if grid.would_unit_collide_on_segment(owner_unit, owner_unit.get_ground_position(), target_ground, owner_unit.team):
-			grid.cancel_unit_move(owner_unit, owner_unit.movement_origin_grid_position)
+		var attack_entry_target := _get_attack_entry_target(target_ground)
+		if grid.would_unit_collide_on_segment(owner_unit, owner_unit.get_ground_position(), target_ground, owner_unit.team, target_grid):
+			_enter_waiting()
 		else:
 			grid.finish_unit_move(owner_unit, target_grid)
-		path.clear()
-		state = "idle"
+			if not path.is_empty() and path[0] == target_grid:
+				path.pop_front()
+			if attack_entry_target and is_instance_valid(attack_entry_target):
+				var pushed_enemies := grid.push_enemies_overlapping_hero_target(owner_unit, target_grid)
+				force_attack_target(attack_entry_target)
+				if attack_entry_target in pushed_enemies and attack_entry_target.ai_controller:
+					attack_entry_target.ai_controller.force_attack_target(owner_unit)
+				return
+		if state != "waiting":
+			if not path.is_empty() and _try_start_next_path_step():
+				return
+			state = "idle"
 	else:
 		var dir := (target_world - current_pos).normalized()
 		var next_pos := owner_unit.global_position + dir * move_dist
 		var next_ground := next_pos + owner_unit.ground_anchor_offset
-		if grid.would_unit_collide_on_segment(owner_unit, owner_unit.get_ground_position(), next_ground, owner_unit.team):
-			grid.cancel_unit_move(owner_unit, owner_unit.movement_origin_grid_position)
-			path.clear()
-			state = "idle"
+		if grid.would_unit_collide_on_segment(owner_unit, owner_unit.get_ground_position(), next_ground, owner_unit.team, target_grid):
+			_enter_waiting()
 			return
 		owner_unit.global_position = next_pos
 		if _resolve_player_collision_during_move(grid):
@@ -100,6 +129,30 @@ func _on_moving(delta: float) -> void:
 		if owner_unit.is_standing() and _is_in_attack_range(owner_unit.target):
 			path.clear()
 			state = "attacking"
+
+
+func _on_waiting(delta: float) -> void:
+	if _uses_continuous_enemy_movement():
+		state = "idle"
+		return
+	_find_target()
+	if owner_unit.target and is_instance_valid(owner_unit.target) and _is_in_attack_range(owner_unit.target):
+		owner_unit.finish_grid_move(owner_unit.grid_position)
+		path.clear()
+		state = "attacking"
+		return
+	if not owner_unit.target or not is_instance_valid(owner_unit.target):
+		owner_unit.finish_grid_move(owner_unit.grid_position)
+		path.clear()
+		state = "idle"
+		return
+	wait_retry_timer -= delta
+	if wait_retry_timer > 0.0:
+		return
+	wait_retry_timer = WAIT_RETRY_INTERVAL
+	path = _build_path_to_target(owner_unit.target)
+	if not path.is_empty() and _try_start_next_path_step():
+		return
 
 
 func _on_attacking(_delta: float) -> void:
@@ -124,7 +177,8 @@ func _find_target() -> void:
 	_update_continuous_grid_position()
 
 	var target_team := _get_target_team()
-	var candidates := grid.get_units_in_range(owner_unit.grid_position, owner_unit.search_range, target_team)
+	var search_center := grid.world_to_grid(owner_unit.get_ground_position())
+	var candidates := grid.get_units_in_range(search_center, owner_unit.search_range, target_team)
 	if _is_healer():
 		candidates = candidates.filter(func(u): return u != owner_unit and u.current_hp < u.max_hp)
 
@@ -143,13 +197,13 @@ func _find_target() -> void:
 			if _is_healer():
 				_select_by(candidates, func(u): return u.current_hp, false)
 			else:
-				owner_unit.target = grid.get_nearest_unit(owner_unit.grid_position, target_team)
+				owner_unit.target = grid.get_nearest_unit(search_center, target_team)
 		ClassTemplate.TargetPriority.LOWEST_HP:
 			_select_by(candidates, func(u): return u.current_hp, false)
 		ClassTemplate.TargetPriority.HIGHEST_ATK:
 			_select_by(candidates, func(u): return u.attack, true)
 		ClassTemplate.TargetPriority.FARTHEST:
-			_select_by(candidates, func(u): return grid.get_distance(owner_unit.grid_position, u.grid_position), true)
+			_select_by(candidates, func(u): return grid.get_distance(search_center, u.grid_position), true)
 		ClassTemplate.TargetPriority.RANDOM:
 			candidates.shuffle()
 			owner_unit.target = candidates[0] if not candidates.is_empty() else null
@@ -197,14 +251,32 @@ func _is_in_attack_range(target: Node) -> bool:
 	return _distance_to(target) <= owner_unit.attack_range
 
 
-func _requires_contact_attack() -> bool:
-	if not (owner_unit is EnemyUnit):
+func _get_attack_entry_target(entry_ground_position: Vector2) -> UnitBase:
+	if not owner_unit.target or not is_instance_valid(owner_unit.target):
+		return null
+	if not (owner_unit.target is UnitBase):
+		return null
+
+	var target_unit := owner_unit.target as UnitBase
+	if not target_unit.is_alive or target_unit.get_team() == owner_unit.get_team():
+		return null
+	if _would_attack_from_ground_position(target_unit, entry_ground_position):
+		return target_unit
+	return null
+
+
+func _would_attack_from_ground_position(target_unit: UnitBase, entry_ground_position: Vector2) -> bool:
+	if not target_unit or not is_instance_valid(target_unit):
 		return false
-	var enemy := owner_unit as EnemyUnit
-	return enemy.enemy_type in [
-		EnemyUnit.EnemyType.MELEE,
-		EnemyUnit.EnemyType.BRUTE,
-	]
+	var distance := entry_ground_position.distance_to(target_unit.get_ground_position())
+	var touching_distance := owner_unit.get_collision_radius() + target_unit.get_collision_radius()
+	if distance <= touching_distance:
+		return true
+	return distance / _cell_size() <= owner_unit.attack_range
+
+
+func _requires_contact_attack() -> bool:
+	return false
 
 
 func _uses_continuous_enemy_movement() -> bool:
@@ -215,31 +287,15 @@ func _start_move_toward(target: Node) -> void:
 	var grid: GridSystem = BattleManager.grid
 	if not grid:
 		return
-	# 简单的直线移动（不使用复杂寻路）
-	var dir: Vector2i = target.grid_position - owner_unit.grid_position
-	var step := Vector2i(sign(dir.x), sign(dir.y))
-	if step == Vector2i.ZERO:
+	if not (target is UnitBase):
+		state = "idle"
+		return
+	if _is_in_attack_range(target):
 		state = "attacking"
 		return
-	move_origin_pos = owner_unit.grid_position
-	var next_pos := owner_unit.grid_position + step
-	if grid.begin_unit_move(owner_unit, next_pos):
-		move_target_pos = next_pos
-		path = [next_pos]
-		state = "moving"
-	else:
-		# 尝试绕路
-		var alts := [
-			owner_unit.grid_position + Vector2i(step.x, 0),
-			owner_unit.grid_position + Vector2i(0, step.y),
-		]
-		for alt in alts:
-			if alt != next_pos and grid.begin_unit_move(owner_unit, alt):
-				move_target_pos = alt
-				path = [alt]
-				state = "moving"
-				return
-		state = "idle"
+	path = _build_path_to_target(target as UnitBase)
+	if path.is_empty() or not _try_start_next_path_step():
+		_enter_waiting()
 
 
 func _move_forward() -> void:
@@ -249,11 +305,51 @@ func _move_forward() -> void:
 		return
 	var direction := 1 if owner_unit.team == "player" else -1
 	var next_pos := owner_unit.grid_position + Vector2i(direction, 0)
-	if grid.begin_unit_move(owner_unit, next_pos):
-		move_origin_pos = owner_unit.grid_position
-		move_target_pos = next_pos
-		path = [next_pos]
-		state = "moving"
+	path = [next_pos] if grid.can_reserve_move_target(next_pos, owner_unit) else []
+	if path.is_empty() or not _try_start_next_path_step():
+		_enter_waiting()
+
+
+func _build_path_to_target(target_unit: UnitBase) -> Array:
+	var grid: GridSystem = BattleManager.grid
+	if not grid:
+		return []
+	return grid.find_path_to_attack_position(owner_unit.grid_position, target_unit, owner_unit.attack_range, owner_unit)
+
+
+func _try_start_next_path_step() -> bool:
+	var grid: GridSystem = BattleManager.grid
+	if not grid or path.is_empty():
+		return false
+	var next_pos: Vector2i = path[0]
+	var detour_pos := grid.find_diagonal_move_detour(owner_unit, owner_unit.grid_position, next_pos)
+	if detour_pos != GridSystem.INVALID_GRID_POS:
+		path.insert(0, detour_pos)
+		next_pos = detour_pos
+	if grid.would_unit_collide_on_segment(
+		owner_unit,
+		owner_unit.get_ground_position(),
+		grid.grid_to_world(next_pos) + owner_unit.ground_anchor_offset,
+		owner_unit.team,
+		next_pos
+	):
+		return false
+	if not grid.begin_unit_move(owner_unit, next_pos):
+		return false
+	move_origin_pos = owner_unit.movement_origin_grid_position
+	move_target_pos = next_pos
+	state = "moving"
+	return true
+
+
+func _enter_waiting() -> void:
+	var grid: GridSystem = BattleManager.grid
+	if grid:
+		grid.cancel_unit_move(owner_unit, owner_unit.movement_origin_grid_position, true)
+	else:
+		owner_unit.begin_grid_wait(owner_unit.grid_position)
+	wait_retry_timer = WAIT_RETRY_INTERVAL
+	state = "waiting"
 
 
 func _move_enemy_toward(target: Node, delta: float) -> void:
@@ -261,7 +357,7 @@ func _move_enemy_toward(target: Node, delta: float) -> void:
 		state = "idle"
 		return
 	var target_unit := target as UnitBase
-	if owner_unit.is_touching_unit(target_unit):
+	if _is_in_attack_range(target_unit):
 		state = "attacking"
 		return
 	var dir := target_unit.get_ground_position() - owner_unit.get_ground_position()
@@ -270,44 +366,25 @@ func _move_enemy_toward(target: Node, delta: float) -> void:
 		return
 	var speed_px := owner_unit.move_speed * _cell_size()
 	var distance := dir.length()
-	var contact_distance := owner_unit.get_collision_radius() + target_unit.get_collision_radius()
-	var travel := minf(speed_px * delta, maxf(0.0, distance - contact_distance))
+	var attack_distance := owner_unit.attack_range * _cell_size()
+	var travel := minf(speed_px * delta, maxf(0.0, distance - attack_distance))
 	if travel > 0.0:
 		owner_unit.global_position += dir.normalized() * travel
-	if owner_unit.is_touching_unit(target_unit):
+	if _is_in_attack_range(target_unit):
 		state = "attacking"
 	else:
-		var contacts: Array = BattleManager.grid.get_touching_units(owner_unit, "player") if BattleManager.grid else []
-		if not contacts.is_empty():
-			owner_unit.target = contacts[0]
-			state = "attacking"
-		else:
-			state = "idle"
+		state = "idle"
 	_update_continuous_grid_position()
 
 
 func _move_enemy_forward(delta: float) -> void:
-	var old_pos := owner_unit.global_position
 	var direction := Vector2(-1.0, 0.0)
 	owner_unit.global_position += direction * owner_unit.move_speed * _cell_size() * delta
-	var contacts: Array = BattleManager.grid.get_touching_units(owner_unit, "player") if BattleManager.grid else []
-	if not contacts.is_empty():
-		owner_unit.global_position = old_pos
-		owner_unit.target = contacts[0]
-		state = "attacking"
 	_update_continuous_grid_position()
 
 
 func _resolve_player_collision_during_move(grid: GridSystem) -> bool:
-	if owner_unit.team != "player":
-		return false
-	var contacts := grid.get_touching_units(owner_unit, "enemy")
-	if contacts.is_empty():
-		return false
-	grid.cancel_unit_move(owner_unit, owner_unit.movement_origin_grid_position)
-	path.clear()
-	state = "idle"
-	return true
+	return false
 
 
 func _update_continuous_grid_position() -> void:

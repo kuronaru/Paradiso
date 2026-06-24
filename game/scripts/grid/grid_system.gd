@@ -7,6 +7,17 @@ const M = "Grid"
 const PREP_GRID_RECT := Rect2(64, 32, 1152, 560)
 const BATTLE_GRID_RECT := Rect2(64, 32, 1152, 560)
 const LAYOUT_TWEEN_TIME := 0.22
+const INVALID_GRID_POS := Vector2i(-9999, -9999)
+const PATH_DIRS_8 := [
+	Vector2i(1, 0),
+	Vector2i(-1, 0),
+	Vector2i(0, 1),
+	Vector2i(0, -1),
+	Vector2i(1, 1),
+	Vector2i(1, -1),
+	Vector2i(-1, 1),
+	Vector2i(-1, -1),
+]
 
 signal cell_clicked(grid_pos: Vector2i)
 signal unit_clicked(unit: Node)
@@ -36,12 +47,23 @@ var all_units: Array[Node] = []
 @export var grid_color: Color = Color(0.5, 0.5, 0.5, 0.65)
 @export var deploy_zone_color: Color = Color(0.2, 0.5, 0.2, 0.3)
 @export var spawn_zone_color: Color = Color(0.5, 0.2, 0.2, 0.3)
+@export var debug_attack_ranges: bool = true
+@export var debug_collision_prediction: bool = true
+@export var debug_collision_prediction_logs: bool = true
+@export var debug_collision_prediction_duration: float = 1.2
+@export var debug_collision_prediction_max_entries: int = 12
+@export var collision_prediction_path_color: Color = Color(1.0, 0.86, 0.18, 0.9)
+@export var collision_prediction_hit_color: Color = Color(1.0, 0.24, 0.16, 0.95)
+@export var attack_entry_push_epsilon: float = 1.0
+@export var debug_attack_entry_push_logs: bool = true
+@export var debug_diagonal_detour_logs: bool = true
 ## Debug: 打印 UI 命中检测日志
 @export var debug_ui_hits: bool = true
 
 var layout_tween: Tween = null
 var layout_animating: bool = false
 var last_prepare_layout: bool = true
+var collision_debug_entries: Dictionary = {}
 
 
 func _ready() -> void:
@@ -55,14 +77,19 @@ func _ready() -> void:
 	queue_redraw()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	var wants_prepare := _is_prepare_layout()
 	if wants_prepare != last_prepare_layout:
 		last_prepare_layout = wants_prepare
 		_apply_stage_layout(true)
 
+	var needs_redraw := false
 	if layout_animating:
 		_sync_unit_positions()
+		needs_redraw = true
+	if _update_collision_debug_entries(delta):
+		needs_redraw = true
+	if needs_redraw:
 		queue_redraw()
 
 
@@ -103,38 +130,39 @@ func _apply_stage_layout(animated: bool) -> void:
 
 func _sync_unit_positions() -> void:
 	for unit in all_units:
-		if is_instance_valid(unit) and _uses_grid_occupancy(unit) and (unit as UnitBase).is_standing():
+		if is_instance_valid(unit) and _uses_grid_occupancy(unit) and not (unit as UnitBase).is_moving():
 			unit.global_position = grid_to_world(unit.grid_position)
 
 
 func _draw() -> void:
-	if not draw_grid:
-		return
+	if draw_grid:
+		# 网格线 — 画在格子边界上（非格子中心）
+		for x in range(grid_width + 1):
+			var line_x := grid_offset.x + x * cell_size
+			draw_line(Vector2(line_x, grid_offset.y), Vector2(line_x, grid_offset.y + grid_height * cell_size), grid_color, 1.0)
 
-	# 网格线 — 画在格子边界上（非格子中心）
-	for x in range(grid_width + 1):
-		var line_x := grid_offset.x + x * cell_size
-		draw_line(Vector2(line_x, grid_offset.y), Vector2(line_x, grid_offset.y + grid_height * cell_size), grid_color, 1.0)
+		for y in range(grid_height + 1):
+			var line_y := grid_offset.y + y * cell_size
+			draw_line(Vector2(grid_offset.x, line_y), Vector2(grid_offset.x + grid_width * cell_size, line_y), grid_color, 1.0)
 
-	for y in range(grid_height + 1):
-		var line_y := grid_offset.y + y * cell_size
-		draw_line(Vector2(grid_offset.x, line_y), Vector2(grid_offset.x + grid_width * cell_size, line_y), grid_color, 1.0)
+		# 部署区域高亮 — 用格子边界坐标
+		var deploy_rect := Rect2(
+			Vector2(grid_offset.x, grid_offset.y + deploy_rows.x * cell_size),
+			Vector2(grid_width * cell_size, (deploy_rows.y - deploy_rows.x + 1) * cell_size)
+		)
+		draw_rect(deploy_rect, deploy_zone_color)
 
-	# 部署区域高亮 — 用格子边界坐标
-	var deploy_rect := Rect2(
-		Vector2(grid_offset.x, grid_offset.y + deploy_rows.x * cell_size),
-		Vector2(grid_width * cell_size, (deploy_rows.y - deploy_rows.x + 1) * cell_size)
-	)
-	draw_rect(deploy_rect, deploy_zone_color)
+		# 出生区域高亮 — 用格子边界坐标
+		if not spawn_points.is_empty():
+			for sp in spawn_points:
+				var sp_rect := Rect2(
+					Vector2(grid_offset.x + sp.x * cell_size, grid_offset.y + sp.y * cell_size),
+					Vector2(cell_size, cell_size)
+				)
+				draw_rect(sp_rect, spawn_zone_color)
 
-	# 出生区域高亮 — 用格子边界坐标
-	if not spawn_points.is_empty():
-		for sp in spawn_points:
-			var sp_rect := Rect2(
-				Vector2(grid_offset.x + sp.x * cell_size, grid_offset.y + sp.y * cell_size),
-				Vector2(cell_size, cell_size)
-			)
-			draw_rect(sp_rect, spawn_zone_color)
+	if debug_collision_prediction:
+		_draw_collision_debug_entries()
 
 
 func grid_to_world(grid_pos: Vector2i) -> Vector2:
@@ -242,7 +270,7 @@ func finish_unit_move(unit: Node, final_pos: Vector2i) -> bool:
 	return true
 
 
-func cancel_unit_move(unit: Node, preferred_pos: Vector2i) -> bool:
+func cancel_unit_move(unit: Node, preferred_pos: Vector2i, enter_waiting: bool = false) -> bool:
 	"""取消移动并把单位吸附回一个合法站立格"""
 	if not _uses_grid_occupancy(unit):
 		return false
@@ -254,7 +282,10 @@ func cancel_unit_move(unit: Node, preferred_pos: Vector2i) -> bool:
 	unit.grid_position = fallback
 	unit.global_position = grid_to_world(fallback)
 	if unit is UnitBase:
-		(unit as UnitBase).finish_grid_move(fallback)
+		if enter_waiting:
+			(unit as UnitBase).begin_grid_wait(fallback)
+		else:
+			(unit as UnitBase).finish_grid_move(fallback)
 	return true
 
 
@@ -362,10 +393,146 @@ func get_touching_units(unit: UnitBase, team: String = "") -> Array:
 	return get_units_touching_circle(unit.get_ground_position(), unit.get_collision_radius(), team, unit)
 
 
-func would_unit_collide_on_segment(unit: UnitBase, from_ground: Vector2, to_ground: Vector2, team: String = "") -> bool:
-	"""检测单位地面圆从 from 到 to 的移动线段是否会碰到其他单位"""
+func push_enemies_overlapping_hero_target(hero: UnitBase, target_grid: Vector2i) -> Array:
+	"""英雄攻击入格时，把与目标格地面圆重叠的敌人推开"""
+	var pushed: Array = []
+	if not hero or hero.get_team() != "player":
+		return pushed
+
+	var hero_ground := grid_to_world(target_grid) + hero.ground_anchor_offset
+	for other in all_units:
+		if other == hero or not is_instance_valid(other):
+			continue
+		if not (other is UnitBase):
+			continue
+
+		var enemy := other as UnitBase
+		if not enemy.is_alive or enemy.get_team() == hero.get_team():
+			continue
+
+		var radius_sum := hero.get_collision_radius() + enemy.get_collision_radius()
+		if hero_ground.distance_squared_to(enemy.get_ground_position()) >= radius_sum * radius_sum:
+			continue
+
+		var pushed_ground := _find_enemy_push_ground(hero, enemy, hero_ground)
+		enemy.global_position = pushed_ground - enemy.ground_anchor_offset
+		enemy.grid_position = world_to_grid(enemy.get_ground_position())
+		pushed.append(enemy)
+		if debug_attack_entry_push_logs:
+			Log.d(M, "攻击入格推开: %s -> %s world=(%.1f, %.1f) grid=(%d, %d)" % [
+				_unit_debug_name(hero),
+				_unit_debug_name(enemy),
+				pushed_ground.x,
+				pushed_ground.y,
+				enemy.grid_position.x,
+				enemy.grid_position.y,
+			])
+	return pushed
+
+
+func _find_enemy_push_ground(hero: UnitBase, enemy: UnitBase, hero_ground: Vector2) -> Vector2:
+	var direction := _push_direction_away_from(enemy.get_ground_position(), hero_ground, hero)
+	var min_distance := hero.get_collision_radius() + enemy.get_collision_radius() + maxf(0.0, attack_entry_push_epsilon)
+	var candidate := hero_ground + direction * min_distance
+	return _clear_enemy_ground_from_player_collisions(enemy, hero, hero_ground, candidate)
+
+
+func _clear_enemy_ground_from_player_collisions(enemy: UnitBase, hero: UnitBase, hero_ground: Vector2, candidate_ground: Vector2) -> Vector2:
+	var candidate := candidate_ground
+	for _i in range(8):
+		var changed := false
+		for other in all_units:
+			if not is_instance_valid(other) or not (other is UnitBase):
+				continue
+
+			var player_unit := other as UnitBase
+			if not player_unit.is_alive or player_unit.get_team() != hero.get_team():
+				continue
+
+			var player_ground := hero_ground if player_unit == hero else player_unit.get_ground_position()
+			var min_distance := enemy.get_collision_radius() + player_unit.get_collision_radius() + maxf(0.0, attack_entry_push_epsilon)
+			var offset := candidate - player_ground
+			if offset.length_squared() >= min_distance * min_distance:
+				continue
+
+			var direction := offset.normalized() if offset.length_squared() > 0.0001 else _push_direction_away_from(enemy.get_ground_position(), player_ground, hero)
+			candidate = player_ground + direction * min_distance
+			changed = true
+		if not changed:
+			break
+	return candidate
+
+
+func _push_direction_away_from(from_ground: Vector2, center_ground: Vector2, hero: UnitBase) -> Vector2:
+	var direction := from_ground - center_ground
+	if direction.length_squared() > 0.0001:
+		return direction.normalized()
+	if hero:
+		direction = center_ground - hero.get_ground_position()
+		if direction.length_squared() > 0.0001:
+			return direction.normalized()
+	return Vector2.RIGHT
+
+
+func find_diagonal_move_detour(unit: UnitBase, from_grid: Vector2i, diagonal_target: Vector2i) -> Vector2i:
+	"""对角移动被正交邻格友方卡住时，返回一个可用的正向中转格"""
 	if not unit:
+		return INVALID_GRID_POS
+	var delta := diagonal_target - from_grid
+	if absi(delta.x) != 1 or absi(delta.y) != 1:
+		return INVALID_GRID_POS
+
+	var from_ground := unit.get_ground_position()
+	var target_ground := grid_to_world(diagonal_target) + unit.ground_anchor_offset
+	var direct_collision := predict_unit_collision_on_segment(unit, from_ground, target_ground, unit.get_team(), diagonal_target, false)
+	if direct_collision.is_empty():
+		return INVALID_GRID_POS
+
+	var side_x := from_grid + Vector2i(delta.x, 0)
+	var side_y := from_grid + Vector2i(0, delta.y)
+	var candidates: Array[Vector2i] = [side_x, side_y]
+	var hit_unit := direct_collision.get("hit_unit", null) as UnitBase
+	if hit_unit and is_instance_valid(hit_unit):
+		var hit_grid := _get_unit_query_grid_position(hit_unit)
+		if hit_grid == side_x:
+			candidates = [side_y, side_x]
+		elif hit_grid == side_y:
+			candidates = [side_x, side_y]
+
+	for candidate in candidates:
+		if _can_use_diagonal_detour_candidate(unit, from_ground, candidate, diagonal_target):
+			if debug_diagonal_detour_logs:
+				Log.d(M, "斜向移动拆步: %s (%d,%d)->(%d,%d) 改为先到 (%d,%d)" % [
+					_unit_debug_name(unit),
+					from_grid.x,
+					from_grid.y,
+					diagonal_target.x,
+					diagonal_target.y,
+					candidate.x,
+					candidate.y,
+				])
+			return candidate
+	return INVALID_GRID_POS
+
+
+func _can_use_diagonal_detour_candidate(unit: UnitBase, from_ground: Vector2, middle_grid: Vector2i, final_grid: Vector2i) -> bool:
+	if not can_reserve_move_target(middle_grid, unit):
 		return false
+	var middle_ground := grid_to_world(middle_grid) + unit.ground_anchor_offset
+	var final_ground := grid_to_world(final_grid) + unit.ground_anchor_offset
+	if not predict_unit_collision_on_segment(unit, from_ground, middle_ground, unit.get_team(), middle_grid, false).is_empty():
+		return false
+	if not predict_unit_collision_on_segment(unit, middle_ground, final_ground, unit.get_team(), final_grid, false).is_empty():
+		return false
+	return true
+
+
+func predict_unit_collision_on_segment(unit: UnitBase, from_ground: Vector2, to_ground: Vector2, team: String = "", target_grid: Vector2i = Vector2i(-9999, -9999), record_debug: bool = true) -> Dictionary:
+	"""预测单位地面圆从 from 到 to 的移动线段碰撞，返回命中单位和接触坐标"""
+	if not unit:
+		return {}
+	var best_result: Dictionary = {}
+	var best_time: float = INF
 	for other in all_units:
 		if other == unit or not is_instance_valid(other):
 			continue
@@ -376,10 +543,39 @@ func would_unit_collide_on_segment(unit: UnitBase, from_ground: Vector2, to_grou
 			continue
 		if team != "" and other_unit.get_team() != team:
 			continue
+		if other_unit.is_moving() and other_unit.movement_origin_grid_position == target_grid:
+			continue
 		var radius_sum := unit.get_collision_radius() + other_unit.get_collision_radius()
-		if _distance_point_to_segment_squared(other_unit.get_ground_position(), from_ground, to_ground) <= radius_sum * radius_sum:
-			return true
-	return false
+		var hit_time := _segment_circle_hit_time(other_unit.get_ground_position(), from_ground, to_ground, radius_sum)
+		if hit_time < 0.0:
+			continue
+		if hit_time < best_time:
+			best_time = hit_time
+			var hit_position := from_ground.lerp(to_ground, hit_time)
+			var contact_position := hit_position
+			var contact_dir := other_unit.get_ground_position() - hit_position
+			if contact_dir.length_squared() > 0.0001:
+				contact_position = hit_position + contact_dir.normalized() * unit.get_collision_radius()
+			best_result = {
+				"moving_unit": unit,
+				"hit_unit": other_unit,
+				"from": from_ground,
+				"to": to_ground,
+				"hit_position": hit_position,
+				"contact_position": contact_position,
+				"hit_grid": world_to_grid(contact_position),
+				"time": hit_time,
+				"moving_radius": unit.get_collision_radius(),
+				"hit_radius": other_unit.get_collision_radius(),
+			}
+	if not best_result.is_empty() and record_debug:
+		_record_collision_debug(best_result)
+	return best_result
+
+
+func would_unit_collide_on_segment(unit: UnitBase, from_ground: Vector2, to_ground: Vector2, team: String = "", target_grid: Vector2i = Vector2i(-9999, -9999)) -> bool:
+	"""检测单位地面圆从 from 到 to 的移动线段是否会碰到其他单位"""
+	return not predict_unit_collision_on_segment(unit, from_ground, to_ground, team, target_grid).is_empty()
 
 
 func _distance_point_to_segment_squared(point: Vector2, segment_start: Vector2, segment_end: Vector2) -> float:
@@ -390,6 +586,211 @@ func _distance_point_to_segment_squared(point: Vector2, segment_start: Vector2, 
 	var t := clampf((point - segment_start).dot(segment) / length_sq, 0.0, 1.0)
 	var closest := segment_start + segment * t
 	return point.distance_squared_to(closest)
+
+
+func _segment_circle_hit_time(circle_center: Vector2, segment_start: Vector2, segment_end: Vector2, radius: float) -> float:
+	var travel := segment_end - segment_start
+	var length_sq := travel.length_squared()
+	if length_sq <= 0.0001:
+		return 0.0 if segment_start.distance_squared_to(circle_center) <= radius * radius else -1.0
+
+	var offset := segment_start - circle_center
+	var c := offset.length_squared() - radius * radius
+	if c <= 0.0:
+		return 0.0
+
+	var a := length_sq
+	var b := 2.0 * offset.dot(travel)
+	var discriminant := b * b - 4.0 * a * c
+	if discriminant < 0.0:
+		return -1.0
+
+	var sqrt_discriminant := sqrt(discriminant)
+	var denominator := 2.0 * a
+	var t0 := (-b - sqrt_discriminant) / denominator
+	var t1 := (-b + sqrt_discriminant) / denominator
+	if t0 >= 0.0 and t0 <= 1.0:
+		return t0
+	if t1 >= 0.0 and t1 <= 1.0:
+		return t1
+	return -1.0
+
+
+func _record_collision_debug(result: Dictionary) -> void:
+	if not debug_collision_prediction:
+		return
+	var moving_unit := result.get("moving_unit", null) as UnitBase
+	var hit_unit := result.get("hit_unit", null) as UnitBase
+	if not moving_unit or not hit_unit:
+		return
+
+	var key := "%s:%s" % [moving_unit.get_instance_id(), hit_unit.get_instance_id()]
+	var is_new := not collision_debug_entries.has(key)
+	var entry: Dictionary = {}
+	if not is_new:
+		entry = collision_debug_entries[key]
+
+	var label: Label = null
+	if entry.has("label"):
+		label = entry["label"] as Label
+	if not label or not is_instance_valid(label):
+		label = _create_collision_debug_label()
+
+	entry["label"] = label
+	entry["result"] = result.duplicate()
+	entry["time_left"] = maxf(0.05, debug_collision_prediction_duration)
+	collision_debug_entries[key] = entry
+	_update_collision_debug_label(entry)
+	_trim_collision_debug_entries()
+
+	if debug_collision_prediction_logs and is_new:
+		var contact_position: Vector2 = result.get("contact_position", Vector2.ZERO)
+		var hit_grid: Vector2i = result.get("hit_grid", world_to_grid(contact_position))
+		Log.d(M, "碰撞预测: %s -> %s 接触坐标 world=(%.1f, %.1f) grid=(%d, %d)" % [
+			_unit_debug_name(moving_unit),
+			_unit_debug_name(hit_unit),
+			contact_position.x,
+			contact_position.y,
+			hit_grid.x,
+			hit_grid.y,
+		])
+	queue_redraw()
+
+
+func _create_collision_debug_label() -> Label:
+	var label := Label.new()
+	label.name = "CollisionPredictionDebug"
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.z_index = 200
+	label.size = Vector2(260, 52)
+	label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.65, 1.0))
+	label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.9))
+	label.add_theme_constant_override("outline_size", 3)
+	add_child(label)
+	return label
+
+
+func _update_collision_debug_entries(delta: float) -> bool:
+	if collision_debug_entries.is_empty():
+		return false
+
+	var changed := false
+	for key in collision_debug_entries.keys():
+		if not collision_debug_entries.has(key):
+			continue
+		var entry: Dictionary = collision_debug_entries[key]
+		var result: Dictionary = entry.get("result", {})
+		var moving_unit := result.get("moving_unit", null) as UnitBase
+		var hit_unit := result.get("hit_unit", null) as UnitBase
+		if not moving_unit or not hit_unit or not is_instance_valid(moving_unit) or not is_instance_valid(hit_unit):
+			_remove_collision_debug_entry(key)
+			changed = true
+			continue
+
+		var time_left := float(entry.get("time_left", 0.0)) - delta
+		if time_left <= 0.0:
+			_remove_collision_debug_entry(key)
+			changed = true
+			continue
+
+		entry["time_left"] = time_left
+		collision_debug_entries[key] = entry
+		_update_collision_debug_label(entry)
+		changed = true
+	return changed
+
+
+func _update_collision_debug_label(entry: Dictionary) -> void:
+	var label := entry.get("label", null) as Label
+	if not label or not is_instance_valid(label):
+		return
+	var result: Dictionary = entry.get("result", {})
+	var hit_unit := result.get("hit_unit", null) as UnitBase
+	if not hit_unit or not is_instance_valid(hit_unit):
+		return
+
+	var contact_position: Vector2 = result.get("contact_position", Vector2.ZERO)
+	var hit_grid: Vector2i = result.get("hit_grid", world_to_grid(contact_position))
+	var time_left := float(entry.get("time_left", debug_collision_prediction_duration))
+	var alpha := clampf(time_left / maxf(debug_collision_prediction_duration, 0.001), 0.15, 1.0)
+	label.visible = debug_collision_prediction
+	label.modulate = Color(1.0, 1.0, 1.0, alpha)
+	label.position = to_local(contact_position) + Vector2(10.0, -54.0)
+	label.text = "碰撞: %s\n格(%d,%d) 世界(%.0f,%.0f)" % [
+		_unit_debug_name(hit_unit),
+		hit_grid.x,
+		hit_grid.y,
+		contact_position.x,
+		contact_position.y,
+	]
+
+
+func _draw_collision_debug_entries() -> void:
+	for key in collision_debug_entries.keys():
+		var entry: Dictionary = collision_debug_entries[key]
+		var result: Dictionary = entry.get("result", {})
+		var moving_unit := result.get("moving_unit", null) as UnitBase
+		var hit_unit := result.get("hit_unit", null) as UnitBase
+		if not moving_unit or not hit_unit or not is_instance_valid(moving_unit) or not is_instance_valid(hit_unit):
+			continue
+
+		var time_left := float(entry.get("time_left", debug_collision_prediction_duration))
+		var alpha := clampf(time_left / maxf(debug_collision_prediction_duration, 0.001), 0.15, 1.0)
+		var path_color := collision_prediction_path_color
+		path_color.a *= alpha
+		var hit_color := collision_prediction_hit_color
+		hit_color.a *= alpha
+
+		var from_pos: Vector2 = to_local(result.get("from", Vector2.ZERO))
+		var to_pos: Vector2 = to_local(result.get("to", Vector2.ZERO))
+		var hit_position: Vector2 = to_local(result.get("hit_position", Vector2.ZERO))
+		var contact_position: Vector2 = to_local(result.get("contact_position", Vector2.ZERO))
+		var hit_unit_pos := to_local(hit_unit.get_ground_position())
+		var moving_radius := float(result.get("moving_radius", moving_unit.get_collision_radius()))
+		var hit_radius := float(result.get("hit_radius", hit_unit.get_collision_radius()))
+
+		draw_line(from_pos, to_pos, path_color, 2.0, true)
+		draw_arc(hit_position, moving_radius, 0.0, TAU, 48, path_color, 2.0, true)
+		draw_arc(hit_unit_pos, hit_radius, 0.0, TAU, 48, hit_color, 2.0, true)
+		draw_circle(hit_position, 4.0, path_color)
+		draw_circle(contact_position, 5.0, hit_color)
+		draw_line(contact_position + Vector2(-7.0, 0.0), contact_position + Vector2(7.0, 0.0), hit_color, 2.0, true)
+		draw_line(contact_position + Vector2(0.0, -7.0), contact_position + Vector2(0.0, 7.0), hit_color, 2.0, true)
+
+
+func _trim_collision_debug_entries() -> void:
+	if debug_collision_prediction_max_entries <= 0:
+		return
+	while collision_debug_entries.size() > debug_collision_prediction_max_entries:
+		var oldest_key := ""
+		var oldest_time := INF
+		for key in collision_debug_entries.keys():
+			var entry: Dictionary = collision_debug_entries[key]
+			var time_left := float(entry.get("time_left", 0.0))
+			if time_left < oldest_time:
+				oldest_time = time_left
+				oldest_key = key
+		if oldest_key.is_empty():
+			return
+		_remove_collision_debug_entry(oldest_key)
+
+
+func _remove_collision_debug_entry(key: String) -> void:
+	if not collision_debug_entries.has(key):
+		return
+	var entry: Dictionary = collision_debug_entries[key]
+	var label := entry.get("label", null) as Label
+	if label and is_instance_valid(label):
+		label.queue_free()
+	collision_debug_entries.erase(key)
+
+
+func _unit_debug_name(unit: UnitBase) -> String:
+	if not unit:
+		return "<null>"
+	if not unit.unit_name.is_empty():
+		return unit.unit_name
+	return str(unit.name)
 
 
 func find_nearest_open_player_cell(world_pos: Vector2, preferred: Vector2i, unit: Node = null) -> Vector2i:
@@ -421,31 +822,108 @@ func _is_cell_available_for_unit(cell: Vector2i, unit: Node = null) -> bool:
 	return true
 
 
-func find_path(from: Vector2i, to: Vector2i) -> Array:
-	"""简单BFS寻路（忽略障碍物，只做网格约束）"""
-	var queue: Array = [[from]]
-	var visited: Dictionary = {from: true}
+func find_path(from: Vector2i, to: Vector2i, unit: Node = null) -> Array:
+	"""8方向A*寻路，返回从起点之后开始的格子序列"""
+	if from == to:
+		return []
+	if not is_move_zone(from) or not is_move_zone(to):
+		return []
+	if not _is_cell_available_for_unit(to, unit):
+		return []
 
-	while not queue.is_empty():
-		var path: Array = queue.pop_front()
-		var current: Vector2i = path.back()
+	var open: Array[Vector2i] = [from]
+	var came_from: Dictionary = {}
+	var cost_so_far: Dictionary = {from: 0.0}
 
+	while not open.is_empty():
+		var current := _pop_best_path_cell(open, cost_so_far, to)
 		if current == to:
-			return path
+			return _reconstruct_path(came_from, from, to)
 
-		for dir in [Vector2i(1,0), Vector2i(-1,0), Vector2i(0,1), Vector2i(0,-1)]:
+		for dir_value in PATH_DIRS_8:
+			var dir: Vector2i = dir_value
 			var next: Vector2i = current + dir
-			if not is_in_bounds(next) or visited.has(next):
+			if not _is_path_step_available(current, next, unit, to):
 				continue
-			# 忽略被占据的格子（除非是目标）
-			if occupancy.has(next) and next != to:
-				continue
-			visited[next] = true
-			var new_path := path.duplicate()
-			new_path.append(next)
-			queue.append(new_path)
+			var step_cost := 1.4142 if dir.x != 0 and dir.y != 0 else 1.0
+			var new_cost := float(cost_so_far[current]) + step_cost
+			if not cost_so_far.has(next) or new_cost < float(cost_so_far[next]):
+				cost_so_far[next] = new_cost
+				came_from[next] = current
+				if next not in open:
+					open.append(next)
 
-	return []  # 无路径
+	return []
+
+
+func find_path_to_attack_position(from: Vector2i, target: UnitBase, attack_range: float, unit: Node = null) -> Array:
+	"""寻找一个可停留且能攻击目标的英雄站位路径"""
+	if not target:
+		return []
+	var target_grid: Vector2i = _get_unit_query_grid_position(target)
+	if get_distance(from, target_grid) <= attack_range:
+		return []
+
+	var best_path: Array = []
+	var best_score: float = INF
+	for x in range(grid_width):
+		for y in range(deploy_rows.x, deploy_rows.y + 1):
+			var candidate := Vector2i(x, y)
+			if get_distance(candidate, target_grid) > attack_range:
+				continue
+			if not _is_cell_available_for_unit(candidate, unit):
+				continue
+			var candidate_path: Array = find_path(from, candidate, unit)
+			if candidate_path.is_empty():
+				continue
+			var score: float = float(candidate_path.size()) + float(get_distance(candidate, target_grid)) * 0.01
+			if score < best_score:
+				best_score = score
+				best_path = candidate_path
+	return best_path
+
+
+func _pop_best_path_cell(open: Array[Vector2i], cost_so_far: Dictionary, goal: Vector2i) -> Vector2i:
+	var best_index := 0
+	var best_score: float = INF
+	for i in range(open.size()):
+		var cell: Vector2i = open[i]
+		var score: float = float(cost_so_far[cell]) + _path_heuristic(cell, goal)
+		if score < best_score:
+			best_score = score
+			best_index = i
+	return open.pop_at(best_index)
+
+
+func _path_heuristic(a: Vector2i, b: Vector2i) -> float:
+	var dx: int = absi(a.x - b.x)
+	var dy: int = absi(a.y - b.y)
+	return float(maxi(dx, dy))
+
+
+func _reconstruct_path(came_from: Dictionary, start: Vector2i, goal: Vector2i) -> Array:
+	var result: Array = []
+	var current := goal
+	while current != start:
+		result.push_front(current)
+		if not came_from.has(current):
+			return []
+		current = came_from[current]
+	return result
+
+
+func _is_path_step_available(from: Vector2i, to: Vector2i, unit: Node, goal: Vector2i) -> bool:
+	if not is_move_zone(to):
+		return false
+	if not _is_cell_available_for_unit(to, unit) and to != goal:
+		return false
+	var dir := to - from
+	if dir.x != 0 and dir.y != 0:
+		var side_a := from + Vector2i(dir.x, 0)
+		var side_b := from + Vector2i(0, dir.y)
+		if not _is_cell_available_for_unit(side_a, unit) and not _is_cell_available_for_unit(side_b, unit):
+			return false
+	return true
 
 
 func move_unit(unit: Node, new_pos: Vector2i) -> bool:

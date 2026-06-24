@@ -18,7 +18,8 @@ enum Stance {
 
 enum MovementState {
 	STANDING,   ## 站立 — 必定位于一个网格中心，并占用该格
-	MOVING      ## 移动 — 目标是一个网格中心，途中按地面圆形碰撞移动
+	MOVING,     ## 移动 — 目标是一个网格中心，途中按地面圆形碰撞移动
+	WAITING     ## 等待 — 移动受阻后回到站立格，保留路径信息等待重试
 }
 
 ## 网格位置
@@ -77,6 +78,7 @@ var ai_enabled: bool = true
 @export var collision_radius: float = 0.0
 @export var ground_anchor_offset: Vector2 = Vector2.ZERO
 @export var show_collision_debug_ring: bool = true
+@export var show_attack_range_debug_ring: bool = true
 @export var floating_number_rise: float = 28.0
 @export var floating_number_duration: float = 0.65
 ## 血条节点
@@ -85,12 +87,15 @@ var hp_bar_fill: ColorRect = null
 var ground_collision_area: Area2D = null
 var ground_collision_shape: CollisionShape2D = null
 var collision_debug_ring: Line2D = null
+var attack_range_debug_ring: Line2D = null
+var attack_range_debug_ring_radius: float = -1.0
 
 
 func _ready() -> void:
 	_setup_ground_collision()
 	_setup_visual()
 	_setup_collision_debug_ring()
+	_setup_attack_range_debug_ring()
 	_setup_ai()
 	hp_changed.connect(_update_hp_bar)
 	_update_hp_bar(current_hp, max_hp)
@@ -107,6 +112,7 @@ func _process(delta: float) -> void:
 	# 执行AI（仅在启用时）
 	if ai_enabled and ai_controller:
 		ai_controller.execute(delta)
+	_update_attack_range_debug_ring()
 
 
 func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
@@ -271,6 +277,7 @@ func refresh_ground_collision() -> void:
 		circle.radius = get_collision_radius()
 	_configure_collision_layers()
 	_update_collision_debug_ring()
+	_update_attack_range_debug_ring(true)
 
 
 func _configure_collision_layers() -> void:
@@ -316,6 +323,51 @@ func _get_collision_debug_ring_color() -> Color:
 	return Color(1.0, 0.35, 0.18, 0.85)
 
 
+func _setup_attack_range_debug_ring() -> void:
+	attack_range_debug_ring = Line2D.new()
+	attack_range_debug_ring.name = "AttackRangeDebugRing"
+	attack_range_debug_ring.width = 1.5
+	attack_range_debug_ring.closed = true
+	attack_range_debug_ring.antialiased = true
+	attack_range_debug_ring.z_index = 45
+	add_child(attack_range_debug_ring)
+	_update_attack_range_debug_ring(true)
+
+
+func _update_attack_range_debug_ring(force_rebuild: bool = false) -> void:
+	if not attack_range_debug_ring:
+		return
+	var visible := _should_show_attack_range_debug_ring()
+	attack_range_debug_ring.visible = visible
+	if not visible:
+		return
+
+	attack_range_debug_ring.position = ground_anchor_offset
+	attack_range_debug_ring.default_color = _get_attack_range_debug_ring_color()
+	var radius := get_attack_range_world_radius()
+	if not force_rebuild and is_equal_approx(radius, attack_range_debug_ring_radius):
+		return
+
+	attack_range_debug_ring_radius = radius
+	var points := PackedVector2Array()
+	var segments := 96
+	for i in range(segments):
+		var angle := TAU * float(i) / float(segments)
+		points.append(Vector2(cos(angle), sin(angle)) * radius)
+	attack_range_debug_ring.points = points
+
+
+func _should_show_attack_range_debug_ring() -> bool:
+	var grid: GridSystem = BattleManager.grid
+	return show_attack_range_debug_ring and grid != null and grid.debug_attack_ranges
+
+
+func _get_attack_range_debug_ring_color() -> Color:
+	if team == "player":
+		return Color(0.6, 1.0, 0.25, 0.45)
+	return Color(1.0, 0.55, 0.2, 0.45)
+
+
 func _update_hp_bar(_current: int, _max_hp: int) -> void:
 	"""更新血条显示"""
 	if not hp_bar_fill:
@@ -336,7 +388,13 @@ func get_team() -> String:
 func get_collision_radius() -> float:
 	if collision_radius > 0.0:
 		return collision_radius
-	return unit_radius
+	return unit_radius * 2.0 / 3.0
+
+
+func get_attack_range_world_radius() -> float:
+	var grid: GridSystem = BattleManager.grid
+	var world_cell_size := grid.cell_size if grid else 64.0
+	return attack_range * world_cell_size
 
 
 func get_ground_position() -> Vector2:
@@ -358,10 +416,20 @@ func is_moving() -> bool:
 	return movement_state == MovementState.MOVING
 
 
+func is_waiting() -> bool:
+	return movement_state == MovementState.WAITING
+
+
 func begin_grid_move(target_grid_pos: Vector2i) -> void:
 	movement_state = MovementState.MOVING
 	movement_origin_grid_position = grid_position
 	movement_target_grid_position = target_grid_pos
+
+
+func begin_grid_wait(preferred_grid_pos: Vector2i) -> void:
+	movement_state = MovementState.WAITING
+	movement_origin_grid_position = preferred_grid_pos
+	movement_target_grid_position = preferred_grid_pos
 
 
 func finish_grid_move(final_grid_pos: Vector2i) -> void:
