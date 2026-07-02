@@ -47,6 +47,7 @@ var all_units: Array[Node] = []
 @export var grid_color: Color = Color(0.5, 0.5, 0.5, 0.65)
 @export var deploy_zone_color: Color = Color(0.2, 0.5, 0.2, 0.3)
 @export var spawn_zone_color: Color = Color(0.5, 0.2, 0.2, 0.3)
+@export var debug_unit_body_radii: bool = true
 @export var debug_attack_ranges: bool = true
 @export var debug_collision_prediction: bool = true
 @export var debug_collision_prediction_logs: bool = true
@@ -912,8 +913,13 @@ func find_path_to_attack_position(from: Vector2i, target: UnitBase, attack_range
 	"""寻找一个可停留且能攻击目标的英雄站位路径"""
 	if not target:
 		return []
-	var target_grid: Vector2i = _get_unit_query_grid_position(target)
-	if get_distance(from, target_grid) <= attack_range:
+
+	var attacker_ground_offset := Vector2.ZERO
+	if unit is UnitBase:
+		attacker_ground_offset = (unit as UnitBase).ground_anchor_offset
+
+	var from_ground := grid_to_world(from) + attacker_ground_offset
+	if target.get_body_outline_distance_from_ground(from_ground) / maxf(cell_size, 1.0) <= attack_range:
 		return []
 
 	var best_path: Array = []
@@ -921,14 +927,16 @@ func find_path_to_attack_position(from: Vector2i, target: UnitBase, attack_range
 	for x in range(grid_width):
 		for y in range(deploy_rows.x, deploy_rows.y + 1):
 			var candidate := Vector2i(x, y)
-			if get_distance(candidate, target_grid) > attack_range:
+			var candidate_ground := grid_to_world(candidate) + attacker_ground_offset
+			var candidate_distance := target.get_body_outline_distance_from_ground(candidate_ground) / maxf(cell_size, 1.0)
+			if candidate_distance > attack_range:
 				continue
 			if not _is_cell_available_for_unit(candidate, unit):
 				continue
 			var candidate_path: Array = find_path(from, candidate, unit)
 			if candidate_path.is_empty():
 				continue
-			var score: float = float(candidate_path.size()) + float(get_distance(candidate, target_grid)) * 0.01
+			var score: float = float(candidate_path.size()) + candidate_distance * 0.01
 			if score < best_score:
 				best_score = score
 				best_path = candidate_path

@@ -247,7 +247,7 @@ func _distance_to(target: Node) -> float:
 	if not grid:
 		return INF
 	if owner_unit is UnitBase and target is UnitBase:
-		return owner_unit.get_ground_position().distance_to((target as UnitBase).get_ground_position()) / maxf(grid.cell_size, 1.0)
+		return (target as UnitBase).get_body_outline_distance_from_ground(owner_unit.get_ground_position()) / maxf(grid.cell_size, 1.0)
 	return grid.get_distance(owner_unit.grid_position, target.grid_position)
 
 
@@ -257,10 +257,8 @@ func _is_in_attack_range(target: Node) -> bool:
 		return false
 	if owner_unit is UnitBase and target is UnitBase:
 		var target_unit := target as UnitBase
-		if owner_unit.is_touching_unit(target_unit):
-			return true
 		if _requires_contact_attack():
-			return false
+			return owner_unit.is_touching_unit(target_unit)
 	return _distance_to(target) <= owner_unit.attack_range
 
 
@@ -283,11 +281,7 @@ func _get_attack_entry_target(entry_ground_position: Vector2) -> UnitBase:
 func _would_attack_from_ground_position(target_unit: UnitBase, entry_ground_position: Vector2) -> bool:
 	if not target_unit or not is_instance_valid(target_unit):
 		return false
-	var distance := entry_ground_position.distance_to(target_unit.get_ground_position())
-	var touching_distance := owner_unit.get_collision_radius() + target_unit.get_collision_radius()
-	if distance <= touching_distance:
-		return true
-	return distance / _cell_size() <= owner_unit.attack_range
+	return target_unit.get_body_outline_distance_from_ground(entry_ground_position) / _cell_size() <= owner_unit.attack_range
 
 
 ## 判断单位是否需要接触目标才能攻击。
@@ -389,7 +383,7 @@ func _move_enemy_toward(target: Node, delta: float) -> void:
 		return
 	var speed_px := owner_unit.move_speed * _cell_size()
 	var distance := dir.length()
-	var attack_distance := owner_unit.attack_range * _cell_size()
+	var attack_distance := target_unit.get_body_radius() + owner_unit.attack_range * _cell_size()
 	var travel := minf(speed_px * delta, maxf(0.0, distance - attack_distance))
 	if travel > 0.0:
 		owner_unit.global_position += dir.normalized() * travel

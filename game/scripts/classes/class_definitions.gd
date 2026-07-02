@@ -491,7 +491,7 @@ static func get_template(class_id: String) -> ClassTemplate:
 	template.base_def = int(data.get("base_def", 5))
 	template.attack_speed = float(data.get("attack_speed", 1.0))
 	template.move_speed = float(data.get("move_speed", 2.0))
-	template.collision_radius = float(data.get("collision_radius", 16.0))
+	template.collision_radius = float(data.get("collision_radius", 12.0))
 	template.stance_defense_bonus = float(data.get("stance_defense_bonus", 1.5))
 	template.stance_range_bonus = float(data.get("stance_range_bonus", 1.5))
 	template.stance_can_move = bool(data.get("stance_can_move", false))

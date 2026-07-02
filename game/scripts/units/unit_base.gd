@@ -77,6 +77,7 @@ var ai_enabled: bool = true
 @export var unit_radius: float = 24.0
 @export var collision_radius: float = 0.0
 @export var ground_anchor_offset: Vector2 = Vector2.ZERO
+@export var show_body_debug_ring: bool = true
 @export var show_collision_debug_ring: bool = true
 @export var show_attack_range_debug_ring: bool = true
 @export var floating_number_rise: float = 28.0
@@ -86,6 +87,8 @@ var hp_bar_bg: ColorRect = null
 var hp_bar_fill: ColorRect = null
 var ground_collision_area: Area2D = null
 var ground_collision_shape: CollisionShape2D = null
+var body_debug_ring: Line2D = null
+var body_debug_ring_radius: float = -1.0
 var collision_debug_ring: Line2D = null
 var attack_range_debug_ring: Line2D = null
 var attack_range_debug_ring_radius: float = -1.0
@@ -95,6 +98,7 @@ var attack_range_debug_ring_radius: float = -1.0
 func _ready() -> void:
 	_setup_ground_collision()
 	_setup_visual()
+	_setup_body_debug_ring()
 	_setup_collision_debug_ring()
 	_setup_attack_range_debug_ring()
 	_setup_ai()
@@ -114,6 +118,7 @@ func _process(delta: float) -> void:
 	# 执行AI（仅在启用时）
 	if ai_enabled and ai_controller:
 		ai_controller.execute(delta)
+	_update_body_debug_ring()
 	_update_attack_range_debug_ring()
 
 
@@ -287,6 +292,7 @@ func refresh_ground_collision() -> void:
 	if circle:
 		circle.radius = get_collision_radius()
 	_configure_collision_layers()
+	_update_body_debug_ring(true)
 	_update_collision_debug_ring()
 	_update_attack_range_debug_ring(true)
 
@@ -336,6 +342,55 @@ func _get_collision_debug_ring_color() -> Color:
 	if team == "player":
 		return Color(0.15, 0.85, 1.0, 0.85)
 	return Color(1.0, 0.35, 0.18, 0.85)
+
+
+## 初始化角色本体半径调试圆环。
+func _setup_body_debug_ring() -> void:
+	body_debug_ring = Line2D.new()
+	body_debug_ring.name = "BodyDebugRing"
+	body_debug_ring.width = 1.5
+	body_debug_ring.closed = true
+	body_debug_ring.antialiased = true
+	body_debug_ring.z_index = 48
+	add_child(body_debug_ring)
+	_update_body_debug_ring(true)
+
+
+## 更新角色本体半径调试圆环。
+func _update_body_debug_ring(force_rebuild: bool = false) -> void:
+	if not body_debug_ring:
+		return
+	var visible := _should_show_body_debug_ring()
+	body_debug_ring.visible = visible
+	if not visible:
+		return
+
+	body_debug_ring.position = ground_anchor_offset
+	body_debug_ring.default_color = _get_body_debug_ring_color()
+	var radius := get_body_radius()
+	if not force_rebuild and is_equal_approx(radius, body_debug_ring_radius):
+		return
+
+	body_debug_ring_radius = radius
+	var points := PackedVector2Array()
+	var segments := 64
+	for i in range(segments):
+		var angle := TAU * float(i) / float(segments)
+		points.append(Vector2(cos(angle), sin(angle)) * radius)
+	body_debug_ring.points = points
+
+
+## 判断是否显示角色本体半径调试圆环。
+func _should_show_body_debug_ring() -> bool:
+	var grid: GridSystem = BattleManager.grid
+	return show_body_debug_ring and grid != null and grid.debug_unit_body_radii
+
+
+## 获取角色本体半径调试圆环颜色。
+func _get_body_debug_ring_color() -> Color:
+	if team == "player":
+		return Color(1.0, 1.0, 1.0, 0.65)
+	return Color(1.0, 0.9, 0.2, 0.65)
 
 
 ## 初始化攻击范围调试圆环。
@@ -411,6 +466,16 @@ func get_collision_radius() -> float:
 	if collision_radius > 0.0:
 		return collision_radius
 	return unit_radius * 2.0 / 3.0
+
+
+## 获取角色本体外轮廓半径。
+func get_body_radius() -> float:
+	return unit_radius
+
+
+## 获取指定地面坐标到角色本体外轮廓的距离。
+func get_body_outline_distance_from_ground(from_ground_position: Vector2) -> float:
+	return maxf(0.0, from_ground_position.distance_to(get_ground_position()) - get_body_radius())
 
 
 ## 获取攻击范围世界坐标radius。
