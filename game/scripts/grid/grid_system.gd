@@ -927,7 +927,7 @@ func find_path_to_attack_position(from: Vector2i, target: UnitBase, attack_range
 	for x in range(grid_width):
 		for y in range(deploy_rows.x, deploy_rows.y + 1):
 			var candidate := Vector2i(x, y)
-			var candidate_ground := grid_to_world(candidate) + attacker_ground_offset
+			var candidate_ground : Vector2 = grid_to_world(candidate) + attacker_ground_offset
 			var candidate_distance := target.get_body_outline_distance_from_ground(candidate_ground) / maxf(cell_size, 1.0)
 			if candidate_distance > attack_range:
 				continue

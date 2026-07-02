@@ -383,7 +383,7 @@ func _move_enemy_toward(target: Node, delta: float) -> void:
 		return
 	var speed_px := owner_unit.move_speed * _cell_size()
 	var distance := dir.length()
-	var attack_distance := target_unit.get_body_radius() + owner_unit.attack_range * _cell_size()
+	var attack_distance : float = target_unit.get_body_radius() + owner_unit.attack_range * _cell_size()
 	var travel := minf(speed_px * delta, maxf(0.0, distance - attack_distance))
 	if travel > 0.0:
 		owner_unit.global_position += dir.normalized() * travel
