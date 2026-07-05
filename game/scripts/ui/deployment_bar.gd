@@ -266,8 +266,10 @@ func _get_class_icon_color(class_id: String) -> Color:
 func _get_card_text(ct: ClassTemplate, card_data: Dictionary) -> String:
 	"""生成简化手牌文字。"""
 	var shop_level := int(card_data.get("shop_level", card_data.get("star_level", 1)))
-	return "%s\n等阶 %d" % [
+	var star_level := int(card_data.get("star_level", 1))
+	return "%s\n%d星 等阶%d" % [
 		ct.job_name,
+		star_level,
 		shop_level
 	]
 

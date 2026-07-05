@@ -23,6 +23,7 @@ var drag_grid_pos: Vector2i = Vector2i.ZERO
 var drag_over_grid: bool = false
 
 @onready var grid: GridSystem = null
+var _resolving_roster_promotions: bool = false
 
 
 ## 初始化节点状态并连接必要依赖。
@@ -59,6 +60,10 @@ func _input(event: InputEvent) -> void:
 ## 初始化手牌（从肉鸽队伍数据）
 func setup_hand(party_data: Array) -> void:
 	"""初始化手牌（从肉鸽队伍数据）"""
+	if GameManager.is_roguelike_run and not _resolving_roster_promotions:
+		if _resolve_run_roster_promotions():
+			party_data = GameManager.get_battle_party_data()
+
 	selected_card_index = -1
 	hand_cards.clear()
 	for member in party_data:
@@ -69,6 +74,144 @@ func setup_hand(party_data: Array) -> void:
 		hand_cards.append(card)
 	Log.i(M, "手牌初始化: %d 张卡" % hand_cards.size())
 	hand_updated.emit(hand_cards)
+
+
+## 从当前肉鸽队伍重新同步手牌，处理三合一消耗其他手牌的情况。
+func _sync_hand_from_run_party() -> void:
+	setup_hand(GameManager.get_battle_party_data())
+
+
+## 扫描手牌和已部署英雄，处理同名三合一升星。
+func _resolve_run_roster_promotions() -> bool:
+	if _resolving_roster_promotions:
+		return false
+	if not GameManager.is_roguelike_run:
+		return false
+	if BattleManager.state != BattleManager.BattleState.PREPARING:
+		return false
+
+	_resolving_roster_promotions = true
+	var changed := false
+	while _try_promote_one_run_roster_group():
+		changed = true
+	_resolving_roster_promotions = false
+	return changed
+
+
+func _try_promote_one_run_roster_group() -> bool:
+	var groups := {}
+
+	for i in range(GameManager.party.size()):
+		var member = GameManager.party[i]
+		if member is Dictionary:
+			_append_merge_candidate(groups, "hand", member as Dictionary, i, null)
+
+	for unit in BattleManager.player_units.duplicate():
+		if unit is HeroUnit and is_instance_valid(unit):
+			var hero := unit as HeroUnit
+			_append_merge_candidate(groups, "field", _card_data_from_unit(hero), -1, hero)
+
+	for key in groups.keys():
+		var group: Array = groups[key]
+		if group.size() >= 3:
+			var selected: Array = []
+			for i in range(3):
+				selected.append(group[i])
+			return _promote_run_merge_group(selected)
+	return false
+
+
+func _append_merge_candidate(groups: Dictionary, source: String, card_data: Dictionary, hand_index: int, unit: HeroUnit) -> void:
+	if not _is_merge_candidate_card(card_data):
+		return
+	var key := _get_merge_key(card_data)
+	if not groups.has(key):
+		groups[key] = []
+	var group: Array = groups[key]
+	group.append({
+		"source": source,
+		"card": card_data.duplicate(true),
+		"hand_index": hand_index,
+		"unit": unit
+	})
+
+
+func _is_merge_candidate_card(card_data: Dictionary) -> bool:
+	if card_data.is_empty():
+		return false
+	var class_id := ClassDefinitions.canonicalize_class_id(str(card_data.get("class_id", "")))
+	if not ClassDefinitions.has_class_id(class_id):
+		return false
+	if bool(card_data.get("merge_locked", false)):
+		return false
+	if int(card_data.get("upgrade_tier", 1)) > 1:
+		return false
+	var star := clampi(int(card_data.get("star_level", card_data.get("level", 1))), 1, GameManager.ROGUELIKE_MAX_CARD_STAR)
+	return star < GameManager.ROGUELIKE_MAX_CARD_STAR
+
+
+func _get_merge_key(card_data: Dictionary) -> String:
+	var class_id := ClassDefinitions.canonicalize_class_id(str(card_data.get("class_id", "")))
+	var star := clampi(int(card_data.get("star_level", card_data.get("level", 1))), 1, GameManager.ROGUELIKE_MAX_CARD_STAR)
+	var shop_level := maxi(1, int(card_data.get("shop_level", 1)))
+	return "%s|%d|%d" % [class_id, star, shop_level]
+
+
+func _promote_run_merge_group(group: Array) -> bool:
+	if group.size() < 3:
+		return false
+
+	var first_entry: Dictionary = group[0]
+	var first_card: Dictionary = first_entry.get("card", {})
+	var class_id := ClassDefinitions.canonicalize_class_id(str(first_card.get("class_id", "")))
+	var source_star := clampi(int(first_card.get("star_level", first_card.get("level", 1))), 1, GameManager.ROGUELIKE_MAX_CARD_STAR)
+	var shop_level := maxi(1, int(first_card.get("shop_level", 1)))
+	var promoted_star := source_star + 1
+
+	var hand_indices: Array[int] = []
+	for entry in group:
+		var candidate: Dictionary = entry
+		if str(candidate.get("source", "")) == "hand":
+			hand_indices.append(int(candidate.get("hand_index", -1)))
+
+	var hand_size_after_merge := GameManager.party.size() - hand_indices.size()
+	if hand_size_after_merge + 1 > GameManager.get_roguelike_max_hand_cards():
+		return false
+
+	hand_indices.sort()
+	for i in range(hand_indices.size() - 1, -1, -1):
+		var hand_index := int(hand_indices[i])
+		if hand_index >= 0 and hand_index < GameManager.party.size():
+			GameManager.party.remove_at(hand_index)
+
+	for entry in group:
+		var candidate: Dictionary = entry
+		if str(candidate.get("source", "")) != "field":
+			continue
+		var unit = candidate.get("unit")
+		if unit is HeroUnit and is_instance_valid(unit):
+			_remove_deployed_unit_for_promotion(unit as HeroUnit)
+
+	var promoted := GameManager.add_to_party(class_id, promoted_star, shop_level, 2)
+	if promoted:
+		Log.i(M, "三合一升星: %s 等阶%d %d星 -> %d星" % [class_id, shop_level, source_star, promoted_star])
+	return promoted
+
+
+func _remove_deployed_unit_for_promotion(unit: HeroUnit) -> void:
+	if not unit or not is_instance_valid(unit):
+		return
+	if selected_unit == unit:
+		selected_unit.is_selected = false
+		selected_unit = null
+		unit_deselected.emit()
+	if not grid:
+		grid = BattleManager.grid
+	if grid:
+		grid.remove_unit(unit)
+	BattleManager.unregister_player_unit(unit)
+	BattleManager.unit_retreated.emit(unit)
+	unit.queue_free()
 
 
 ## 检查是否可以部署指定职业
@@ -171,22 +314,32 @@ func deploy_card(card_index: int, grid_pos: Vector2i) -> bool:
 		return false
 
 	var card_data: Dictionary = hand_cards[card_index]
+	var synced_from_party := false
 	if _get_swappable_hero_at(grid_pos):
 		var swapped_card := _swap_card_data_with_unit(card_data, grid_pos)
 		if swapped_card.is_empty():
 			return false
-		hand_cards[card_index] = swapped_card
+		if GameManager.is_roguelike_run:
+			synced_from_party = true
+		else:
+			hand_cards[card_index] = swapped_card
 	elif can_deploy_more():
 		if not _deploy_card_data(card_data, grid_pos):
 			return false
-		hand_cards.remove_at(card_index)
+		if GameManager.is_roguelike_run:
+			synced_from_party = true
+		else:
+			hand_cards.remove_at(card_index)
 	else:
 		return false
 	if selected_card_index == card_index:
 		selected_card_index = -1
 	elif selected_card_index > card_index:
 		selected_card_index -= 1
-	hand_updated.emit(hand_cards)
+	if synced_from_party:
+		_sync_hand_from_run_party()
+	else:
+		hand_updated.emit(hand_cards)
 	return true
 
 
@@ -238,6 +391,8 @@ func _deploy_card_data(card_data: Dictionary, grid_pos: Vector2i) -> bool:
 
 	hero.mark_deployed(card_data, grid_pos)
 	BattleManager.unit_deployed.emit(hero)
+	if GameManager.is_roguelike_run:
+		_resolve_run_roster_promotions()
 	Log.i(M, "部署 %s 到 (%d, %d)" % [ct.job_name, grid_pos.x, grid_pos.y])
 	return true
 
@@ -273,6 +428,8 @@ func _swap_card_data_with_unit(card_data: Dictionary, grid_pos: Vector2i) -> Dic
 		Log.w(M, "替换部署失败：手牌数据未同步")
 		return {}
 
+	_remove_deployed_unit_for_promotion(target)
+
 	var returned_card := _return_card_to_hand_data(swapped_card)
 	if returned_card.is_empty():
 		if GameManager.is_roguelike_run:
@@ -287,16 +444,6 @@ func _swap_card_data_with_unit(card_data: Dictionary, grid_pos: Vector2i) -> Dic
 	replacement.setup(ct, card_data["level"])
 	replacement.deploy_cost = deploy_cost if spends_dp else 0
 
-	if selected_unit == target:
-		selected_unit.is_selected = false
-		selected_unit = null
-		unit_deselected.emit()
-
-	grid.remove_unit(target)
-	BattleManager.unregister_player_unit(target)
-	BattleManager.unit_retreated.emit(target)
-	target.queue_free()
-
 	if not grid.place_unit(replacement, grid_pos):
 		BattleManager.unregister_player_unit(replacement)
 		replacement.queue_free()
@@ -304,6 +451,8 @@ func _swap_card_data_with_unit(card_data: Dictionary, grid_pos: Vector2i) -> Dic
 
 	replacement.mark_deployed(card_data, grid_pos)
 	BattleManager.unit_deployed.emit(replacement)
+	if GameManager.is_roguelike_run:
+		_resolve_run_roster_promotions()
 	Log.i(M, "替换部署 %s 到 (%d, %d)，换下 %s" % [ct.job_name, grid_pos.x, grid_pos.y, returned_card.get("class_id", "")])
 	return returned_card
 
@@ -344,11 +493,28 @@ func _return_card_to_hand_data(card_data: Dictionary) -> Dictionary:
 	if not GameManager.is_roguelike_run:
 		return _normalize_hand_card_data(card_data)
 
-	var before_size := GameManager.party.size()
+	var before_instance_ids := {}
+	for member in GameManager.party:
+		if member is Dictionary:
+			var instance_id := int((member as Dictionary).get("instance_id", -1))
+			if instance_id >= 0:
+				before_instance_ids[instance_id] = true
+
 	if not GameManager.return_card_to_party(card_data):
 		return {}
-	if GameManager.party.size() > before_size and GameManager.party.back() is Dictionary:
-		return _normalize_hand_card_data((GameManager.party.back() as Dictionary).duplicate(true))
+
+	_resolve_run_roster_promotions()
+
+	var returned_card := {}
+	for member in GameManager.party:
+		if not (member is Dictionary):
+			continue
+		var card := member as Dictionary
+		var instance_id := int(card.get("instance_id", -1))
+		if instance_id >= 0 and not before_instance_ids.has(instance_id):
+			returned_card = card.duplicate(true)
+	if not returned_card.is_empty():
+		return _normalize_hand_card_data(returned_card)
 	return _normalize_hand_card_data(card_data)
 
 
@@ -358,13 +524,14 @@ func _normalize_hand_card_data(card_data: Dictionary) -> Dictionary:
 		return {}
 	var normalized := card_data.duplicate(true)
 	var class_id := ClassDefinitions.canonicalize_class_id(str(normalized.get("class_id", "fighter_champion")))
-	var star := clampi(int(normalized.get("star_level", normalized.get("level", 1))), 1, 3)
+	var star := clampi(int(normalized.get("star_level", normalized.get("level", 1))), 1, GameManager.ROGUELIKE_MAX_CARD_STAR)
 	normalized["class_id"] = class_id
 	normalized["star_level"] = star
 	normalized["level"] = GameManager.get_effective_level_for_star(class_id, star)
 	normalized["shop_level"] = maxi(1, int(normalized.get("shop_level", 1)))
 	normalized["upgrade_tier"] = maxi(1, int(normalized.get("upgrade_tier", 1)))
-	normalized["is_golden"] = bool(normalized.get("is_golden", false)) or int(normalized["upgrade_tier"]) > 1
+	normalized["merge_locked"] = bool(normalized.get("merge_locked", false)) or int(normalized["upgrade_tier"]) > 1
+	normalized["is_golden"] = bool(normalized.get("is_golden", false)) or bool(normalized["merge_locked"])
 	return normalized
 
 
@@ -474,8 +641,11 @@ func retreat_selected() -> void:
 		if card_data.size() > 0:
 			var returned_card := _return_card_to_hand_data(card_data)
 			if not returned_card.is_empty():
-				hand_cards.append(returned_card)
-				hand_updated.emit(hand_cards)
+				if GameManager.is_roguelike_run:
+					_sync_hand_from_run_party()
+				else:
+					hand_cards.append(returned_card)
+					hand_updated.emit(hand_cards)
 		selected_unit = null
 		unit_deselected.emit()
 
@@ -514,12 +684,17 @@ func _finish_drag_at(grid_pos: Vector2i) -> void:
 	if _get_swappable_hero_at(grid_pos):
 		var swapped_card := _swap_card_data_with_unit(drag_card_data, grid_pos)
 		if not swapped_card.is_empty():
-			var restore_index := clampi(drag_original_index, 0, hand_cards.size())
-			hand_cards.insert(restore_index, swapped_card)
-			hand_updated.emit(hand_cards)
+			if GameManager.is_roguelike_run:
+				_sync_hand_from_run_party()
+			else:
+				var restore_index := clampi(drag_original_index, 0, hand_cards.size())
+				hand_cards.insert(restore_index, swapped_card)
+				hand_updated.emit(hand_cards)
 			deployed = true
 	elif can_deploy_more():
 		deployed = _deploy_card_data(drag_card_data, grid_pos)
+		if deployed and GameManager.is_roguelike_run:
+			_sync_hand_from_run_party()
 	if not deployed:
 		_restore_dragged_card()
 	_clear_drag_state()

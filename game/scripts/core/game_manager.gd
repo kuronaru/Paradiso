@@ -14,6 +14,7 @@ const ROGUELIKE_STARTING_GOLD := 6
 const ROGUELIKE_MAX_HAND_CARDS := 10
 const ROGUELIKE_MAX_DEPLOYED_UNITS := 8
 const ROGUELIKE_MAX_ROUNDS := 15
+const ROGUELIKE_MAX_CARD_STAR := 3
 
 signal gold_changed(gold: int)
 signal run_gold_changed(gold: int)
@@ -123,7 +124,7 @@ func add_to_party(class_id: String, star_level: int = 1, shop_level: int = 1, up
 	if not can_add_to_party():
 		return false
 	var canonical_id := ClassDefinitions.canonicalize_class_id(class_id)
-	var star := clampi(star_level, 1, 3)
+	var star := clampi(star_level, 1, ROGUELIKE_MAX_CARD_STAR)
 	var tier := maxi(1, upgrade_tier)
 	var card: Dictionary = {
 		"class_id": canonical_id,
@@ -131,14 +132,13 @@ func add_to_party(class_id: String, star_level: int = 1, shop_level: int = 1, up
 		"level": get_effective_level_for_star(canonical_id, star),
 		"shop_level": maxi(1, shop_level),
 		"upgrade_tier": tier,
+		"merge_locked": tier > 1,
 		"is_golden": tier > 1
 	}
 	if is_roguelike_run:
 		card["instance_id"] = _next_run_card_instance_id
 		_next_run_card_instance_id += 1
 	party.append(card)
-	if is_roguelike_run:
-		_try_promote_party_cards(canonical_id, star, maxi(1, shop_level), tier)
 	party_changed.emit(party)
 	return true
 
@@ -182,13 +182,14 @@ func return_card_to_party(card_data: Dictionary) -> bool:
 
 	var restored := card_data.duplicate(true)
 	var class_id := ClassDefinitions.canonicalize_class_id(str(restored.get("class_id", "fighter_champion")))
-	var star := clampi(int(restored.get("star_level", restored.get("level", 1))), 1, 3)
+	var star := clampi(int(restored.get("star_level", restored.get("level", 1))), 1, ROGUELIKE_MAX_CARD_STAR)
 	restored["class_id"] = class_id
 	restored["star_level"] = star
 	restored["level"] = get_effective_level_for_star(class_id, star)
 	restored["shop_level"] = maxi(1, int(restored.get("shop_level", 1)))
 	restored["upgrade_tier"] = maxi(1, int(restored.get("upgrade_tier", 1)))
-	restored["is_golden"] = bool(restored.get("is_golden", false)) or int(restored["upgrade_tier"]) > 1
+	restored["merge_locked"] = bool(restored.get("merge_locked", false)) or int(restored["upgrade_tier"]) > 1
+	restored["is_golden"] = bool(restored.get("is_golden", false)) or bool(restored["merge_locked"])
 	if is_roguelike_run and not restored.has("instance_id"):
 		restored["instance_id"] = _next_run_card_instance_id
 		_next_run_card_instance_id += 1
@@ -198,45 +199,54 @@ func return_card_to_party(card_data: Dictionary) -> bool:
 	return true
 
 
-## 同名同等阶三张手牌合成为一张金色晋升卡。
-func _try_promote_party_cards(class_id: String, star_level: int, shop_level: int, upgrade_tier: int) -> bool:
-	"""同名同等阶三张手牌合成为一张金色晋升卡。"""
+## 同名、同星、同商店等级的三张普通卡合成为一张更高星金卡；升星卡不再参与三合一。
+func _try_promote_party_cards(class_id: String, star_level: int, shop_level: int, upgrade_tier: int) -> Dictionary:
+	"""同名、同星、同商店等级的三张普通卡合成为一张更高星金卡；升星卡不再参与三合一。"""
 	var canonical_id := ClassDefinitions.canonicalize_class_id(class_id)
+	var source_star := clampi(star_level, 1, ROGUELIKE_MAX_CARD_STAR)
+	if source_star >= ROGUELIKE_MAX_CARD_STAR:
+		return {}
+	if upgrade_tier > 1:
+		return {}
+
 	var matches: Array[int] = []
 	for i in range(party.size()):
 		var member: Dictionary = party[i]
 		if ClassDefinitions.canonicalize_class_id(str(member.get("class_id", ""))) != canonical_id:
 			continue
-		if int(member.get("star_level", member.get("level", 1))) != star_level:
+		if bool(member.get("merge_locked", false)):
+			continue
+		if int(member.get("upgrade_tier", 1)) > 1:
+			continue
+		if int(member.get("star_level", member.get("level", 1))) != source_star:
 			continue
 		if int(member.get("shop_level", 1)) != shop_level:
-			continue
-		if int(member.get("upgrade_tier", 1)) != upgrade_tier:
 			continue
 		matches.append(i)
 		if matches.size() >= 3:
 			break
 
 	if matches.size() < 3:
-		return false
+		return {}
 
 	for j in range(matches.size() - 1, -1, -1):
 		party.remove_at(matches[j])
 
-	var promoted_tier := upgrade_tier + 1
+	var promoted_star := mini(source_star + 1, ROGUELIKE_MAX_CARD_STAR)
 	var promoted_card := {
 		"class_id": canonical_id,
-		"star_level": star_level,
-		"level": get_effective_level_for_star(canonical_id, star_level),
+		"star_level": promoted_star,
+		"level": get_effective_level_for_star(canonical_id, promoted_star),
 		"shop_level": shop_level,
-		"upgrade_tier": promoted_tier,
+		"upgrade_tier": 2,
+		"merge_locked": true,
 		"is_golden": true,
 		"instance_id": _next_run_card_instance_id
 	}
 	_next_run_card_instance_id += 1
 	party.append(promoted_card)
-	Log.i(M, "三合一晋升: %s 等阶%d -> 金色卡" % [canonical_id, shop_level])
-	return true
+	Log.i(M, "三合一升星: %s 等阶%d %d星 -> %d星" % [canonical_id, shop_level, source_star, promoted_star])
+	return promoted_card.duplicate(true)
 
 
 ## 消费金币，返回是否成功
@@ -596,7 +606,7 @@ func get_owned_character_level(class_id: String) -> int:
 func get_star_level_cap(star_level: int) -> int:
 	"""获取局内招募星级对应的战斗等级上限"""
 	var caps := _cfg_dict("star_level_caps")
-	var star := clampi(star_level, 1, 3)
+	var star := clampi(star_level, 1, ROGUELIKE_MAX_CARD_STAR)
 	if caps.has(str(star)):
 		return int(caps[str(star)])
 	match star:

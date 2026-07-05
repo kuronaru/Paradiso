@@ -18,6 +18,8 @@ var option_icons: Array[ColorRect] = []
 var option_name_labels: Array[Label] = []
 var option_synergy_labels: Array[Label] = []
 var option_price_labels: Array[Label] = []
+var option_blink_tweens: Array = []
+var option_blink_active: Array[bool] = []
 var skip_btn: Button
 var freeze_btn: Button
 var refresh_btn: Button
@@ -46,6 +48,10 @@ func _ready() -> void:
 		GameManager.run_gold_changed.connect(_on_run_gold_changed)
 	if not GameManager.run_round_changed.is_connected(_on_run_round_changed):
 		GameManager.run_round_changed.connect(_on_run_round_changed)
+	if not BattleManager.unit_deployed.is_connected(_on_roster_changed):
+		BattleManager.unit_deployed.connect(_on_roster_changed)
+	if not BattleManager.unit_retreated.is_connected(_on_roster_changed):
+		BattleManager.unit_retreated.connect(_on_roster_changed)
 
 	_setup_ui()
 	hide()
@@ -181,6 +187,8 @@ func _create_option_card(index: int) -> void:
 	price_label.add_theme_color_override("font_color", Color(1.0, 0.86, 0.32))
 	stack.add_child(price_label)
 	option_price_labels.append(price_label)
+	option_blink_tweens.append(null)
+	option_blink_active.append(false)
 
 
 func _create_refresh_cell() -> void:
@@ -286,6 +294,7 @@ func _refresh() -> void:
 func _refresh_option_card(index: int, option, active_gold: int) -> void:
 	var ct := ClassDefinitions.get_template(option.class_id)
 	var hand_full := not GameManager.can_add_to_party()
+	var has_owned_copy := _player_owns_recruit_class(option.class_id)
 	option_icons[index].color = ClassDefinitions.get_template_color(ct.class_id)
 	option_name_labels[index].text = ct.job_name
 	option_synergy_labels[index].text = _get_synergy_line(ct)
@@ -297,10 +306,11 @@ func _refresh_option_card(index: int, option, active_gold: int) -> void:
 		or not _is_prepare_layout()
 	)
 	option_buttons[index].visible = true
-	option_buttons[index].modulate = Color.WHITE
+	_set_option_owned_blink(index, has_owned_copy)
 
 
 func _refresh_empty_option_card(index: int) -> void:
+	_set_option_owned_blink(index, false)
 	option_icons[index].color = Color(0.08, 0.08, 0.09, 0.85)
 	option_name_labels[index].text = "空"
 	option_synergy_labels[index].text = ""
@@ -309,6 +319,58 @@ func _refresh_empty_option_card(index: int) -> void:
 	option_buttons[index].disabled = true
 	option_buttons[index].visible = true
 	option_buttons[index].modulate = Color(0.82, 0.82, 0.82, 1.0)
+
+
+func _player_owns_recruit_class(class_id: String) -> bool:
+	var canonical_id := ClassDefinitions.canonicalize_class_id(class_id)
+	for member in GameManager.party:
+		if member is Dictionary:
+			var member_id := ClassDefinitions.canonicalize_class_id(str((member as Dictionary).get("class_id", "")))
+			if member_id == canonical_id:
+				return true
+
+	for unit in BattleManager.player_units:
+		if not is_instance_valid(unit):
+			continue
+		if not (unit is HeroUnit):
+			continue
+		var hero := unit as HeroUnit
+		var unit_class_id := ""
+		if not hero.run_card_data.is_empty():
+			unit_class_id = str(hero.run_card_data.get("class_id", ""))
+		elif hero.class_template:
+			unit_class_id = hero.class_template.class_id
+		if ClassDefinitions.canonicalize_class_id(unit_class_id) == canonical_id:
+			return true
+	return false
+
+
+func _set_option_owned_blink(index: int, enabled: bool) -> void:
+	if index < 0 or index >= option_buttons.size():
+		return
+	if index >= option_blink_active.size() or index >= option_blink_tweens.size():
+		return
+	if bool(option_blink_active[index]) == enabled:
+		if not enabled:
+			(option_buttons[index] as Button).modulate = Color.WHITE
+		return
+
+	option_blink_active[index] = enabled
+	var old_tween = option_blink_tweens[index]
+	if old_tween is Tween and old_tween.is_valid():
+		old_tween.kill()
+	option_blink_tweens[index] = null
+
+	var button := option_buttons[index] as Button
+	if enabled and is_inside_tree():
+		button.modulate = Color.WHITE
+		var tween := create_tween()
+		tween.set_loops()
+		tween.tween_property(button, "modulate", Color(1.25, 1.18, 0.68, 1.0), 0.95).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tween.tween_property(button, "modulate", Color.WHITE, 0.95).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		option_blink_tweens[index] = tween
+	else:
+		button.modulate = Color.WHITE
 
 
 func _get_synergy_line(ct: ClassTemplate) -> String:
@@ -446,6 +508,10 @@ func _on_run_gold_changed(_gold: int) -> void:
 
 
 func _on_run_round_changed(_round: int, _max_rounds: int) -> void:
+	_refresh()
+
+
+func _on_roster_changed(_unit: Node) -> void:
 	_refresh()
 
 
