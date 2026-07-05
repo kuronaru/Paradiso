@@ -82,6 +82,7 @@ func prepare_for_next_round() -> void:
 	modulate = Color.WHITE
 	target = null
 	attack_cooldown = 0.0
+	clear_combat_statuses()
 	current_hp = max_hp
 	hp_changed.emit(current_hp, max_hp)
 	deactivate_ai()

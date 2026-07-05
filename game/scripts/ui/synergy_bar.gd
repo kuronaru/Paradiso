@@ -351,6 +351,8 @@ func _is_multiplier_stat(stat: String) -> bool:
 		"move_speed_multiplier",
 		"damage_multiplier",
 		"skill_damage_multiplier",
+		"nature_damage_multiplier",
+		"burning_damage_multiplier",
 		"heal_multiplier",
 		"incoming_heal_multiplier",
 		"crit_damage_multiplier",
@@ -364,6 +366,9 @@ func _is_fraction_stat(stat: String) -> bool:
 		"crit_chance",
 		"skill_cooldown_reduction",
 		"life_steal_percent",
+		"poison_attack_ratio",
+		"slow_percent",
+		"explosion_chance",
 	]
 
 
@@ -384,6 +389,10 @@ func _stat_display_name(stat: String) -> String:
 			return "伤害"
 		"skill_damage_multiplier":
 			return "技能伤害"
+		"nature_damage_multiplier":
+			return "自然爆条伤害"
+		"burning_damage_multiplier":
+			return "燃烧增伤"
 		"heal_multiplier":
 			return "治疗/护盾"
 		"incoming_heal_multiplier":
@@ -398,6 +407,12 @@ func _stat_display_name(stat: String) -> String:
 			return "技能冷却"
 		"life_steal_percent":
 			return "攻击吸血"
+		"poison_attack_ratio":
+			return "毒层攻击系数"
+		"slow_percent":
+			return "自然减速"
+		"explosion_chance":
+			return "爆炸概率"
 		"search_range_bonus":
 			return "索敌范围"
 		"max_dp_bonus":

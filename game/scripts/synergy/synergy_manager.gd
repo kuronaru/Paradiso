@@ -14,6 +14,7 @@ var _definition_order: Array[String] = []
 var _summaries: Array[Dictionary] = []
 var _active_modifiers: Dictionary = {}
 var _active_fixed_modifiers: Dictionary = {}
+var _active_main_effects: Dictionary = {}
 
 
 ## 初始化节点状态并连接必要依赖。
@@ -54,6 +55,7 @@ func recalculate() -> void:
 
 	_active_modifiers = _default_modifiers()
 	_active_fixed_modifiers = {}
+	_active_main_effects = {}
 	_summaries.clear()
 
 	for synergy_id in _definition_order:
@@ -69,6 +71,8 @@ func recalculate() -> void:
 
 		if active_tier > 0:
 			_apply_definition_modifiers(definition, active_tier, layer)
+			if definition.type == SynergyDefinition.SynergyType.MAIN_NATION:
+				_active_main_effects[definition.tag] = _build_main_effect_payload(definition, active_tier, layer)
 
 	_summaries.sort_custom(_sort_summaries)
 	_apply_modifiers_to_units()
@@ -89,6 +93,11 @@ func get_active_modifiers() -> Dictionary:
 ## 获取固定修正。
 func get_fixed_modifiers() -> Dictionary:
 	return _active_fixed_modifiers.duplicate(true)
+
+
+## 获取已激活的主羁绊战斗机制参数。
+func get_active_main_effects() -> Dictionary:
+	return _active_main_effects.duplicate(true)
 
 
 ## 获取discounteddeploy消耗。
@@ -253,6 +262,56 @@ func _merge_fixed_value(stat: String, value: float) -> void:
 			_active_fixed_modifiers[stat] = float(_active_fixed_modifiers.get(stat, 0.0)) + value
 
 
+## 构建主羁绊战斗机制参数。
+func _build_main_effect_payload(definition: SynergyDefinition, active_tier: int, layer: int) -> Dictionary:
+	match definition.tag:
+		"anmarit":
+			return {
+				"tier": active_tier,
+				"layer": layer,
+				"poison_attack_ratio": _linear_cap(0.60, 0.009, 9.50, layer),
+				"poison_dot_ratio": 0.24,
+				"poison_decay_per_second": 0.16,
+				"poison_tick_interval": 1.0,
+				"poison_aoe_radius": 1.0 if active_tier >= 6 else 0.0,
+			}
+		"laferida":
+			return {
+				"tier": active_tier,
+				"layer": layer,
+				"nature_threshold": 100.0,
+				"nature_gain_ratio": 0.80,
+				"nature_min_gain": 12.0,
+				"slow_percent": _linear_cap(0.20, 0.0005, 0.70, layer),
+				"slow_duration": 2.5,
+				"nature_damage_multiplier": _linear_cap(1.00, 0.008, 9.00, layer) if active_tier >= 6 else 0.0,
+			}
+		"naka":
+			return {
+				"tier": active_tier,
+				"layer": layer,
+				"burn_threshold": 100.0,
+				"burn_gain_ratio": 0.85,
+				"burn_min_gain": 14.0,
+				"burn_duration": 4.0,
+				"burn_dot_ratio": 0.16,
+				"burn_tick_interval": 1.0,
+				"burning_damage_multiplier": _linear_cap(1.25, 0.0075, 8.50, layer) if active_tier >= 6 else 1.0,
+				"explosion_chance": _linear_cap(0.08, 0.00062, 0.70, layer) if active_tier >= 6 else 0.0,
+				"explosion_damage_multiplier": 1.20,
+				"explosion_radius": 1.0,
+			}
+	return {
+		"tier": active_tier,
+		"layer": layer,
+	}
+
+
+## 线性成长并封顶。
+func _linear_cap(base: float, per_layer: float, max_value: float, layer: int) -> float:
+	return minf(base + float(layer) * per_layer, max_value)
+
+
 ## 应用修正单位。
 func _apply_modifiers_to_units() -> void:
 	for unit in BattleManager.player_units:
@@ -273,9 +332,18 @@ func _build_definitions() -> void:
 	_definition_order.clear()
 	var order := 0
 
-	_add(SynergyDefinition.new("main_anmarit", "安马里特", "瘴", SynergyDefinition.SynergyType.MAIN_NATION, "anmarit", [3, 6], order, "国家主羁绊：安马里特瘴林。3人时攻击叠加随层数成长的毒层并造成持续伤害；6人时毒伤扩散为小范围群体伤害。", [], [], "anmarit_poison")); order += 1
-	_add(SynergyDefinition.new("main_laferida", "拉费里达", "森", SynergyDefinition.SynergyType.MAIN_NATION, "laferida", [3, 6], order, "国家主羁绊：拉费里达共生。3人时攻击积累自然值，满值爆条并造成随层数成长的减速；6人时爆条额外造成基于最高攻击力的自然伤害。", [], [], "laferida_nature_value")); order += 1
-	_add(SynergyDefinition.new("main_naka", "纳卡", "火", SynergyDefinition.SynergyType.MAIN_NATION, "naka", [3, 6], order, "国家主羁绊：纳卡烈焰。3人时提升攻击并叠加灼烧值，满值点燃敌人；6人时对燃烧目标增伤，并有随层数成长的概率追加爆炸伤害。", [], [], "naka_fire")); order += 1
+	_add(SynergyDefinition.new("main_anmarit", "安马里特", "瘴", SynergyDefinition.SynergyType.MAIN_NATION, "anmarit", [3, 6], order, "国家主羁绊：安马里特瘴林。3人时攻击叠加随层数成长的毒层并造成持续伤害；6人时毒伤扩散为小范围群体伤害。", [
+		{"min_tier": 3, "stat": "poison_attack_ratio", "base": 0.60, "per_layer": 0.009, "max_value": 9.50},
+	], [], "anmarit_poison")); order += 1
+	_add(SynergyDefinition.new("main_laferida", "拉费里达", "森", SynergyDefinition.SynergyType.MAIN_NATION, "laferida", [3, 6], order, "国家主羁绊：拉费里达共生。3人时攻击积累自然值，满值爆条并造成随层数成长的减速；6人时爆条额外造成基于最高攻击力的自然伤害。", [
+		{"min_tier": 3, "stat": "slow_percent", "base": 0.20, "per_layer": 0.0005, "max_value": 0.70},
+		{"min_tier": 6, "stat": "nature_damage_multiplier", "base": 1.00, "per_layer": 0.008, "max_value": 9.00},
+	], [], "laferida_nature_value")); order += 1
+	_add(SynergyDefinition.new("main_naka", "纳卡", "火", SynergyDefinition.SynergyType.MAIN_NATION, "naka", [3, 6], order, "国家主羁绊：纳卡烈焰。3人时提升攻击并叠加灼烧值，满值点燃敌人；6人时对燃烧目标增伤，并有随层数成长的概率追加爆炸伤害。", [
+		{"min_tier": 3, "stat": "attack_multiplier", "base": 1.30, "per_layer": 0.008, "max_value": 9.00},
+		{"min_tier": 6, "stat": "burning_damage_multiplier", "base": 1.25, "per_layer": 0.0075, "max_value": 8.50},
+		{"min_tier": 6, "stat": "explosion_chance", "base": 0.08, "per_layer": 0.00062, "max_value": 0.70},
+	], [], "naka_fire")); order += 1
 	_add(SynergyDefinition.new("stat_str", "力量", "力", SynergyDefinition.SynergyType.MINOR_STAT, "STR", [2, 3], order, "小羁绊：提升物理攻击倍率，3人后获得破甲。", [
 		{"min_tier": 2, "stat": "attack_multiplier", "base": 1.15, "per_layer": 0.0038, "max_value": 5.0},
 		{"min_tier": 3, "stat": "armor_pierce", "base": 0.10, "per_layer": 0.00025, "max_value": 0.35},

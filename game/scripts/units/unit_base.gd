@@ -64,6 +64,10 @@ var is_alive: bool = true
 var attack_cooldown: float = 0.0
 var skill_cooldowns: Dictionary = {}  # {skill_id: remaining_time}
 
+## 主羁绊运行时状态
+var combat_statuses: Dictionary = {}
+var status_move_speed_multiplier: float = 1.0
+
 ## 团队标识
 @export var team: String = "player"   # "player" | "enemy"
 
@@ -110,6 +114,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if not is_alive:
 		return
+	_update_combat_statuses(delta)
 	# 更新冷却
 	if attack_cooldown > 0:
 		attack_cooldown -= delta
@@ -146,6 +151,8 @@ func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 	attack_range = base_attack_range
 	search_range = base_search_range
 	synergy_modifiers = _default_synergy_modifiers()
+	combat_statuses.clear()
+	status_move_speed_multiplier = 1.0
 	# 初始化技能冷却
 	for sid in class_data.skill_ids:
 		skill_cooldowns[sid] = 0.0
@@ -164,6 +171,8 @@ func set_base_stats_from_current() -> void:
 	base_search_range = search_range
 	if synergy_modifiers.is_empty():
 		synergy_modifiers = _default_synergy_modifiers()
+	combat_statuses.clear()
+	status_move_speed_multiplier = 1.0
 
 
 ## 应用全队羁绊数值修正
@@ -215,6 +224,7 @@ func _recalculate_stats(preserve_hp_ratio: bool) -> void:
 		attack_range *= class_template.stance_range_bonus
 		if class_template.stance_is_rooted:
 			move_speed = 0.0
+	move_speed = max(0.0, move_speed * status_move_speed_multiplier)
 
 	if preserve_hp_ratio:
 		current_hp = clampi(int(round(float(max_hp) * hp_ratio)), 1 if is_alive else 0, max_hp)
@@ -562,6 +572,212 @@ func heal(amount: int) -> int:
 	return actual
 
 
+## 清除主羁绊运行时状态。
+func clear_combat_statuses() -> void:
+	combat_statuses.clear()
+	var had_slow := not is_equal_approx(status_move_speed_multiplier, 1.0)
+	status_move_speed_multiplier = 1.0
+	if had_slow:
+		_recalculate_stats(true)
+
+
+## 是否处于燃烧状态。
+func has_burning_status() -> bool:
+	if not combat_statuses.has("naka_burning"):
+		return false
+	var burning: Dictionary = combat_statuses.get("naka_burning", {})
+	return float(burning.get("remaining", 0.0)) > 0.0
+
+
+## 受到无视防御的状态伤害。
+func take_status_damage(amount: int, text_color: Color = Color(0.95, 0.75, 0.25, 1.0)) -> int:
+	if not is_alive or amount <= 0:
+		return 0
+	var actual := maxi(1, amount)
+	current_hp = max(0, current_hp - actual)
+	_show_floating_number(-actual, text_color)
+	hp_changed.emit(current_hp, max_hp)
+	if current_hp <= 0:
+		_die()
+	return actual
+
+
+## 应用安马里特瘴毒。
+func apply_anmarit_poison(attacker: UnitBase, effect: Dictionary) -> void:
+	if not _can_receive_hostile_status(attacker):
+		return
+	var add_amount := maxf(1.0, float(attacker.attack) * float(effect.get("poison_attack_ratio", 0.0)))
+	var poison: Dictionary = combat_statuses.get("anmarit_poison", {})
+	poison["amount"] = minf(float(poison.get("amount", 0.0)) + add_amount, float(max_hp) * 30.0)
+	poison["dot_ratio"] = float(effect.get("poison_dot_ratio", 0.24))
+	poison["decay_per_second"] = float(effect.get("poison_decay_per_second", 0.16))
+	poison["tick_interval"] = maxf(0.1, float(effect.get("poison_tick_interval", 1.0)))
+	poison["tick_timer"] = minf(float(poison.get("tick_timer", poison["tick_interval"])), float(poison["tick_interval"]))
+	poison["aoe_radius"] = maxf(0.0, float(effect.get("poison_aoe_radius", 0.0)))
+	combat_statuses["anmarit_poison"] = poison
+
+
+## 应用拉费里达自然值。
+func apply_laferida_nature(attacker: UnitBase, effect: Dictionary) -> void:
+	if not _can_receive_hostile_status(attacker):
+		return
+	var nature: Dictionary = combat_statuses.get("laferida_nature", {})
+	var gain := maxf(float(effect.get("nature_min_gain", 12.0)), float(attacker.attack) * float(effect.get("nature_gain_ratio", 0.80)))
+	var threshold := maxf(1.0, float(effect.get("nature_threshold", 100.0)))
+	nature["value"] = float(nature.get("value", 0.0)) + gain
+	nature["source_attack"] = maxf(float(nature.get("source_attack", 0.0)), float(attacker.attack))
+
+	if float(nature["value"]) >= threshold:
+		var source_attack := float(nature.get("source_attack", attacker.attack))
+		nature["value"] = 0.0
+		nature["source_attack"] = 0.0
+		_apply_laferida_slow(float(effect.get("slow_percent", 0.20)), float(effect.get("slow_duration", 2.5)))
+		if int(effect.get("tier", 0)) >= 6:
+			var damage_multiplier := float(effect.get("nature_damage_multiplier", 0.0))
+			if damage_multiplier > 0.0:
+				take_status_damage(int(round(source_attack * damage_multiplier)), Color(0.32, 0.90, 0.48, 1.0))
+				if not is_alive:
+					return
+	combat_statuses["laferida_nature"] = nature
+
+
+## 应用纳卡灼烧值。
+func apply_naka_burn(attacker: UnitBase, effect: Dictionary) -> void:
+	if not _can_receive_hostile_status(attacker):
+		return
+	var burn_value: Dictionary = combat_statuses.get("naka_burn_value", {})
+	var gain := maxf(float(effect.get("burn_min_gain", 14.0)), float(attacker.attack) * float(effect.get("burn_gain_ratio", 0.85)))
+	var threshold := maxf(1.0, float(effect.get("burn_threshold", 100.0)))
+	burn_value["value"] = float(burn_value.get("value", 0.0)) + gain
+	if float(burn_value["value"]) >= threshold:
+		burn_value["value"] = 0.0
+		_ignite_naka_burning(attacker, effect)
+	combat_statuses["naka_burn_value"] = burn_value
+
+
+## 更新主羁绊状态。
+func _update_combat_statuses(delta: float) -> void:
+	_update_anmarit_poison(delta)
+	if not is_alive:
+		return
+	_update_naka_burning(delta)
+	if not is_alive:
+		return
+	_update_laferida_slow(delta)
+
+
+## 更新安马里特瘴毒。
+func _update_anmarit_poison(delta: float) -> void:
+	if not combat_statuses.has("anmarit_poison"):
+		return
+	var poison: Dictionary = combat_statuses.get("anmarit_poison", {})
+	var amount := float(poison.get("amount", 0.0))
+	if amount <= 1.0:
+		combat_statuses.erase("anmarit_poison")
+		return
+
+	var decay := clampf(float(poison.get("decay_per_second", 0.16)), 0.0, 0.95)
+	amount *= pow(1.0 - decay, delta)
+	poison["amount"] = amount
+
+	var interval := maxf(0.1, float(poison.get("tick_interval", 1.0)))
+	var tick_timer := float(poison.get("tick_timer", interval)) - delta
+	if tick_timer <= 0.0:
+		var tick_damage := maxi(1, int(round(amount * float(poison.get("dot_ratio", 0.24)))))
+		var aoe_radius := float(poison.get("aoe_radius", 0.0))
+		if aoe_radius > 0.0:
+			_deal_status_area_damage(tick_damage, aoe_radius, team, Color(0.50, 0.86, 0.22, 1.0))
+		else:
+			take_status_damage(tick_damage, Color(0.50, 0.86, 0.22, 1.0))
+		if not is_alive:
+			return
+		tick_timer += interval
+	poison["tick_timer"] = tick_timer
+	combat_statuses["anmarit_poison"] = poison
+
+
+## 更新纳卡燃烧。
+func _update_naka_burning(delta: float) -> void:
+	if not combat_statuses.has("naka_burning"):
+		return
+	var burning: Dictionary = combat_statuses.get("naka_burning", {})
+	var remaining := float(burning.get("remaining", 0.0)) - delta
+	if remaining <= 0.0:
+		combat_statuses.erase("naka_burning")
+		return
+
+	var interval := maxf(0.1, float(burning.get("tick_interval", 1.0)))
+	var tick_timer := float(burning.get("tick_timer", interval)) - delta
+	if tick_timer <= 0.0:
+		take_status_damage(maxi(1, int(round(float(burning.get("dot_damage", 1.0))))), Color(1.0, 0.44, 0.16, 1.0))
+		if not is_alive:
+			return
+		tick_timer += interval
+	burning["remaining"] = remaining
+	burning["tick_timer"] = tick_timer
+	combat_statuses["naka_burning"] = burning
+
+
+## 更新拉费里达减速。
+func _update_laferida_slow(delta: float) -> void:
+	if not combat_statuses.has("laferida_slow"):
+		return
+	var slow: Dictionary = combat_statuses.get("laferida_slow", {})
+	var remaining := float(slow.get("remaining", 0.0)) - delta
+	if remaining <= 0.0:
+		combat_statuses.erase("laferida_slow")
+		status_move_speed_multiplier = 1.0
+		_recalculate_stats(true)
+		return
+	slow["remaining"] = remaining
+	combat_statuses["laferida_slow"] = slow
+
+
+## 应用拉费里达减速状态。
+func _apply_laferida_slow(slow_percent: float, duration: float) -> void:
+	var multiplier := 1.0 - clampf(slow_percent, 0.0, 0.95)
+	var slow: Dictionary = combat_statuses.get("laferida_slow", {})
+	slow["remaining"] = maxf(float(slow.get("remaining", 0.0)), maxf(0.1, duration))
+	slow["move_speed_multiplier"] = minf(float(slow.get("move_speed_multiplier", 1.0)), multiplier)
+	combat_statuses["laferida_slow"] = slow
+	status_move_speed_multiplier = float(slow["move_speed_multiplier"])
+	_recalculate_stats(true)
+
+
+## 点燃纳卡燃烧。
+func _ignite_naka_burning(attacker: UnitBase, effect: Dictionary) -> void:
+	var burning: Dictionary = combat_statuses.get("naka_burning", {})
+	var interval := maxf(0.1, float(effect.get("burn_tick_interval", 1.0)))
+	burning["remaining"] = maxf(float(burning.get("remaining", 0.0)), float(effect.get("burn_duration", 4.0)))
+	burning["dot_damage"] = maxf(float(burning.get("dot_damage", 0.0)), float(attacker.attack) * float(effect.get("burn_dot_ratio", 0.16)))
+	burning["tick_interval"] = interval
+	burning["tick_timer"] = minf(float(burning.get("tick_timer", interval)), interval)
+	combat_statuses["naka_burning"] = burning
+
+
+## 对范围内单位造成状态伤害。
+func _deal_status_area_damage(amount: int, radius: float, target_team: String, text_color: Color) -> void:
+	var grid: GridSystem = BattleManager.grid
+	if not grid:
+		take_status_damage(amount, text_color)
+		return
+	var targets := grid.get_units_in_range(grid_position, radius, target_team)
+	if targets.is_empty():
+		take_status_damage(amount, text_color)
+		return
+	for candidate in targets:
+		if not is_instance_valid(candidate) or not (candidate is UnitBase):
+			continue
+		var combat_unit := candidate as UnitBase
+		if combat_unit.is_alive:
+			combat_unit.take_status_damage(amount, text_color)
+
+
+## 是否能接收来自攻击者的负面状态。
+func _can_receive_hostile_status(attacker: UnitBase) -> bool:
+	return is_alive and is_instance_valid(attacker) and attacker.is_alive and attacker.team != team
+
+
 ## 显示伤害/治疗飘字：从单位中心向上跳起后淡出
 func _show_floating_number(amount: int, text_color: Color) -> void:
 	"""显示伤害/治疗飘字：从单位中心向上跳起后淡出"""
@@ -666,13 +882,11 @@ func _execute_skill(sd: SkillData) -> void:
 			var targets := grid.get_units_in_range(grid_position, sd.aoe_radius, _enemy_team())
 			for t in targets:
 				if t.has_method("take_damage"):
-					var dealt: int = t.take_damage(_calculate_damage(attack * sd.damage_multiplier, true), _get_armor_pierce())
-					_apply_life_steal(dealt)
+					_deal_damage_to_target(t, attack * sd.damage_multiplier, true)
 		else:
 			# 单体伤害
 			if target and is_instance_valid(target) and target.has_method("take_damage"):
-				var dealt: int = target.take_damage(_calculate_damage(attack * sd.damage_multiplier, true), _get_armor_pierce())
-				_apply_life_steal(dealt)
+				_deal_damage_to_target(target, attack * sd.damage_multiplier, true)
 
 	if sd.heal_amount > 0:
 		# 治疗技能
@@ -715,8 +929,78 @@ func perform_attack() -> void:
 			target.heal(_calculate_heal(attack))
 	else:
 		if target.has_method("take_damage"):
-			var dealt: int = target.take_damage(_calculate_damage(attack, false), _get_armor_pierce())
-			_apply_life_steal(dealt)
+			_deal_damage_to_target(target, attack, false)
+
+
+## 对目标造成一次攻击/技能伤害并触发主羁绊命中效果。
+func _deal_damage_to_target(target_unit: Node, base_amount: float, is_skill: bool) -> int:
+	if not target_unit or not is_instance_valid(target_unit) or not target_unit.has_method("take_damage"):
+		return 0
+	var damage := _calculate_damage(base_amount, is_skill)
+	var target_combat_unit: UnitBase = target_unit as UnitBase if target_unit is UnitBase else null
+	if target_combat_unit:
+		damage = _apply_pre_damage_main_synergies(target_combat_unit, damage)
+	var dealt: int = target_unit.take_damage(damage, _get_armor_pierce())
+	_apply_life_steal(dealt)
+	if target_combat_unit:
+		_apply_damage_hit_main_synergies(target_combat_unit, dealt, is_skill)
+	return dealt
+
+
+## 伤害前主羁绊修正。
+func _apply_pre_damage_main_synergies(target_unit: UnitBase, damage: int) -> int:
+	if team != "player" or not target_unit or not target_unit.is_alive:
+		return damage
+	var effects := _get_active_main_effects()
+	if effects.has("naka") and target_unit.has_burning_status():
+		var naka: Dictionary = effects.get("naka", {})
+		if int(naka.get("tier", 0)) >= 6:
+			damage = maxi(1, int(round(float(damage) * float(naka.get("burning_damage_multiplier", 1.0)))))
+	return damage
+
+
+## 伤害命中后主羁绊效果。
+func _apply_damage_hit_main_synergies(target_unit: UnitBase, damage_dealt: int, _is_skill: bool) -> void:
+	if team != "player" or damage_dealt <= 0 or not target_unit or not target_unit.is_alive:
+		return
+	var effects := _get_active_main_effects()
+	if effects.has("anmarit"):
+		target_unit.apply_anmarit_poison(self, effects.get("anmarit", {}))
+	if effects.has("laferida") and target_unit.is_alive:
+		target_unit.apply_laferida_nature(self, effects.get("laferida", {}))
+	if effects.has("naka") and target_unit.is_alive:
+		var naka: Dictionary = effects.get("naka", {})
+		target_unit.apply_naka_burn(self, naka)
+		if target_unit.is_alive and target_unit.has_burning_status() and int(naka.get("tier", 0)) >= 6:
+			_try_naka_explosion(target_unit, naka)
+
+
+## 尝试触发纳卡爆炸。
+func _try_naka_explosion(target_unit: UnitBase, effect: Dictionary) -> void:
+	var chance := clampf(float(effect.get("explosion_chance", 0.0)), 0.0, 1.0)
+	if chance <= 0.0 or randf() > chance:
+		return
+	var grid: GridSystem = BattleManager.grid
+	if not grid:
+		return
+	var radius := maxf(0.0, float(effect.get("explosion_radius", 1.0)))
+	var explosion_damage := maxi(1, int(round(float(attack) * float(effect.get("explosion_damage_multiplier", 1.20)))))
+	var targets := grid.get_units_in_range(target_unit.grid_position, radius, _enemy_team())
+	for candidate in targets:
+		if not is_instance_valid(candidate) or not (candidate is UnitBase):
+			continue
+		var combat_unit := candidate as UnitBase
+		if combat_unit.is_alive:
+			combat_unit.take_status_damage(explosion_damage, Color(1.0, 0.28, 0.08, 1.0))
+
+
+## 获取已激活主羁绊效果。
+func _get_active_main_effects() -> Dictionary:
+	if team != "player":
+		return {}
+	if not SynergyManager or not SynergyManager.has_method("get_active_main_effects"):
+		return {}
+	return SynergyManager.get_active_main_effects()
 
 
 ## 计算伤害。
