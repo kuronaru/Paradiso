@@ -195,10 +195,11 @@ func _update_button_states() -> void:
 		var card_data = deployment_system.hand_cards[i]
 		var ct := ClassDefinitions.get_template(card_data["class_id"])
 		var deploy_cost := _get_deploy_cost(ct)
-		var progress := _get_deploy_progress(deploy_cost) if can_deploy_now else 0.0
-		var can_afford := ResourceManager.can_afford(deploy_cost)
+		var ignores_dp := BattleManager.state == BattleManager.BattleState.PREPARING
+		var progress := 1.0 if ignores_dp else (_get_deploy_progress(deploy_cost) if can_deploy_now else 0.0)
+		var can_afford := true if ignores_dp else ResourceManager.can_afford(deploy_cost)
 
-		# 战斗阶段不可部署时禁用按钮；DP不足时仍允许点击选中，但不会开始拖拽
+		# 战斗阶段不可部署时禁用按钮；DP不足时仍允许拖拽，落点时再失败并退回。
 		cards[i].disabled = not can_deploy_now
 		_update_card_progress_visual(i, progress, can_afford and can_deploy_now)
 		_update_card_selection_visual(i, i == selected_index)

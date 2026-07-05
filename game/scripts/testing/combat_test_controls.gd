@@ -95,7 +95,7 @@ func _add_hero_from_input(raw_text: String) -> void:
 
 	var hero := runner.add_hero(class_id, level)
 	if not hero:
-		_set_status("添加失败: 没有可用位置")
+		_set_status("添加失败: 没有可用位置或已达8人上限")
 		return
 
 	hero_input.clear()

@@ -74,6 +74,8 @@ func setup_hand(party_data: Array) -> void:
 ## 检查是否可以部署指定职业
 func can_deploy_card(class_id: String) -> bool:
 	"""检查是否可以部署指定职业"""
+	if BattleManager.state == BattleManager.BattleState.PREPARING:
+		return ClassDefinitions.has_class_id(str(class_id))
 	var ct := ClassDefinitions.get_template(class_id)
 	return ResourceManager.can_afford(_get_deploy_cost(ct))
 
@@ -114,7 +116,7 @@ func begin_drag(card_index: int) -> bool:
 		cancel_drag()
 
 	var card_data: Dictionary = hand_cards[card_index]
-	if not can_deploy_card(card_data["class_id"]):
+	if not _is_valid_hand_card(card_data):
 		return false
 
 	drag_card_data = card_data.duplicate(true)
@@ -169,10 +171,17 @@ func deploy_card(card_index: int, grid_pos: Vector2i) -> bool:
 		return false
 
 	var card_data: Dictionary = hand_cards[card_index]
-	if not _deploy_card_data(card_data, grid_pos):
+	if _get_swappable_hero_at(grid_pos):
+		var swapped_card := _swap_card_data_with_unit(card_data, grid_pos)
+		if swapped_card.is_empty():
+			return false
+		hand_cards[card_index] = swapped_card
+	elif can_deploy_more():
+		if not _deploy_card_data(card_data, grid_pos):
+			return false
+		hand_cards.remove_at(card_index)
+	else:
 		return false
-
-	hand_cards.remove_at(card_index)
 	if selected_card_index == card_index:
 		selected_card_index = -1
 	elif selected_card_index > card_index:
@@ -202,22 +211,25 @@ func _deploy_card_data(card_data: Dictionary, grid_pos: Vector2i) -> bool:
 		Log.w(M, "无法部署到 (%d, %d)" % [grid_pos.x, grid_pos.y])
 		return false
 
-	if not ResourceManager.spend(deploy_cost):
+	var spends_dp := _should_spend_deploy_cost()
+	if spends_dp and not ResourceManager.spend(deploy_cost):
 		Log.w(M, "DP不足，需要 %d" % deploy_cost)
 		return false
 
 	var hero := HeroUnit.new()
 	hero.star_level = int(card_data.get("star_level", 1))
 	hero.setup(ct, card_data["level"])
-	hero.deploy_cost = deploy_cost
+	hero.deploy_cost = deploy_cost if spends_dp else 0
 	if not grid.place_unit(hero, grid_pos):
-		ResourceManager.refund(deploy_cost)
+		if spends_dp:
+			ResourceManager.refund(deploy_cost)
 		BattleManager.unregister_player_unit(hero)
 		hero.queue_free()
 		return false
 
 	if GameManager.is_roguelike_run and not GameManager.remove_from_party_card(card_data):
-		ResourceManager.refund(deploy_cost)
+		if spends_dp:
+			ResourceManager.refund(deploy_cost)
 		BattleManager.unregister_player_unit(hero)
 		grid.remove_unit(hero)
 		hero.queue_free()
@@ -228,6 +240,132 @@ func _deploy_card_data(card_data: Dictionary, grid_pos: Vector2i) -> bool:
 	BattleManager.unit_deployed.emit(hero)
 	Log.i(M, "部署 %s 到 (%d, %d)" % [ct.job_name, grid_pos.x, grid_pos.y])
 	return true
+
+
+## 用手牌替换场上指定英雄，并返回被换下英雄的卡牌数据。
+func _swap_card_data_with_unit(card_data: Dictionary, grid_pos: Vector2i) -> Dictionary:
+	if not grid:
+		grid = BattleManager.grid
+	if not grid:
+		return {}
+	if not card_data.has("class_id") or not card_data.has("level"):
+		return {}
+
+	var target := _get_swappable_hero_at(grid_pos)
+	if not target:
+		Log.w(M, "替换部署只能放置到已有英雄的位置")
+		return {}
+
+	var swapped_card := _card_data_from_unit(target)
+	if swapped_card.is_empty():
+		return {}
+
+	var ct := ClassDefinitions.get_template(card_data["class_id"])
+	var deploy_cost := _get_deploy_cost(ct)
+	var spends_dp := _should_spend_deploy_cost()
+	if spends_dp and not ResourceManager.spend(deploy_cost):
+		Log.w(M, "DP不足，替换部署需要%d" % deploy_cost)
+		return {}
+
+	if GameManager.is_roguelike_run and not GameManager.remove_from_party_card(card_data):
+		if spends_dp:
+			ResourceManager.refund(deploy_cost)
+		Log.w(M, "替换部署失败：手牌数据未同步")
+		return {}
+
+	var returned_card := _return_card_to_hand_data(swapped_card)
+	if returned_card.is_empty():
+		if GameManager.is_roguelike_run:
+			GameManager.return_card_to_party(card_data)
+		if spends_dp:
+			ResourceManager.refund(deploy_cost)
+		Log.w(M, "替换部署失败：手牌区已满")
+		return {}
+
+	var replacement := HeroUnit.new()
+	replacement.star_level = int(card_data.get("star_level", 1))
+	replacement.setup(ct, card_data["level"])
+	replacement.deploy_cost = deploy_cost if spends_dp else 0
+
+	if selected_unit == target:
+		selected_unit.is_selected = false
+		selected_unit = null
+		unit_deselected.emit()
+
+	grid.remove_unit(target)
+	BattleManager.unregister_player_unit(target)
+	BattleManager.unit_retreated.emit(target)
+	target.queue_free()
+
+	if not grid.place_unit(replacement, grid_pos):
+		BattleManager.unregister_player_unit(replacement)
+		replacement.queue_free()
+		return {}
+
+	replacement.mark_deployed(card_data, grid_pos)
+	BattleManager.unit_deployed.emit(replacement)
+	Log.i(M, "替换部署 %s 到 (%d, %d)，换下 %s" % [ct.job_name, grid_pos.x, grid_pos.y, returned_card.get("class_id", "")])
+	return returned_card
+
+
+## 获取替换部署时目标格上的英雄。
+func _get_swappable_hero_at(grid_pos: Vector2i) -> HeroUnit:
+	if not grid or not grid.occupancy.has(grid_pos):
+		return null
+	var unit = grid.occupancy[grid_pos]
+	if unit is HeroUnit and is_instance_valid(unit):
+		return unit as HeroUnit
+	return null
+
+
+## 判断当前拖拽卡牌是否能释放到指定格子。
+func _can_drop_drag_at(grid_pos: Vector2i) -> bool:
+	if not grid:
+		return false
+	if _get_swappable_hero_at(grid_pos):
+		return true
+	return can_deploy_more() and grid.can_place_at(grid_pos)
+
+
+## 准备阶段暂时不检查或消耗部署DP。
+func _should_spend_deploy_cost() -> bool:
+	return BattleManager.state != BattleManager.BattleState.PREPARING
+
+
+## 判断手牌数据是否足以进入拖拽流程；DP 留到落点时校验。
+func _is_valid_hand_card(card_data: Dictionary) -> bool:
+	if not card_data.has("class_id") or not card_data.has("level"):
+		return false
+	return ClassDefinitions.has_class_id(str(card_data.get("class_id", "")))
+
+
+## 将一张卡归还到肉鸽队伍，并返回手牌区应显示的最终卡牌数据。
+func _return_card_to_hand_data(card_data: Dictionary) -> Dictionary:
+	if not GameManager.is_roguelike_run:
+		return _normalize_hand_card_data(card_data)
+
+	var before_size := GameManager.party.size()
+	if not GameManager.return_card_to_party(card_data):
+		return {}
+	if GameManager.party.size() > before_size and GameManager.party.back() is Dictionary:
+		return _normalize_hand_card_data((GameManager.party.back() as Dictionary).duplicate(true))
+	return _normalize_hand_card_data(card_data)
+
+
+## 规范化手牌区需要的基础字段，避免换下卡缺少等阶、金卡或实例数据。
+func _normalize_hand_card_data(card_data: Dictionary) -> Dictionary:
+	if card_data.is_empty():
+		return {}
+	var normalized := card_data.duplicate(true)
+	var class_id := ClassDefinitions.canonicalize_class_id(str(normalized.get("class_id", "fighter_champion")))
+	var star := clampi(int(normalized.get("star_level", normalized.get("level", 1))), 1, 3)
+	normalized["class_id"] = class_id
+	normalized["star_level"] = star
+	normalized["level"] = GameManager.get_effective_level_for_star(class_id, star)
+	normalized["shop_level"] = maxi(1, int(normalized.get("shop_level", 1)))
+	normalized["upgrade_tier"] = maxi(1, int(normalized.get("upgrade_tier", 1)))
+	normalized["is_golden"] = bool(normalized.get("is_golden", false)) or int(normalized["upgrade_tier"]) > 1
+	return normalized
 
 
 ## 获取deploy消耗。
@@ -262,6 +400,12 @@ func _on_unit_clicked(unit: Node) -> void:
 	var unit_valid := is_instance_valid(unit)
 	var unit_type := unit.get_class() if unit_valid else "<invalid>"
 	Log.d(M, "收到战场单位点击信号: unit=%s valid=%s type=%s" % [unit, unit_valid, unit_type])
+
+	if selected_card_index >= 0 and unit is HeroUnit:
+		if deploy_card(selected_card_index, (unit as HeroUnit).grid_position):
+			clear_selected_card()
+		return
+
 	if selected_unit:
 		selected_unit.is_selected = false
 		selected_unit = null
@@ -287,8 +431,8 @@ func _on_cell_clicked(grid_pos: Vector2i) -> void:
 	if is_dragging:
 		_finish_drag_at(grid_pos)
 	elif selected_card_index >= 0:
-		# 已经高亮选中手牌时，点击可部署空格执行点击部署
-		if grid.can_place_at(grid_pos) and deploy_card(selected_card_index, grid_pos):
+		# 已经高亮选中手牌时，点击空格部署；点击已有英雄格时执行替换。
+		if _can_drop_drag_at(grid_pos) and deploy_card(selected_card_index, grid_pos):
 			clear_selected_card()
 	elif BattleManager.state == BattleManager.BattleState.PREPARING:
 		# 准备阶段：点击空地尝试部署第一张可部署的卡
@@ -328,10 +472,10 @@ func retreat_selected() -> void:
 		selected_unit.retreat()
 		# 把卡牌退回手牌
 		if card_data.size() > 0:
-			hand_cards.append(card_data)
-			if GameManager.is_roguelike_run:
-				GameManager.return_card_to_party(card_data)
-			hand_updated.emit(hand_cards)
+			var returned_card := _return_card_to_hand_data(card_data)
+			if not returned_card.is_empty():
+				hand_cards.append(returned_card)
+				hand_updated.emit(hand_cards)
 		selected_unit = null
 		unit_deselected.emit()
 
@@ -366,7 +510,16 @@ func _finish_drag_at(grid_pos: Vector2i) -> void:
 	if not is_dragging:
 		return
 
-	var deployed := _deploy_card_data(drag_card_data, grid_pos)
+	var deployed := false
+	if _get_swappable_hero_at(grid_pos):
+		var swapped_card := _swap_card_data_with_unit(drag_card_data, grid_pos)
+		if not swapped_card.is_empty():
+			var restore_index := clampi(drag_original_index, 0, hand_cards.size())
+			hand_cards.insert(restore_index, swapped_card)
+			hand_updated.emit(hand_cards)
+			deployed = true
+	elif can_deploy_more():
+		deployed = _deploy_card_data(drag_card_data, grid_pos)
 	if not deployed:
 		_restore_dragged_card()
 	_clear_drag_state()
@@ -442,7 +595,7 @@ func _show_unit_drag_preview(grid_pos: Vector2i) -> void:
 
 	var center := _grid_cell_to_screen(grid_pos)
 	drag_preview.global_position = center - drag_preview.size * 0.5
-	drag_preview.modulate = Color(1, 1, 1, 0.85) if grid.can_place_at(grid_pos) else Color(1, 0.35, 0.35, 0.75)
+	drag_preview.modulate = Color(1, 1, 1, 0.85) if _can_drop_drag_at(grid_pos) else Color(1, 0.35, 0.35, 0.75)
 
 
 ## 替换当前拖拽预览节点

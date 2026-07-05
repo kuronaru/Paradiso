@@ -85,6 +85,9 @@ func spawn_hero(class_id: String, level: int, grid_pos: Vector2i) -> HeroUnit:
 	if not is_valid_hero_class_id(class_id):
 		Log.w(M, "未知测试角色ID: %s" % class_id)
 		return null
+	if not can_spawn_more_heroes():
+		Log.w(M, "测试角色数量已达上限 %d" % GameManager.ROGUELIKE_MAX_DEPLOYED_UNITS)
+		return null
 
 	var canonical_id := ClassDefinitions.canonicalize_class_id(class_id)
 	var ct := ClassDefinitions.get_template(canonical_id)
@@ -142,6 +145,20 @@ func is_valid_hero_class_id(class_id: String) -> bool:
 	if trimmed == "":
 		return false
 	return ClassDefinitions.has_class_id(trimmed)
+
+
+## 获取当前测试场上玩家英雄数量。
+func get_deployed_hero_count() -> int:
+	var count := 0
+	for unit in BattleManager.player_units:
+		if is_instance_valid(unit) and unit is HeroUnit:
+			count += 1
+	return count
+
+
+## 检查测试场景是否还能继续添加玩家英雄。
+func can_spawn_more_heroes() -> bool:
+	return get_deployed_hero_count() < GameManager.ROGUELIKE_MAX_DEPLOYED_UNITS
 
 
 ## 是否开启开发调试可视化

@@ -285,14 +285,15 @@ func _refresh() -> void:
 
 func _refresh_option_card(index: int, option, active_gold: int) -> void:
 	var ct := ClassDefinitions.get_template(option.class_id)
+	var hand_full := not GameManager.can_add_to_party()
 	option_icons[index].color = ClassDefinitions.get_template_color(ct.class_id)
 	option_name_labels[index].text = ct.job_name
 	option_synergy_labels[index].text = _get_synergy_line(ct)
 	option_price_labels[index].text = "%d 金币  酒馆Lv.%d" % [option.cost, option.shop_level]
-	option_buttons[index].tooltip_text = option.tavern_passive
+	option_buttons[index].tooltip_text = "手牌区已满（%d/%d）" % [GameManager.party.size(), GameManager.get_roguelike_max_hand_cards()] if hand_full else option.tavern_passive
 	option_buttons[index].disabled = (
 		active_gold < option.cost
-		or not GameManager.can_add_to_party()
+		or hand_full
 		or not _is_prepare_layout()
 	)
 	option_buttons[index].visible = true
