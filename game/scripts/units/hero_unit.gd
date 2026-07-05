@@ -77,6 +77,9 @@ func mark_deployed(card_data: Dictionary, grid_pos: Vector2i) -> void:
 
 ## 准备单位进入下一回合。
 func prepare_for_next_round() -> void:
+	is_alive = true
+	visible = true
+	modulate = Color.WHITE
 	target = null
 	attack_cooldown = 0.0
 	current_hp = max_hp
@@ -84,6 +87,37 @@ func prepare_for_next_round() -> void:
 	deactivate_ai()
 	if ai_controller and ai_controller.has_method("reset_ai_state"):
 		ai_controller.reset_ai_state()
+
+
+## 战斗中被击倒：保留部署身份，等待准备阶段恢复。
+func _die() -> void:
+	if not is_alive:
+		return
+
+	is_alive = false
+	target = null
+	current_hp = 0
+	hp_changed.emit(current_hp, max_hp)
+	deactivate_ai()
+	if ai_controller and ai_controller.has_method("reset_ai_state"):
+		ai_controller.reset_ai_state()
+	_clear_grid_presence()
+	visible = false
+	modulate = Color(1.0, 1.0, 1.0, 0.35)
+	died.emit(self)
+	BattleManager.unit_died.emit(self)
+	BattleManager.check_battle_end()
+
+
+## 清理击倒英雄的战场占位。
+func _clear_grid_presence() -> void:
+	var grid: GridSystem = BattleManager.grid
+	if not grid:
+		return
+	for occupied_pos in grid.occupancy.keys():
+		if grid.occupancy[occupied_pos] == self:
+			grid.free_cell(occupied_pos)
+	grid.release_move_reservation(self)
 
 
 ## 撤回已部署英雄。

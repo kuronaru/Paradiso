@@ -92,7 +92,7 @@ func can_deploy_now() -> bool:
 func get_deployed_count() -> int:
 	var count := 0
 	for unit in BattleManager.player_units:
-		if is_instance_valid(unit) and unit is HeroUnit and unit.is_alive:
+		if is_instance_valid(unit) and unit is HeroUnit:
 			count += 1
 	return count
 

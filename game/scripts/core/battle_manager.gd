@@ -91,7 +91,7 @@ func _prepare_existing_player_units() -> void:
 		if not is_instance_valid(unit):
 			player_units.erase(unit)
 			continue
-		if unit is UnitBase and not unit.is_alive:
+		if unit is UnitBase and not unit.is_alive and not (unit is HeroUnit):
 			player_units.erase(unit)
 			continue
 		valid_units.append(unit)
@@ -176,8 +176,16 @@ func check_battle_end() -> void:
 			# 自动进入下一波
 			start_next_wave()
 
-	if player_units.is_empty() and state == BattleState.IN_PROGRESS:
+	if not _has_living_player_unit() and state == BattleState.IN_PROGRESS:
 		_battle_lost()
+
+
+## 检查是否还有存活玩家单位。
+func _has_living_player_unit() -> bool:
+	for unit in player_units:
+		if is_instance_valid(unit) and unit is UnitBase and unit.is_alive:
+			return true
+	return false
 
 
 ## 所有波次完成

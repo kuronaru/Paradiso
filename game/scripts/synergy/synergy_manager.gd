@@ -25,8 +25,6 @@ func _ready() -> void:
 		BattleManager.unit_deployed.connect(_on_unit_roster_changed)
 	if not BattleManager.unit_retreated.is_connected(_on_unit_roster_changed):
 		BattleManager.unit_retreated.connect(_on_unit_roster_changed)
-	if not BattleManager.unit_died.is_connected(_on_unit_roster_changed):
-		BattleManager.unit_died.connect(_on_unit_roster_changed)
 	recalculate()
 
 
@@ -42,7 +40,7 @@ func recalculate() -> void:
 		if not (unit is HeroUnit):
 			continue
 		var hero := unit as HeroUnit
-		if not hero.is_alive or not hero.class_template:
+		if not hero.class_template:
 			continue
 
 		var ids := _get_unit_synergy_ids(hero)
@@ -275,12 +273,9 @@ func _build_definitions() -> void:
 	_definition_order.clear()
 	var order := 0
 
-	_add(SynergyDefinition.new("main_nation_a", "国A", "A", SynergyDefinition.SynergyType.MAIN_NATION, "nation_a", [3, 6], order, "国家主羁绊：国A信条。MVP阶段先显示计数与层数，后续接入神职、誓言与守护型国家机制。", [], [], "nation_a_creed")); order += 1
-	_add(SynergyDefinition.new("main_nation_b", "国B", "B", SynergyDefinition.SynergyType.MAIN_NATION, "nation_b", [3, 6], order, "国家主羁绊：国B信条。MVP阶段先显示计数与层数，后续接入奥术、工造与结界型国家机制。", [], [], "nation_b_creed")); order += 1
-	_add(SynergyDefinition.new("main_nation_c", "国C", "C", SynergyDefinition.SynergyType.MAIN_NATION, "nation_c", [3, 6], order, "国家主羁绊：国C信条。MVP阶段先显示计数与层数，后续接入自然、巡猎与领域型国家机制。", [], [], "nation_c_creed")); order += 1
-	_add(SynergyDefinition.new("main_nation_d", "国D", "D", SynergyDefinition.SynergyType.MAIN_NATION, "nation_d", [3, 6], order, "国家主羁绊：国D信条。MVP阶段先显示计数与层数，后续接入潜行、武技与机动型国家机制。", [], [], "nation_d_creed")); order += 1
-	_add(SynergyDefinition.new("main_nation_e", "国E", "E", SynergyDefinition.SynergyType.MAIN_NATION, "nation_e", [3, 6], order, "国家主羁绊：国E信条。MVP阶段先显示计数与层数，后续接入军势、狂战与阵线型国家机制。", [], [], "nation_e_creed")); order += 1
-	_add(SynergyDefinition.new("main_nation_f", "国F", "F", SynergyDefinition.SynergyType.MAIN_NATION, "nation_f", [3, 6], order, "国家主羁绊：国F信条。MVP阶段先显示计数与层数，后续接入乐歌、血脉与契约型国家机制。", [], [], "nation_f_creed")); order += 1
+	_add(SynergyDefinition.new("main_anmarit", "安马里特", "瘴", SynergyDefinition.SynergyType.MAIN_NATION, "anmarit", [3, 6], order, "国家主羁绊：安马里特瘴林。3人时攻击叠加随层数成长的毒层并造成持续伤害；6人时毒伤扩散为小范围群体伤害。", [], [], "anmarit_poison")); order += 1
+	_add(SynergyDefinition.new("main_laferida", "拉费里达", "森", SynergyDefinition.SynergyType.MAIN_NATION, "laferida", [3, 6], order, "国家主羁绊：拉费里达共生。3人时攻击积累自然值，满值爆条并造成随层数成长的减速；6人时爆条额外造成基于最高攻击力的自然伤害。", [], [], "laferida_nature_value")); order += 1
+	_add(SynergyDefinition.new("main_naka", "纳卡", "火", SynergyDefinition.SynergyType.MAIN_NATION, "naka", [3, 6], order, "国家主羁绊：纳卡烈焰。3人时提升攻击并叠加灼烧值，满值点燃敌人；6人时对燃烧目标增伤，并有随层数成长的概率追加爆炸伤害。", [], [], "naka_fire")); order += 1
 	_add(SynergyDefinition.new("stat_str", "力量", "力", SynergyDefinition.SynergyType.MINOR_STAT, "STR", [2, 3], order, "小羁绊：提升物理攻击倍率，3人后获得破甲。", [
 		{"min_tier": 2, "stat": "attack_multiplier", "base": 1.15, "per_layer": 0.0038, "max_value": 5.0},
 		{"min_tier": 3, "stat": "armor_pierce", "base": 0.10, "per_layer": 0.00025, "max_value": 0.35},
