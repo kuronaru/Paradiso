@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://lekijpfaobdq" path="res://scripts/grid/grid_system.gd" id="1_grid"]
 [ext_resource type="Script" uid="uid://dehbbweljmjgo" path="res://scripts/testing/combat_test_runner.gd" id="2_runner"]
-[ext_resource type="Script" uid="uid://cvew8rm6xkoti" path="res://scripts/testing/combat_test_controls.gd" id="3_controls"]
+[ext_resource type="Script" uid="uid://b8ehpcn57m3ol" path="res://scripts/testing/combat_test_controls.gd" id="3_controls"]
 
 [node name="CombatTest" type="Node2D"]
 
