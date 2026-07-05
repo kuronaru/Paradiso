@@ -79,6 +79,7 @@ func refresh_recruit_options() -> bool:
 	"""手动刷新酒馆。"""
 	if not GameManager.spend_run_gold(recruit_system.get_refresh_cost()):
 		return false
+	recruit_system.set_frozen(false)
 	recruit_system.generate_recruit_options(GameManager.current_run_round, GameManager.party.size())
 	return true
 
@@ -94,7 +95,6 @@ func upgrade_tavern() -> bool:
 	if not recruit_system.upgrade_tavern():
 		GameManager.earn_run_gold(cost)
 		return false
-	recruit_system.generate_recruit_options(GameManager.current_run_round, GameManager.party.size())
 	return true
 
 

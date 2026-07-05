@@ -4,7 +4,7 @@ class_name DeploymentBar
 extends Control
 
 const M = "DeployBar"
-const SHOP_PANEL_HEIGHT := 112.0
+const SHOP_PANEL_HEIGHT := 136.0
 const SHOP_BOTTOM_MARGIN := 8.0
 const HAND_GAP_ABOVE_SHOP := 8.0
 const LAYOUT_TWEEN_TIME := 0.22

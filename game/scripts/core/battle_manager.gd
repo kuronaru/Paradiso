@@ -128,8 +128,11 @@ func start_next_wave() -> bool:
 		_all_waves_cleared()
 		return false
 
+	var was_preparing := state == BattleState.PREPARING
 	current_wave += 1
 	state = BattleState.IN_PROGRESS
+	if was_preparing and GameManager.is_roguelike_run:
+		GameManager.clear_run_gold()
 	_spawn_wave_enemies(current_wave)
 
 	# 激活所有场上玩家单位的AI（静态部署 → 实时战斗）

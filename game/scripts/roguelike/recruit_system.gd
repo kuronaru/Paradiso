@@ -45,11 +45,15 @@ const OPTION_SLOTS_BY_LEVEL := {
 
 var tavern_level: int = 1
 var upgrade_discount: int = 0
+var is_frozen: bool = false
 
 
 ## 生成招募选项
 func generate_recruit_options(_round_number: int, _party_size: int) -> Array[RecruitOption]:
 	"""生成招募选项"""
+	if is_frozen and not current_options.is_empty():
+		return current_options
+
 	current_options.clear()
 
 	var available_options := _build_available_option_pool()
@@ -86,6 +90,7 @@ func remove_option(index: int) -> void:
 ## 清理选项。
 func clear_options() -> void:
 	current_options.clear()
+	is_frozen = false
 
 
 ## 重置单局酒馆状态。
@@ -93,6 +98,7 @@ func reset_run() -> void:
 	"""重置单局酒馆状态。"""
 	tavern_level = 1
 	upgrade_discount = 0
+	is_frozen = false
 	clear_options()
 
 
@@ -135,6 +141,17 @@ func upgrade_tavern() -> bool:
 	tavern_level += 1
 	upgrade_discount = 0
 	return true
+
+
+## 切换酒馆冻结状态。
+func toggle_frozen() -> bool:
+	is_frozen = not is_frozen
+	return is_frozen
+
+
+## 设置酒馆冻结状态。
+func set_frozen(frozen: bool) -> void:
+	is_frozen = frozen
 
 
 ## 计算招募花费

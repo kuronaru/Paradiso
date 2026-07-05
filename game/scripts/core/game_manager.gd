@@ -284,6 +284,15 @@ func earn_run_gold(amount: int) -> void:
 	run_gold_changed.emit(run_gold)
 
 
+## 清空本轮未花费的酒馆金币。
+func clear_run_gold() -> void:
+	"""清空本轮未花费的酒馆金币。"""
+	if run_gold == 0:
+		return
+	run_gold = 0
+	run_gold_changed.emit(run_gold)
+
+
 ## 初始化存档持有角色数据
 func _ensure_save_data() -> void:
 	"""初始化存档持有角色数据"""
