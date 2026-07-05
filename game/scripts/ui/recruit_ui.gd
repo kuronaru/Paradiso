@@ -175,7 +175,7 @@ func _refresh() -> void:
 		GameManager.current_run_round,
 		GameManager.max_run_rounds,
 		GameManager.party.size(),
-		GameManager.ROGUELIKE_MAX_HAND_CARDS,
+		GameManager.get_roguelike_max_hand_cards(),
 		deployed_count,
 		GameManager.ROGUELIKE_MAX_DEPLOYED_UNITS
 	]

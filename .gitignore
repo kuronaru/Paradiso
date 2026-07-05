@@ -4,5 +4,7 @@
 game/.godot/
 game/userdata/
 
+outputs/
+
 *.tmp
 *.cache

@@ -29,7 +29,10 @@ func _ready() -> void:
 
 	# 设置部署系统为手动触发
 	ResourceManager.set_regen_enabled(true)
-	ResourceManager.reset_dp(30, 100)
+	ResourceManager.reset_dp(
+		ResourceManager.get_configured_initial_dp("startup_initial_deployment_points"),
+		ResourceManager.get_configured_max_dp()
+	)
 
 
 ## 处理输入事件。

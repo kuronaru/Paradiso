@@ -11,6 +11,7 @@ enum EnemyType {
 }
 
 var enemy_type: EnemyType = EnemyType.MELEE
+var enemy_id: String = ""
 var enemy_template_name: String = ""
 
 
@@ -23,8 +24,9 @@ func _ready() -> void:
 ## 从敌人模板字典初始化
 func setup_from_template(template: Dictionary) -> void:
 	"""从敌人模板字典初始化"""
+	enemy_id = str(template.get("enemy_id", ""))
 	enemy_template_name = template.get("name", "Unknown")
-	enemy_type = template.get("type", EnemyType.MELEE)
+	enemy_type = _enemy_type_from_value(template.get("type", template.get("enemy_type", EnemyType.MELEE)))
 	unit_name = enemy_template_name
 
 	max_hp = template.get("hp", 80)
@@ -66,47 +68,43 @@ func setup_from_template(template: Dictionary) -> void:
 
 ## 获取敌人池。
 static func get_enemy_pool() -> Array:
+	var registry := _registry()
+	if registry and registry.has_method("get_enemy_pool"):
+		var pool: Array = []
+		for template in registry.get_enemy_pool():
+			var converted: Dictionary = template.duplicate(true)
+			converted["type"] = _enemy_type_from_value(converted.get("type", converted.get("enemy_type", EnemyType.MELEE)))
+			pool.append(converted)
+		if not pool.is_empty():
+			return pool
 	return [
 		{
-			"name": "哥布林",
+			"enemy_id": "fallback_enemy",
+			"name": "测试敌人",
 			"type": EnemyType.MELEE,
-			"hp": 60, "atk": 8, "def": 2,
-			"attack_speed": 1.2, "move_speed": 2.0,
-			"attack_range": 1.0, "search_range": 4.0
-		},
-		{
-			"name": "骷髅兵",
-			"type": EnemyType.MELEE,
-			"hp": 80, "atk": 12, "def": 4,
+			"hp": 80, "atk": 10, "def": 3,
 			"attack_speed": 1.0, "move_speed": 1.5,
 			"attack_range": 1.0, "search_range": 5.0
 		},
-		{
-			"name": "骷髅弓手",
-			"type": EnemyType.RANGED,
-			"hp": 50, "atk": 15, "def": 1,
-			"attack_speed": 0.8, "move_speed": 1.5,
-			"attack_range": 4.0, "search_range": 6.0
-		},
-		{
-			"name": "食人魔",
-			"type": EnemyType.BRUTE,
-			"hp": 200, "atk": 25, "def": 8,
-			"attack_speed": 0.5, "move_speed": 1.0,
-			"attack_range": 1.5, "search_range": 4.0
-		},
-		{
-			"name": "石像鬼",
-			"type": EnemyType.RANGED,
-			"hp": 70, "atk": 18, "def": 3,
-			"attack_speed": 1.0, "move_speed": 3.0,
-			"attack_range": 3.0, "search_range": 7.0
-		},
-		{
-			"name": "巨龙Boss",
-			"type": EnemyType.BOSS,
-			"hp": 500, "atk": 40, "def": 12,
-			"attack_speed": 0.4, "move_speed": 0.8,
-			"attack_range": 3.0, "search_range": 8.0
-		},
 	]
+
+
+static func _enemy_type_from_value(value) -> EnemyType:
+	if value is int:
+		return value
+	match str(value).strip_edges().to_lower():
+		"ranged":
+			return EnemyType.RANGED
+		"brute":
+			return EnemyType.BRUTE
+		"boss":
+			return EnemyType.BOSS
+		_:
+			return EnemyType.MELEE
+
+
+static func _registry() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	if not tree or not tree.root:
+		return null
+	return tree.root.get_node_or_null("DataRegistry")

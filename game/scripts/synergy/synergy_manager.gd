@@ -1,10 +1,7 @@
-# synergy_manager.gd — 羁绊计数、层数与数值应用
+# synergy_manager.gd - Synergy counting, tiers and modifier application.
 extends Node
 
 const M = "Synergy"
-const LAYER_PER_STAR := 20
-const MAX_LAYER := 999
-# const SynergyDefinitionScript = preload("res://scripts/synergy/synergy_definition.gd")
 
 signal synergy_changed(summaries: Array)
 signal resource_bonus_ready(bonus_payload: Dictionary)
@@ -17,7 +14,6 @@ var _active_fixed_modifiers: Dictionary = {}
 var _active_main_effects: Dictionary = {}
 
 
-## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
 	_build_definitions()
 	if not BattleManager.battle_started.is_connected(_on_battle_state_changed):
@@ -29,11 +25,12 @@ func _ready() -> void:
 	recalculate()
 
 
-## 处理recalculate逻辑。
 func recalculate() -> void:
 	var count_by_id: Dictionary = {}
 	var layer_by_id: Dictionary = {}
 	var member_names_by_id: Dictionary = {}
+	var layer_per_star := _cfg_int("synergy_layer_per_star", 20)
+	var max_layer := _cfg_int("synergy_max_layer", 999)
 
 	for unit in BattleManager.player_units:
 		if not is_instance_valid(unit):
@@ -45,7 +42,7 @@ func recalculate() -> void:
 			continue
 
 		var ids := _get_unit_synergy_ids(hero)
-		var star_layers := clampi(int(hero.star_level), 1, 3) * LAYER_PER_STAR
+		var star_layers := clampi(int(hero.star_level), 1, 3) * layer_per_star
 		for synergy_id in ids:
 			count_by_id[synergy_id] = int(count_by_id.get(synergy_id, 0)) + 1
 			layer_by_id[synergy_id] = int(layer_by_id.get(synergy_id, 0)) + star_layers
@@ -65,7 +62,7 @@ func recalculate() -> void:
 			continue
 
 		var active_tier := definition.get_active_tier(count)
-		var layer := clampi(int(layer_by_id.get(synergy_id, 0)), 0, MAX_LAYER)
+		var layer := clampi(int(layer_by_id.get(synergy_id, 0)), 0, max_layer)
 		var summary := _build_summary(definition, count, active_tier, layer, member_names_by_id.get(synergy_id, []))
 		_summaries.append(summary)
 
@@ -80,49 +77,40 @@ func recalculate() -> void:
 	synergy_changed.emit(get_synergy_summary())
 
 
-## 获取羁绊摘要。
 func get_synergy_summary() -> Array:
 	return _summaries.duplicate(true)
 
 
-## 获取激活修正。
 func get_active_modifiers() -> Dictionary:
 	return _active_modifiers.duplicate(true)
 
 
-## 获取固定修正。
 func get_fixed_modifiers() -> Dictionary:
 	return _active_fixed_modifiers.duplicate(true)
 
 
-## 获取已激活的主羁绊战斗机制参数。
 func get_active_main_effects() -> Dictionary:
 	return _active_main_effects.duplicate(true)
 
 
-## 获取discounteddeploy消耗。
 func get_discounted_deploy_cost(base_cost: int) -> int:
 	var discount := clampf(float(_active_fixed_modifiers.get("deploy_cost_discount", 0.0)), 0.0, 0.75)
 	return maxi(1, int(ceil(float(base_cost) * (1.0 - discount))))
 
 
-## 应用victory金币bonus。
 func apply_victory_gold_bonus(base_reward: int) -> int:
 	var multiplier := float(_active_fixed_modifiers.get("victory_gold_multiplier", 1.0))
 	return maxi(0, int(round(float(base_reward) * multiplier)))
 
 
-## 处理战斗状态变化回调。
 func _on_battle_state_changed() -> void:
 	recalculate()
 
 
-## 处理单位roster变化回调。
 func _on_unit_roster_changed(_unit: Node) -> void:
 	recalculate()
 
 
-## 获取单位羁绊ids。
 func _get_unit_synergy_ids(hero: HeroUnit) -> Array[String]:
 	var ids: Array[String] = []
 	var ct := hero.class_template
@@ -136,7 +124,6 @@ func _get_unit_synergy_ids(hero: HeroUnit) -> Array[String]:
 	return ids
 
 
-## 构建摘要。
 func _build_summary(definition: SynergyDefinition, count: int, active_tier: int, layer: int, members: Array) -> Dictionary:
 	return {
 		"id": definition.synergy_id,
@@ -161,7 +148,6 @@ func _build_summary(definition: SynergyDefinition, count: int, active_tier: int,
 	}
 
 
-## 处理typename逻辑。
 func _type_name(type: SynergyDefinition.SynergyType) -> String:
 	match type:
 		SynergyDefinition.SynergyType.MAIN_NATION:
@@ -173,7 +159,6 @@ func _type_name(type: SynergyDefinition.SynergyType) -> String:
 	return "羁绊"
 
 
-## 处理sort摘要逻辑。
 func _sort_summaries(a: Dictionary, b: Dictionary) -> bool:
 	var a_active := bool(a.get("is_active", false))
 	var b_active := bool(b.get("is_active", false))
@@ -188,8 +173,10 @@ func _sort_summaries(a: Dictionary, b: Dictionary) -> bool:
 	return int(a.get("order", 0)) < int(b.get("order", 0))
 
 
-## 处理默认修正逻辑。
 func _default_modifiers() -> Dictionary:
+	var configured := _cfg_dict("synergy_default_modifiers")
+	if not configured.is_empty():
+		return configured
 	return {
 		"max_hp_multiplier": 1.0,
 		"attack_multiplier": 1.0,
@@ -209,7 +196,6 @@ func _default_modifiers() -> Dictionary:
 	}
 
 
-## 应用definition修正。
 func _apply_definition_modifiers(definition: SynergyDefinition, active_tier: int, layer: int) -> void:
 	for modifier in definition.scalable_modifiers:
 		if active_tier < int(modifier.get("min_tier", 0)):
@@ -229,7 +215,6 @@ func _apply_definition_modifiers(definition: SynergyDefinition, active_tier: int
 		_merge_fixed_value(stat, value)
 
 
-## 处理merge修正值逻辑。
 func _merge_modifier_value(target: Dictionary, stat: String, value: float) -> void:
 	if stat == "":
 		return
@@ -251,7 +236,6 @@ func _merge_modifier_value(target: Dictionary, stat: String, value: float) -> vo
 		target[stat] = float(target.get(stat, 0.0)) + value
 
 
-## 处理merge固定值逻辑。
 func _merge_fixed_value(stat: String, value: float) -> void:
 	if stat == "":
 		return
@@ -262,144 +246,140 @@ func _merge_fixed_value(stat: String, value: float) -> void:
 			_active_fixed_modifiers[stat] = float(_active_fixed_modifiers.get(stat, 0.0)) + value
 
 
-## 构建主羁绊战斗机制参数。
 func _build_main_effect_payload(definition: SynergyDefinition, active_tier: int, layer: int) -> Dictionary:
-	match definition.tag:
-		"anmarit":
-			return {
-				"tier": active_tier,
-				"layer": layer,
-				"poison_attack_ratio": _linear_cap(0.60, 0.009, 9.50, layer),
-				"poison_dot_ratio": 0.24,
-				"poison_decay_per_second": 0.16,
-				"poison_tick_interval": 1.0,
-				"poison_aoe_radius": 1.0 if active_tier >= 6 else 0.0,
-			}
-		"laferida":
-			return {
-				"tier": active_tier,
-				"layer": layer,
-				"nature_threshold": 100.0,
-				"nature_gain_ratio": 0.80,
-				"nature_min_gain": 12.0,
-				"slow_percent": _linear_cap(0.20, 0.0005, 0.70, layer),
-				"slow_duration": 2.5,
-				"nature_damage_multiplier": _linear_cap(1.00, 0.008, 9.00, layer) if active_tier >= 6 else 0.0,
-			}
-		"naka":
-			return {
-				"tier": active_tier,
-				"layer": layer,
-				"burn_threshold": 100.0,
-				"burn_gain_ratio": 0.85,
-				"burn_min_gain": 14.0,
-				"burn_duration": 4.0,
-				"burn_dot_ratio": 0.16,
-				"burn_tick_interval": 1.0,
-				"burning_damage_multiplier": _linear_cap(1.25, 0.0075, 8.50, layer) if active_tier >= 6 else 1.0,
-				"explosion_chance": _linear_cap(0.08, 0.00062, 0.70, layer) if active_tier >= 6 else 0.0,
-				"explosion_damage_multiplier": 1.20,
-				"explosion_radius": 1.0,
-			}
-	return {
+	var payload := {
 		"tier": active_tier,
 		"layer": layer,
 	}
+	for key in definition.main_effect.keys():
+		payload[key] = _resolve_main_effect_value(definition.main_effect[key], active_tier, layer)
+	return payload
 
 
-## 线性成长并封顶。
+func _resolve_main_effect_value(value, active_tier: int, layer: int):
+	if value is Dictionary:
+		var min_tier := int(value.get("min_tier", 0))
+		var fallback = value.get("fallback", 0.0)
+		if active_tier < min_tier:
+			return fallback
+		if value.has("base") or value.has("per_layer") or value.has("max_value"):
+			var base := float(value.get("base", 0.0))
+			var per_layer := float(value.get("per_layer", 0.0))
+			var max_value := float(value.get("max_value", base))
+			return _linear_cap(base, per_layer, max_value, layer)
+		return value.get("value", fallback)
+	return value
+
+
 func _linear_cap(base: float, per_layer: float, max_value: float, layer: int) -> float:
 	return minf(base + float(layer) * per_layer, max_value)
 
 
-## 应用修正单位。
 func _apply_modifiers_to_units() -> void:
 	for unit in BattleManager.player_units:
 		if is_instance_valid(unit) and unit is UnitBase:
 			(unit as UnitBase).apply_synergy_modifiers(_active_modifiers)
 
 
-## 应用资源修正。
 func _apply_resource_modifiers() -> void:
 	if ResourceManager.has_method("apply_synergy_modifiers"):
 		ResourceManager.apply_synergy_modifiers(_active_fixed_modifiers)
 	resource_bonus_ready.emit(_active_fixed_modifiers.duplicate(true))
 
 
-## 构建definitions。
 func _build_definitions() -> void:
 	_definitions.clear()
 	_definition_order.clear()
-	var order := 0
 
-	_add(SynergyDefinition.new("main_anmarit", "安马里特", "瘴", SynergyDefinition.SynergyType.MAIN_NATION, "anmarit", [3, 6], order, "国家主羁绊：安马里特瘴林。3人时攻击叠加随层数成长的毒层并造成持续伤害；6人时毒伤扩散为小范围群体伤害。", [
-		{"min_tier": 3, "stat": "poison_attack_ratio", "base": 0.60, "per_layer": 0.009, "max_value": 9.50},
-	], [], "anmarit_poison")); order += 1
-	_add(SynergyDefinition.new("main_laferida", "拉费里达", "森", SynergyDefinition.SynergyType.MAIN_NATION, "laferida", [3, 6], order, "国家主羁绊：拉费里达共生。3人时攻击积累自然值，满值爆条并造成随层数成长的减速；6人时爆条额外造成基于最高攻击力的自然伤害。", [
-		{"min_tier": 3, "stat": "slow_percent", "base": 0.20, "per_layer": 0.0005, "max_value": 0.70},
-		{"min_tier": 6, "stat": "nature_damage_multiplier", "base": 1.00, "per_layer": 0.008, "max_value": 9.00},
-	], [], "laferida_nature_value")); order += 1
-	_add(SynergyDefinition.new("main_naka", "纳卡", "火", SynergyDefinition.SynergyType.MAIN_NATION, "naka", [3, 6], order, "国家主羁绊：纳卡烈焰。3人时提升攻击并叠加灼烧值，满值点燃敌人；6人时对燃烧目标增伤，并有随层数成长的概率追加爆炸伤害。", [
-		{"min_tier": 3, "stat": "attack_multiplier", "base": 1.30, "per_layer": 0.008, "max_value": 9.00},
-		{"min_tier": 6, "stat": "burning_damage_multiplier", "base": 1.25, "per_layer": 0.0075, "max_value": 8.50},
-		{"min_tier": 6, "stat": "explosion_chance", "base": 0.08, "per_layer": 0.00062, "max_value": 0.70},
-	], [], "naka_fire")); order += 1
-	_add(SynergyDefinition.new("stat_str", "力量", "力", SynergyDefinition.SynergyType.MINOR_STAT, "STR", [2, 3], order, "小羁绊：提升物理攻击倍率，3人后获得破甲。", [
-		{"min_tier": 2, "stat": "attack_multiplier", "base": 1.15, "per_layer": 0.0038, "max_value": 5.0},
-		{"min_tier": 3, "stat": "armor_pierce", "base": 0.10, "per_layer": 0.00025, "max_value": 0.35},
-	])); order += 1
-	_add(SynergyDefinition.new("stat_dex", "敏捷", "敏", SynergyDefinition.SynergyType.MINOR_STAT, "DEX", [2, 3], order, "小羁绊：提升攻速倍率，3人后获得暴击。", [
-		{"min_tier": 2, "stat": "attack_speed_multiplier", "base": 1.12, "per_layer": 0.0032, "max_value": 4.3},
-		{"min_tier": 3, "stat": "crit_chance", "base": 0.08, "per_layer": 0.0002, "max_value": 0.30},
-	])); order += 1
-	_add(SynergyDefinition.new("stat_con", "体质", "体", SynergyDefinition.SynergyType.MINOR_STAT, "CON", [2, 3], order, "小羁绊：提升最大生命倍率，3人后提升防御倍率。", [
-		{"min_tier": 2, "stat": "max_hp_multiplier", "base": 1.20, "per_layer": 0.0038, "max_value": 5.0},
-		{"min_tier": 3, "stat": "defense_multiplier", "base": 1.10, "per_layer": 0.0025, "max_value": 3.5},
-		{"min_tier": 3, "stat": "incoming_heal_multiplier", "base": 1.10, "per_layer": 0.0015, "max_value": 2.5},
-	])); order += 1
-	_add(SynergyDefinition.new("stat_int", "智力", "智", SynergyDefinition.SynergyType.MINOR_STAT, "INT", [2, 3], order, "小羁绊：提升技能伤害倍率，3人后获得技能冷却缩减。", [
-		{"min_tier": 2, "stat": "skill_damage_multiplier", "base": 1.20, "per_layer": 0.004, "max_value": 5.2},
-		{"min_tier": 3, "stat": "skill_cooldown_reduction", "base": 0.08, "per_layer": 0.00025, "max_value": 0.35},
-	])); order += 1
-	_add(SynergyDefinition.new("stat_wis", "感知", "感", SynergyDefinition.SynergyType.MINOR_STAT, "WIS", [2, 3], order, "小羁绊：提升治疗/护盾倍率，3人后提升异常抗性与索敌数值。", [
-		{"min_tier": 2, "stat": "heal_multiplier", "base": 1.15, "per_layer": 0.0035, "max_value": 4.6},
-		{"min_tier": 3, "stat": "search_range_bonus", "base": 1.0, "per_layer": 0.0, "max_value": 1.0},
-	])); order += 1
-	_add(SynergyDefinition.new("stat_cha", "魅力", "魅", SynergyDefinition.SynergyType.MINOR_STAT, "CHA", [2, 3], order, "小羁绊：提升团队泛用输出与治疗，3人后提供固定资源优势。", [
-		{"min_tier": 2, "stat": "damage_multiplier", "base": 1.10, "per_layer": 0.003, "max_value": 4.0},
-		{"min_tier": 2, "stat": "heal_multiplier", "base": 1.10, "per_layer": 0.002, "max_value": 3.0},
-	], [
-		{"min_tier": 3, "stat": "max_dp_bonus", "value": 5.0},
-	])); order += 1
+	var registry := _registry()
+	if registry and registry.has_method("get_all_synergy_ids") and registry.has_method("get_synergy"):
+		for synergy_id in registry.get_all_synergy_ids():
+			var data: Dictionary = registry.get_synergy(str(synergy_id))
+			if data.is_empty():
+				continue
+			_add(_definition_from_data(data))
 
-	_add(SynergyDefinition.new("alignment_lawful", "守序", "序", SynergyDefinition.SynergyType.MINOR_ALIGNMENT, "LAWFUL", [2, 3], order, "小羁绊：提升有效防御倍率，3人后降低部署费用。", [
-		{"min_tier": 2, "stat": "defense_multiplier", "base": 1.12, "per_layer": 0.003, "max_value": 4.0},
-	], [
-		{"min_tier": 3, "stat": "deploy_cost_discount", "value": 0.05},
-	])); order += 1
-	_add(SynergyDefinition.new("alignment_chaotic", "混沌", "混", SynergyDefinition.SynergyType.MINOR_ALIGNMENT, "CHAOTIC", [2, 3], order, "小羁绊：提升暴击伤害，3人后获得暴击率。", [
-		{"min_tier": 2, "stat": "crit_damage_multiplier", "base": 1.15, "per_layer": 0.0035, "max_value": 4.5},
-		{"min_tier": 3, "stat": "crit_chance", "base": 0.06, "per_layer": 0.00015, "max_value": 0.20},
-	])); order += 1
-	_add(SynergyDefinition.new("alignment_good", "善良", "善", SynergyDefinition.SynergyType.MINOR_ALIGNMENT, "GOOD", [2, 3], order, "小羁绊：提升治疗与承疗数值。", [
-		{"min_tier": 2, "stat": "heal_multiplier", "base": 1.10, "per_layer": 0.0032, "max_value": 4.2},
-		{"min_tier": 3, "stat": "incoming_heal_multiplier", "base": 1.10, "per_layer": 0.0025, "max_value": 3.5},
-	])); order += 1
-	_add(SynergyDefinition.new("alignment_evil", "邪恶", "邪", SynergyDefinition.SynergyType.MINOR_ALIGNMENT, "EVIL", [2, 3], order, "小羁绊：提供攻击吸血，3人后提高胜利金币收益。", [
-		{"min_tier": 2, "stat": "life_steal_percent", "base": 0.03, "per_layer": 0.00017, "max_value": 0.20},
-	], [
-		{"min_tier": 3, "stat": "victory_gold_multiplier", "value": 1.05},
-	])); order += 1
-	_add(SynergyDefinition.new("alignment_neutral", "中立", "中", SynergyDefinition.SynergyType.MINOR_ALIGNMENT, "NEUTRAL", [2, 3], order, "小羁绊：提升全队泛用属性，3人后获得资源上限和胜利金币。", [
-		{"min_tier": 2, "stat": "damage_multiplier", "base": 1.05, "per_layer": 0.0025, "max_value": 3.5},
-		{"min_tier": 2, "stat": "max_hp_multiplier", "base": 1.05, "per_layer": 0.0015, "max_value": 2.5},
-	], [
-		{"min_tier": 3, "stat": "max_dp_bonus", "value": 10.0},
-		{"min_tier": 3, "stat": "victory_gold_multiplier", "value": 1.05},
-	])); order += 1
+	_definition_order.sort_custom(func(a: String, b: String) -> bool:
+		return (_definitions[a] as SynergyDefinition).order < (_definitions[b] as SynergyDefinition).order
+	)
+
+	if _definitions.is_empty():
+		push_warning("SynergyManager loaded no definitions from DataRegistry")
 
 
-## 处理添加逻辑。
+func _definition_from_data(data: Dictionary) -> SynergyDefinition:
+	var main_effect := {}
+	if data.get("main_effect", {}) is Dictionary:
+		main_effect = data.get("main_effect", {}).duplicate(true)
+	return SynergyDefinition.new(
+		str(data.get("synergy_id", "")),
+		str(data.get("display_name", data.get("name", ""))),
+		str(data.get("short_name", "")),
+		_synergy_type(str(data.get("type", "main_nation"))),
+		str(data.get("tag", "")),
+		_int_array(data.get("thresholds", [])),
+		int(data.get("order", 0)),
+		str(data.get("description", "")),
+		_dictionary_array(data.get("scalable_modifiers", [])),
+		_dictionary_array(data.get("fixed_modifiers", [])),
+		str(data.get("mechanic_id", "")),
+		main_effect
+	)
+
+
 func _add(definition: SynergyDefinition) -> void:
+	if definition.synergy_id == "":
+		return
 	_definitions[definition.synergy_id] = definition
 	_definition_order.append(definition.synergy_id)
+
+
+func _synergy_type(value: String) -> SynergyDefinition.SynergyType:
+	match value:
+		"minor_stat":
+			return SynergyDefinition.SynergyType.MINOR_STAT
+		"minor_alignment":
+			return SynergyDefinition.SynergyType.MINOR_ALIGNMENT
+		_:
+			return SynergyDefinition.SynergyType.MAIN_NATION
+
+
+func _int_array(value) -> Array[int]:
+	var result: Array[int] = []
+	if value is Array:
+		for item in value:
+			result.append(int(item))
+	elif str(value).strip_edges() != "":
+		for item in str(value).split(",", false):
+			result.append(int(item.strip_edges()))
+	return result
+
+
+func _dictionary_array(value) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if value is Array:
+		for item in value:
+			if item is Dictionary:
+				result.append(item.duplicate(true))
+	return result
+
+
+func _cfg_int(key: String, default_value: int) -> int:
+	var registry := _registry()
+	if registry and registry.has_method("get_config"):
+		return int(registry.get_config(key, default_value))
+	return default_value
+
+
+func _cfg_dict(key: String) -> Dictionary:
+	var registry := _registry()
+	if registry and registry.has_method("get_config_section"):
+		return registry.get_config_section(key)
+	return {}
+
+
+func _registry() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	if not tree or not tree.root:
+		return null
+	return tree.root.get_node_or_null("DataRegistry")

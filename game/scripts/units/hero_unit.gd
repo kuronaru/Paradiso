@@ -125,7 +125,7 @@ func _clear_grid_presence() -> void:
 func retreat() -> void:
 	if not is_alive:
 		return
-	var refund_amount := int(deploy_cost * 0.5)
+	var refund_amount := int(deploy_cost * _cfg_float("retreat_refund_ratio", 0.5))
 	ResourceManager.refund(refund_amount)
 	Log.i(M, "[%s] 撤退，返还 %d DP" % [unit_name, refund_amount])
 	BattleManager.unregister_player_unit(self)
@@ -134,3 +134,12 @@ func retreat() -> void:
 	if grid:
 		grid.remove_unit(self)
 	queue_free()
+
+
+func _cfg_float(key: String, default_value: float) -> float:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree and tree.root:
+		var registry := tree.root.get_node_or_null("DataRegistry")
+		if registry and registry.has_method("get_config"):
+			return float(registry.get_config(key, default_value))
+	return default_value

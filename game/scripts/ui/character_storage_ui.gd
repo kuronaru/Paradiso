@@ -505,7 +505,7 @@ func _refresh_detail() -> void:
 	var card_data: Dictionary = GameManager.owned_characters[selected_index]
 	var ct := ClassDefinitions.get_template(card_data.get("class_id", "warrior"))
 	var current_level := int(card_data.get("level", 1))
-	target_level = clampi(max(target_level, current_level), current_level, GameManager.MAX_CHARACTER_LEVEL)
+	target_level = clampi(max(target_level, current_level), current_level, GameManager.get_max_character_level())
 	info_list.text = _format_class_info(ct, current_level)
 	_refresh_skill_tabs(ct)
 	_update_upgrade_controls()
@@ -570,7 +570,7 @@ func _change_target_level(delta: int) -> void:
 	if selected_index < 0 or selected_index >= GameManager.owned_characters.size():
 		return
 	var current_level := int(GameManager.owned_characters[selected_index].get("level", 1))
-	target_level = clampi(target_level + delta, current_level, GameManager.MAX_CHARACTER_LEVEL)
+	target_level = clampi(target_level + delta, current_level, GameManager.get_max_character_level())
 	_update_upgrade_controls()
 
 
@@ -597,7 +597,7 @@ func _on_level_wheel_gui_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and is_dragging_level:
 		var current_level := int(GameManager.owned_characters[selected_index].get("level", 1))
 		var delta := int(round((get_viewport().get_mouse_position().x - drag_start_mouse_x) / 8.0))
-		target_level = clampi(drag_start_level + delta, current_level, GameManager.MAX_CHARACTER_LEVEL)
+		target_level = clampi(drag_start_level + delta, current_level, GameManager.get_max_character_level())
 		_update_upgrade_controls()
 		accept_event()
 
@@ -608,7 +608,7 @@ func _update_upgrade_controls() -> void:
 	if selected_index < 0 or selected_index >= GameManager.owned_characters.size():
 		return
 	var current_level := int(GameManager.owned_characters[selected_index].get("level", 1))
-	target_level = clampi(target_level, current_level, GameManager.MAX_CHARACTER_LEVEL)
+	target_level = clampi(target_level, current_level, GameManager.get_max_character_level())
 	var cost := GameManager.calculate_upgrade_cost(current_level, target_level)
 	target_level_label.text = "Lv.%d" % target_level
 	upgrade_button.text = "升级 %d 金币" % cost
@@ -660,7 +660,7 @@ func _format_class_info(ct: ClassTemplate, level: int) -> String:
 	"""格式化角色职业定义和当前等级信息"""
 	var _scale := 1.0 + float(level - 1) * 0.05
 	return "\n".join([
-		"[b]等级[/b]: %d / %d" % [level, GameManager.MAX_CHARACTER_LEVEL],
+		"[b]等级[/b]: %d / %d" % [level, GameManager.get_max_character_level()],
 		"[b]名称[/b]: %s" % ct.job_name,
 		"[b]职业ID[/b]: %s" % ct.class_id,
 		"[b]部署费用[/b]: %d DP" % ct.deploy_cost,

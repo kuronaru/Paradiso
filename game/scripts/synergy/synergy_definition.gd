@@ -19,6 +19,7 @@ var description: String = ""
 var scalable_modifiers: Array[Dictionary] = []
 var fixed_modifiers: Array[Dictionary] = []
 var mechanic_id: String = ""
+var main_effect: Dictionary = {}
 
 
 ## 初始化实例数据。
@@ -33,7 +34,8 @@ func _init(
 		p_description: String = "",
 		p_scalable: Array[Dictionary] = [],
 		p_fixed: Array[Dictionary] = [],
-		p_mechanic_id: String = "") -> void:
+		p_mechanic_id: String = "",
+		p_main_effect: Dictionary = {}) -> void:
 	synergy_id = p_id
 	display_name = p_name
 	short_name = p_short
@@ -45,6 +47,7 @@ func _init(
 	scalable_modifiers = p_scalable.duplicate(true)
 	fixed_modifiers = p_fixed.duplicate(true)
 	mechanic_id = p_mechanic_id
+	main_effect = p_main_effect.duplicate(true)
 
 
 ## 获取激活档位。

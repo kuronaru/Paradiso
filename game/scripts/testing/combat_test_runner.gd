@@ -141,7 +141,7 @@ func is_valid_hero_class_id(class_id: String) -> bool:
 	var trimmed := class_id.strip_edges()
 	if trimmed == "":
 		return false
-	return ClassDefinitions.CHARACTER_DATA.has(trimmed) or ClassDefinitions.LEGACY_ALIASES.has(trimmed)
+	return ClassDefinitions.has_class_id(trimmed)
 
 
 ## 是否开启开发调试可视化
@@ -179,7 +179,10 @@ func _prepare_test_battle() -> void:
 	BattleManager.enemy_units.clear()
 	BattleManager.grid = grid
 	if ResourceManager:
-		ResourceManager.reset_dp(100, 100)
+		ResourceManager.reset_dp(
+			ResourceManager.get_configured_initial_dp("combat_test_initial_deployment_points"),
+			ResourceManager.get_configured_max_dp()
+		)
 		ResourceManager.set_regen_enabled(true)
 	if SynergyManager and SynergyManager.has_method("recalculate"):
 		SynergyManager.recalculate()

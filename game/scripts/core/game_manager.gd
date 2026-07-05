@@ -34,7 +34,7 @@ var current_mode: GameMode = GameMode.BATTLE
 ## 肉鸽模式下的全局队伍数据
 var party: Array = []               # 本次冒险队伍 [{class_id, star_level, level}]
 var owned_characters: Array = []    # 存档持有角色 [{class_id, level}]
-var gold: int = 100                 # 存档金币
+var gold: int = 0                   # 存档金币
 var run_gold: int = 0                # 单局肉鸽金币
 var current_floor: int = 1          # 当前层数
 var current_run_round: int = 1       # 当前肉鸽回合
@@ -52,6 +52,7 @@ var _next_run_card_instance_id: int = 1
 ## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	max_run_rounds = _cfg_int("roguelike_max_rounds", ROGUELIKE_MAX_ROUNDS)
 	load_last_selected_save()
 
 
@@ -70,8 +71,8 @@ func start_roguelike_run() -> void:
 	party.clear()
 	current_floor = 1
 	current_run_round = 1
-	max_run_rounds = ROGUELIKE_MAX_ROUNDS
-	run_gold = ROGUELIKE_STARTING_GOLD
+	max_run_rounds = _cfg_int("roguelike_max_rounds", ROGUELIKE_MAX_ROUNDS)
+	run_gold = _cfg_int("roguelike_starting_gold", ROGUELIKE_STARTING_GOLD)
 	_next_run_card_instance_id = 1
 	run_history.clear()
 	blessings.clear()
@@ -113,7 +114,7 @@ func can_add_to_party(card_count: int = 1) -> bool:
 	"""检查当前单局手牌区是否还能加入角色。"""
 	if not is_roguelike_run:
 		return true
-	return party.size() + card_count <= ROGUELIKE_MAX_HAND_CARDS
+	return party.size() + card_count <= _cfg_int("roguelike_max_hand_cards", ROGUELIKE_MAX_HAND_CARDS)
 
 
 ## 添加角色到本次冒险队伍；level 表示局内招募星级
@@ -291,7 +292,7 @@ func _ensure_save_data() -> void:
 		if not (card is Dictionary):
 			continue
 		var class_id := ClassDefinitions.canonicalize_class_id(str(card.get("class_id", "")))
-		var stored_level := clampi(int(card.get("level", 1)), 1, MAX_CHARACTER_LEVEL)
+		var stored_level := clampi(int(card.get("level", 1)), 1, _max_character_level())
 		level_by_class[class_id] = maxi(int(level_by_class.get(class_id, 1)), stored_level)
 
 	var normalized: Array = []
@@ -469,7 +470,7 @@ func get_save_slot_summary(save_id: String) -> Dictionary:
 
 	summary["exists"] = true
 	var resources: Dictionary = parsed.get("resources", {})
-	summary["gold"] = max(0, int(resources.get("gold", 100)))
+	summary["gold"] = max(0, int(resources.get("gold", _default_gold())))
 	var characters: Array = parsed.get("owned_characters", [])
 	summary["character_count"] = characters.size()
 	return summary
@@ -479,7 +480,7 @@ func get_save_slot_summary(save_id: String) -> Dictionary:
 func _apply_save_data(data: Dictionary) -> void:
 	"""把存档数据应用到全局玩家数据"""
 	var resources: Dictionary = data.get("resources", {})
-	gold = max(0, int(resources.get("gold", 100)))
+	gold = max(0, int(resources.get("gold", _default_gold())))
 
 	owned_characters.clear()
 	var stored_characters: Array = data.get("owned_characters", [])
@@ -488,7 +489,7 @@ func _apply_save_data(data: Dictionary) -> void:
 			continue
 		owned_characters.append({
 			"class_id": ClassDefinitions.canonicalize_class_id(str(card.get("class_id", ""))),
-			"level": clampi(int(card.get("level", 1)), 1, MAX_CHARACTER_LEVEL)
+			"level": clampi(int(card.get("level", 1)), 1, _max_character_level())
 		})
 
 
@@ -507,7 +508,7 @@ func _build_save_data() -> Dictionary:
 ## 重置为新存档的默认玩家数据
 func _reset_default_save_data() -> void:
 	"""重置为新存档的默认玩家数据"""
-	gold = 100
+	gold = _default_gold()
 	owned_characters.clear()
 	_ensure_save_data()
 
@@ -585,13 +586,17 @@ func get_owned_character_level(class_id: String) -> int:
 ## 获取局内招募星级对应的战斗等级上限
 func get_star_level_cap(star_level: int) -> int:
 	"""获取局内招募星级对应的战斗等级上限"""
-	match clampi(star_level, 1, 3):
+	var caps := _cfg_dict("star_level_caps")
+	var star := clampi(star_level, 1, 3)
+	if caps.has(str(star)):
+		return int(caps[str(star)])
+	match star:
 		1:
 			return 30
 		2:
 			return 70
 		_:
-			return 100
+			return _max_character_level()
 
 
 ## 根据养成等级和星级上限计算本次战斗实际等级
@@ -619,14 +624,14 @@ func get_battle_party_data() -> Array:
 ## 计算从当前等级升到目标等级所需金币
 func calculate_upgrade_cost(current_level: int, target_level: int) -> int:
 	"""计算从当前等级升到目标等级所需金币"""
-	var from_level := clampi(current_level, 1, MAX_CHARACTER_LEVEL)
-	var to_level := clampi(target_level, 1, MAX_CHARACTER_LEVEL)
+	var from_level := clampi(current_level, 1, _max_character_level())
+	var to_level := clampi(target_level, 1, _max_character_level())
 	if to_level <= from_level:
 		return 0
 
 	var total := 0
 	for level in range(from_level, to_level):
-		total += UPGRADE_BASE_COST + level * UPGRADE_COST_STEP
+		total += _cfg_int("upgrade_base_cost", UPGRADE_BASE_COST) + level * _cfg_int("upgrade_cost_step", UPGRADE_COST_STEP)
 	return total
 
 
@@ -639,7 +644,7 @@ func upgrade_owned_character(index: int, target_level: int) -> bool:
 
 	var card: Dictionary = owned_characters[index]
 	var current_level: int = int(card.get("level", 1))
-	var next_level := clampi(target_level, current_level, MAX_CHARACTER_LEVEL)
+	var next_level := clampi(target_level, current_level, _max_character_level())
 	var cost := calculate_upgrade_cost(current_level, next_level)
 	if cost <= 0:
 		return false
@@ -658,3 +663,40 @@ func upgrade_owned_character(index: int, target_level: int) -> bool:
 		cost
 	])
 	return true
+
+
+func get_max_character_level() -> int:
+	return _max_character_level()
+
+
+func get_roguelike_max_hand_cards() -> int:
+	return _cfg_int("roguelike_max_hand_cards", ROGUELIKE_MAX_HAND_CARDS)
+
+
+func _max_character_level() -> int:
+	return _cfg_int("max_character_level", MAX_CHARACTER_LEVEL)
+
+
+func _default_gold() -> int:
+	return _cfg_int("default_gold", 100)
+
+
+func _cfg_int(key: String, default_value: int) -> int:
+	var registry := _registry()
+	if registry and registry.has_method("get_config"):
+		return int(registry.get_config(key, default_value))
+	return default_value
+
+
+func _cfg_dict(key: String) -> Dictionary:
+	var registry := _registry()
+	if registry and registry.has_method("get_config_section"):
+		return registry.get_config_section(key)
+	return {}
+
+
+func _registry() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	if not tree or not tree.root:
+		return null
+	return tree.root.get_node_or_null("DataRegistry")

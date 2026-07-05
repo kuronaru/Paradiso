@@ -99,31 +99,33 @@ func reset_run() -> void:
 ## 每经过一回合，当前升级费用减少1。
 func advance_round() -> void:
 	"""每经过一回合，当前升级费用减少1。"""
-	if tavern_level < MAX_TAVERN_LEVEL:
+	if tavern_level < _cfg_int("tavern_max_level", MAX_TAVERN_LEVEL):
 		upgrade_discount += 1
 
 
 ## 获取消耗。
 func get_refresh_cost() -> int:
-	return REFRESH_COST
+	return _cfg_int("tavern_refresh_cost", REFRESH_COST)
 
 
 ## 获取选项槽位数量。
 func get_option_slot_count() -> int:
-	return int(OPTION_SLOTS_BY_LEVEL.get(tavern_level, 3))
+	var slots := _cfg_dict("tavern_option_slots_by_level")
+	return int(slots.get(str(tavern_level), OPTION_SLOTS_BY_LEVEL.get(tavern_level, 3)))
 
 
 ## 判断酒馆是否已达最高等级。
 func is_max_level() -> bool:
-	return tavern_level >= MAX_TAVERN_LEVEL
+	return tavern_level >= _cfg_int("tavern_max_level", MAX_TAVERN_LEVEL)
 
 
 ## 获取消耗。
 func get_upgrade_cost() -> int:
 	if is_max_level():
 		return 0
-	var base_cost := int(UPGRADE_BASE_COSTS.get(tavern_level, 0))
-	return max(MIN_UPGRADE_COST, base_cost - upgrade_discount)
+	var base_costs := _cfg_dict("tavern_upgrade_base_costs")
+	var base_cost := int(base_costs.get(str(tavern_level), UPGRADE_BASE_COSTS.get(tavern_level, 0)))
+	return max(_cfg_int("tavern_min_upgrade_cost", MIN_UPGRADE_COST), base_cost - upgrade_discount)
 
 
 ## 升级酒馆等级。
@@ -140,13 +142,15 @@ func _calculate_cost(class_id: String, level: int) -> int:
 	"""计算招募花费"""
 	var data: Dictionary = ClassDefinitions.get_tavern_data(class_id)
 	var base_cost := int(data.get("base_cost", 2))
-	match clampi(level, 1, 3):
-		1:
-			return base_cost
-		2:
-			return max(4, base_cost + 2)
-		_:
-			return max(6, base_cost + 4)
+	var star := clampi(level, 1, 3)
+	if star == 1:
+		return base_cost
+	var bonuses := _cfg_dict("tavern_star_cost_bonus")
+	var minimums := _cfg_dict("tavern_star_min_cost")
+	return max(
+		int(minimums.get(str(star), 4 if star == 2 else 6)),
+		base_cost + int(bonuses.get(str(star), 2 if star == 2 else 4))
+	)
 
 
 ## 构建可用选项池。
@@ -174,10 +178,27 @@ func _build_available_option_pool() -> Array[Dictionary]:
 
 ## 获取星级所需的酒馆等级。
 func _required_shop_level_for_star(star_level: int) -> int:
-	match clampi(star_level, 1, 3):
-		1:
-			return 1
-		2:
-			return 3
-		_:
-			return 5
+	var required := _cfg_dict("tavern_required_shop_level_by_star")
+	var star := clampi(star_level, 1, 3)
+	return int(required.get(str(star), 1 if star == 1 else (3 if star == 2 else 5)))
+
+
+func _cfg_int(key: String, default_value: int) -> int:
+	var registry := _registry()
+	if registry and registry.has_method("get_config"):
+		return int(registry.get_config(key, default_value))
+	return default_value
+
+
+func _cfg_dict(key: String) -> Dictionary:
+	var registry := _registry()
+	if registry and registry.has_method("get_config_section"):
+		return registry.get_config_section(key)
+	return {}
+
+
+func _registry() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	if not tree or not tree.root:
+		return null
+	return tree.root.get_node_or_null("DataRegistry")

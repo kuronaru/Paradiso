@@ -146,7 +146,7 @@ func _spawn_wave_enemies(wave_index: int) -> void:
 	"""生成波次敌人（由EnemySpawner实际处理）"""
 	wave_enemies.clear()
 	# 从enemy_pool中选取敌人模板，波次越深敌人越多/越强
-	var count: int = 2 + wave_index * 2
+	var count: int = _cfg_int("battle_base_wave_enemy_count", 2) + wave_index * _cfg_int("battle_enemy_count_per_wave", 2)
 	var available_enemies = enemy_pool.duplicate()
 	for i in range(count):
 		if available_enemies.is_empty():
@@ -227,3 +227,12 @@ func unregister_player_unit(unit: Node) -> void:
 func unregister_enemy_unit(unit: Node) -> void:
 	enemy_units.erase(unit)
 	check_battle_end()
+
+
+func _cfg_int(key: String, default_value: int) -> int:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree and tree.root:
+		var registry := tree.root.get_node_or_null("DataRegistry")
+		if registry and registry.has_method("get_config"):
+			return int(registry.get_config(key, default_value))
+	return default_value

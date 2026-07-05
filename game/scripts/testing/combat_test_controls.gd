@@ -117,7 +117,7 @@ func _parse_hero_input(raw_text: String) -> Dictionary:
 	if parts.size() >= 2:
 		var level_text := str(parts[1]).strip_edges()
 		if level_text.is_valid_int():
-			level = clampi(int(level_text), 1, GameManager.MAX_CHARACTER_LEVEL)
+			level = clampi(int(level_text), 1, GameManager.get_max_character_level())
 
 	return {
 		"class_id": str(parts[0]).strip_edges(),

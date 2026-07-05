@@ -1,0 +1,43 @@
+{
+	"poison": {
+		"status_id": "poison",
+		"enabled": true,
+		"name": "中毒",
+		"status_type": "dot",
+		"stack_rule": "stack",
+		"max_stack": 999,
+		"duration": 0.0,
+		"tick_interval": 1.0,
+		"tick_effect_type": "damage",
+		"tick_value_type": "atk_ratio",
+		"tick_value": 0.24
+	},
+	"burn": {
+		"status_id": "burn",
+		"enabled": true,
+		"name": "燃烧",
+		"status_type": "dot",
+		"stack_rule": "refresh",
+		"max_stack": 1,
+		"duration": 4.0,
+		"tick_interval": 1.0,
+		"tick_effect_type": "damage",
+		"tick_value_type": "atk_ratio",
+		"tick_value": 0.16
+	},
+	"slow": {
+		"status_id": "slow",
+		"enabled": true,
+		"name": "减速",
+		"status_type": "debuff",
+		"stack_rule": "replace_stronger",
+		"max_stack": 1,
+		"duration": 2.5,
+		"tick_interval": 0.0,
+		"tick_effect_type": "none",
+		"tick_value_type": "fixed",
+		"tick_value": 0.0,
+		"modifier_stat": "move_speed_multiplier",
+		"modifier_value": 0.8
+	}
+}

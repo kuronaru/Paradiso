@@ -1,0 +1,558 @@
+{
+	"main_anmarit": {
+		"synergy_id": "main_anmarit",
+		"enabled": true,
+		"name": "安马里特",
+		"display_name": "安马里特",
+		"short_name": "瘴",
+		"type": "main_nation",
+		"tag": "anmarit",
+		"thresholds": [
+			3,
+			6
+		],
+		"order": 0,
+		"description": "国家主羁绊：安马里特瘴林。3人时攻击叠加随层数成长的毒层并造成持续伤害；6人时毒伤扩散为小范围群体伤害。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 3,
+				"stat": "poison_attack_ratio",
+				"base": 0.6,
+				"per_layer": 0.009,
+				"max_value": 9.5
+			}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "anmarit_poison",
+		"main_effect": {
+			"poison_attack_ratio": {
+				"min_tier": 3,
+				"base": 0.6,
+				"per_layer": 0.009,
+				"max_value": 9.5,
+				"fallback": 0.0
+			},
+			"poison_dot_ratio": 0.24,
+			"poison_decay_per_second": 0.16,
+			"poison_tick_interval": 1.0,
+			"poison_aoe_radius": {
+				"min_tier": 6,
+				"value": 1.0,
+				"fallback": 0.0
+			}
+		}
+	},
+	"main_laferida": {
+		"synergy_id": "main_laferida",
+		"enabled": true,
+		"name": "拉费里达",
+		"display_name": "拉费里达",
+		"short_name": "森",
+		"type": "main_nation",
+		"tag": "laferida",
+		"thresholds": [
+			3,
+			6
+		],
+		"order": 1,
+		"description": "国家主羁绊：拉费里达共生。3人时攻击积累自然值，满值爆条并造成随层数成长的减速；6人时爆条额外造成基于最高攻击力的自然伤害。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 3,
+				"stat": "slow_percent",
+				"base": 0.2,
+				"per_layer": 0.0005,
+				"max_value": 0.7
+			},
+			{
+				"min_tier": 6,
+				"stat": "nature_damage_multiplier",
+				"base": 1.0,
+				"per_layer": 0.008,
+				"max_value": 9.0
+			}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "laferida_nature_value",
+		"main_effect": {
+			"nature_threshold": 100.0,
+			"nature_gain_ratio": 0.8,
+			"nature_min_gain": 12.0,
+			"slow_percent": {
+				"min_tier": 3,
+				"base": 0.2,
+				"per_layer": 0.0005,
+				"max_value": 0.7,
+				"fallback": 0.0
+			},
+			"slow_duration": 2.5,
+			"nature_damage_multiplier": {
+				"min_tier": 6,
+				"base": 1.0,
+				"per_layer": 0.008,
+				"max_value": 9.0,
+				"fallback": 0.0
+			}
+		}
+	},
+	"main_naka": {
+		"synergy_id": "main_naka",
+		"enabled": true,
+		"name": "纳卡",
+		"display_name": "纳卡",
+		"short_name": "火",
+		"type": "main_nation",
+		"tag": "naka",
+		"thresholds": [
+			3,
+			6
+		],
+		"order": 2,
+		"description": "国家主羁绊：纳卡烈焰。3人时提升攻击并叠加灼烧值，满值点燃敌人；6人时对燃烧目标增伤，并有随层数成长的概率追加爆炸伤害。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 3,
+				"stat": "attack_multiplier",
+				"base": 1.3,
+				"per_layer": 0.008,
+				"max_value": 9.0
+			},
+			{
+				"min_tier": 6,
+				"stat": "burning_damage_multiplier",
+				"base": 1.25,
+				"per_layer": 0.0075,
+				"max_value": 8.5
+			},
+			{
+				"min_tier": 6,
+				"stat": "explosion_chance",
+				"base": 0.08,
+				"per_layer": 0.00062,
+				"max_value": 0.7
+			}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "naka_fire",
+		"main_effect": {
+			"burn_threshold": 100.0,
+			"burn_gain_ratio": 0.85,
+			"burn_min_gain": 14.0,
+			"burn_duration": 4.0,
+			"burn_dot_ratio": 0.16,
+			"burn_tick_interval": 1.0,
+			"burning_damage_multiplier": {
+				"min_tier": 6,
+				"base": 1.25,
+				"per_layer": 0.0075,
+				"max_value": 8.5,
+				"fallback": 1.0
+			},
+			"explosion_chance": {
+				"min_tier": 6,
+				"base": 0.08,
+				"per_layer": 0.00062,
+				"max_value": 0.7,
+				"fallback": 0.0
+			},
+			"explosion_damage_multiplier": 1.2,
+			"explosion_radius": 1.0
+		}
+	},
+	"stat_str": {
+		"synergy_id": "stat_str",
+		"enabled": true,
+		"name": "力量",
+		"display_name": "力量",
+		"short_name": "力",
+		"type": "minor_stat",
+		"tag": "STR",
+		"thresholds": [
+			2,
+			3
+		],
+		"order": 3,
+		"description": "小羁绊：提升物理攻击倍率，3人后获得破甲。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 2,
+				"stat": "attack_multiplier",
+				"base": 1.15,
+				"per_layer": 0.0038,
+				"max_value": 5.0
+			},
+			{
+				"min_tier": 3,
+				"stat": "armor_pierce",
+				"base": 0.1,
+				"per_layer": 0.00025,
+				"max_value": 0.35
+			}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "",
+		"main_effect": {}
+	},
+	"stat_dex": {
+		"synergy_id": "stat_dex",
+		"enabled": true,
+		"name": "敏捷",
+		"display_name": "敏捷",
+		"short_name": "敏",
+		"type": "minor_stat",
+		"tag": "DEX",
+		"thresholds": [
+			2,
+			3
+		],
+		"order": 4,
+		"description": "小羁绊：提升攻速倍率，3人后获得暴击。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 2,
+				"stat": "attack_speed_multiplier",
+				"base": 1.12,
+				"per_layer": 0.0032,
+				"max_value": 4.3
+			},
+			{
+				"min_tier": 3,
+				"stat": "crit_chance",
+				"base": 0.08,
+				"per_layer": 0.0002,
+				"max_value": 0.3
+			}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "",
+		"main_effect": {}
+	},
+	"stat_con": {
+		"synergy_id": "stat_con",
+		"enabled": true,
+		"name": "体质",
+		"display_name": "体质",
+		"short_name": "体",
+		"type": "minor_stat",
+		"tag": "CON",
+		"thresholds": [
+			2,
+			3
+		],
+		"order": 5,
+		"description": "小羁绊：提升最大生命倍率，3人后提升防御倍率。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 2,
+				"stat": "max_hp_multiplier",
+				"base": 1.2,
+				"per_layer": 0.0038,
+				"max_value": 5.0
+			},
+			{
+				"min_tier": 3,
+				"stat": "defense_multiplier",
+				"base": 1.1,
+				"per_layer": 0.0025,
+				"max_value": 3.5
+			},
+			{
+				"min_tier": 3,
+				"stat": "incoming_heal_multiplier",
+				"base": 1.1,
+				"per_layer": 0.0015,
+				"max_value": 2.5
+			}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "",
+		"main_effect": {}
+	},
+	"stat_int": {
+		"synergy_id": "stat_int",
+		"enabled": true,
+		"name": "智力",
+		"display_name": "智力",
+		"short_name": "智",
+		"type": "minor_stat",
+		"tag": "INT",
+		"thresholds": [
+			2,
+			3
+		],
+		"order": 6,
+		"description": "小羁绊：提升技能伤害倍率，3人后获得技能冷却缩减。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 2,
+				"stat": "skill_damage_multiplier",
+				"base": 1.2,
+				"per_layer": 0.004,
+				"max_value": 5.2
+			},
+			{
+				"min_tier": 3,
+				"stat": "skill_cooldown_reduction",
+				"base": 0.08,
+				"per_layer": 0.00025,
+				"max_value": 0.35
+			}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "",
+		"main_effect": {}
+	},
+	"stat_wis": {
+		"synergy_id": "stat_wis",
+		"enabled": true,
+		"name": "感知",
+		"display_name": "感知",
+		"short_name": "感",
+		"type": "minor_stat",
+		"tag": "WIS",
+		"thresholds": [
+			2,
+			3
+		],
+		"order": 7,
+		"description": "小羁绊：提升治疗/护盾倍率，3人后提升异常抗性与索敌数值。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 2,
+				"stat": "heal_multiplier",
+				"base": 1.15,
+				"per_layer": 0.0035,
+				"max_value": 4.6
+			},
+			{
+				"min_tier": 3,
+				"stat": "search_range_bonus",
+				"base": 1.0,
+				"per_layer": 0.0,
+				"max_value": 1.0
+			}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "",
+		"main_effect": {}
+	},
+	"stat_cha": {
+		"synergy_id": "stat_cha",
+		"enabled": true,
+		"name": "魅力",
+		"display_name": "魅力",
+		"short_name": "魅",
+		"type": "minor_stat",
+		"tag": "CHA",
+		"thresholds": [
+			2,
+			3
+		],
+		"order": 8,
+		"description": "小羁绊：提升团队泛用输出与治疗，3人后提供固定资源优势。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 2,
+				"stat": "damage_multiplier",
+				"base": 1.1,
+				"per_layer": 0.003,
+				"max_value": 4.0
+			},
+			{
+				"min_tier": 2,
+				"stat": "heal_multiplier",
+				"base": 1.1,
+				"per_layer": 0.002,
+				"max_value": 3.0
+			}
+		],
+		"fixed_modifiers": [
+			{
+				"min_tier": 3,
+				"stat": "max_dp_bonus",
+				"value": 5.0
+			}
+		],
+		"mechanic_id": "",
+		"main_effect": {}
+	},
+	"alignment_lawful": {
+		"synergy_id": "alignment_lawful",
+		"enabled": true,
+		"name": "守序",
+		"display_name": "守序",
+		"short_name": "序",
+		"type": "minor_alignment",
+		"tag": "LAWFUL",
+		"thresholds": [
+			2,
+			3
+		],
+		"order": 9,
+		"description": "小羁绊：提升有效防御倍率，3人后降低部署费用。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 2,
+				"stat": "defense_multiplier",
+				"base": 1.12,
+				"per_layer": 0.003,
+				"max_value": 4.0
+			}
+		],
+		"fixed_modifiers": [
+			{
+				"min_tier": 3,
+				"stat": "deploy_cost_discount",
+				"value": 0.05
+			}
+		],
+		"mechanic_id": "",
+		"main_effect": {}
+	},
+	"alignment_chaotic": {
+		"synergy_id": "alignment_chaotic",
+		"enabled": true,
+		"name": "混沌",
+		"display_name": "混沌",
+		"short_name": "混",
+		"type": "minor_alignment",
+		"tag": "CHAOTIC",
+		"thresholds": [
+			2,
+			3
+		],
+		"order": 10,
+		"description": "小羁绊：提升暴击伤害，3人后获得暴击率。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 2,
+				"stat": "crit_damage_multiplier",
+				"base": 1.15,
+				"per_layer": 0.0035,
+				"max_value": 4.5
+			},
+			{
+				"min_tier": 3,
+				"stat": "crit_chance",
+				"base": 0.06,
+				"per_layer": 0.00015,
+				"max_value": 0.2
+			}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "",
+		"main_effect": {}
+	},
+	"alignment_good": {
+		"synergy_id": "alignment_good",
+		"enabled": true,
+		"name": "善良",
+		"display_name": "善良",
+		"short_name": "善",
+		"type": "minor_alignment",
+		"tag": "GOOD",
+		"thresholds": [
+			2,
+			3
+		],
+		"order": 11,
+		"description": "小羁绊：提升治疗与承疗数值。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 2,
+				"stat": "heal_multiplier",
+				"base": 1.1,
+				"per_layer": 0.0032,
+				"max_value": 4.2
+			},
+			{
+				"min_tier": 3,
+				"stat": "incoming_heal_multiplier",
+				"base": 1.1,
+				"per_layer": 0.0025,
+				"max_value": 3.5
+			}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "",
+		"main_effect": {}
+	},
+	"alignment_evil": {
+		"synergy_id": "alignment_evil",
+		"enabled": true,
+		"name": "邪恶",
+		"display_name": "邪恶",
+		"short_name": "邪",
+		"type": "minor_alignment",
+		"tag": "EVIL",
+		"thresholds": [
+			2,
+			3
+		],
+		"order": 12,
+		"description": "小羁绊：提供攻击吸血，3人后提高胜利金币收益。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 2,
+				"stat": "life_steal_percent",
+				"base": 0.03,
+				"per_layer": 0.00017,
+				"max_value": 0.2
+			}
+		],
+		"fixed_modifiers": [
+			{
+				"min_tier": 3,
+				"stat": "victory_gold_multiplier",
+				"value": 1.05
+			}
+		],
+		"mechanic_id": "",
+		"main_effect": {}
+	},
+	"alignment_neutral": {
+		"synergy_id": "alignment_neutral",
+		"enabled": true,
+		"name": "中立",
+		"display_name": "中立",
+		"short_name": "中",
+		"type": "minor_alignment",
+		"tag": "NEUTRAL",
+		"thresholds": [
+			2,
+			3
+		],
+		"order": 13,
+		"description": "小羁绊：提升全队泛用属性，3人后获得资源上限和胜利金币。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 2,
+				"stat": "damage_multiplier",
+				"base": 1.05,
+				"per_layer": 0.0025,
+				"max_value": 3.5
+			},
+			{
+				"min_tier": 2,
+				"stat": "max_hp_multiplier",
+				"base": 1.05,
+				"per_layer": 0.0015,
+				"max_value": 2.5
+			}
+		],
+		"fixed_modifiers": [
+			{
+				"min_tier": 3,
+				"stat": "max_dp_bonus",
+				"value": 10.0
+			},
+			{
+				"min_tier": 3,
+				"stat": "victory_gold_multiplier",
+				"value": 1.05
+			}
+		],
+		"mechanic_id": "",
+		"main_effect": {}
+	}
+}

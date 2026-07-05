@@ -321,7 +321,7 @@ func use_selected_skill(skill_index: int) -> void:
 ## 处理retreat选中逻辑。
 func retreat_selected() -> void:
 	if selected_unit and is_instance_valid(selected_unit):
-		if GameManager.is_roguelike_run and hand_cards.size() >= GameManager.ROGUELIKE_MAX_HAND_CARDS:
+		if GameManager.is_roguelike_run and hand_cards.size() >= GameManager.get_roguelike_max_hand_cards():
 			Log.w(M, "手牌区已满，无法撤回角色")
 			return
 		var card_data := _card_data_from_unit(selected_unit)

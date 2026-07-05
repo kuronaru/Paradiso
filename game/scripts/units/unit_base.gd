@@ -131,7 +131,7 @@ func _process(delta: float) -> void:
 func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 	"""从职业模板初始化"""
 	class_template = class_data
-	level = clampi(lvl, 1, GameManager.MAX_CHARACTER_LEVEL)
+	level = clampi(lvl, 1, GameManager.get_max_character_level())
 	unit_name = class_data.job_name
 	var level_scale := 1.0 + float(level - 1) * 0.05
 	base_max_hp = int(round(class_data.base_hp * level_scale))

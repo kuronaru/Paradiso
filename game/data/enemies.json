@@ -1,0 +1,109 @@
+{
+	"goblin": {
+		"enemy_id": "goblin",
+		"enabled": true,
+		"name": "哥布林",
+		"enemy_type": "melee",
+		"hp": 60,
+		"atk": 8,
+		"def": 2,
+		"attack_speed": 1.2,
+		"move_speed": 2.0,
+		"attack_range": 1.0,
+		"search_range": 4.0,
+		"skills": [],
+		"tags": [
+			"small",
+			"fast"
+		]
+	},
+	"skeleton": {
+		"enemy_id": "skeleton",
+		"enabled": true,
+		"name": "骷髅兵",
+		"enemy_type": "melee",
+		"hp": 80,
+		"atk": 12,
+		"def": 4,
+		"attack_speed": 1.0,
+		"move_speed": 1.5,
+		"attack_range": 1.0,
+		"search_range": 5.0,
+		"skills": [],
+		"tags": [
+			"undead"
+		]
+	},
+	"skeleton_archer": {
+		"enemy_id": "skeleton_archer",
+		"enabled": true,
+		"name": "骷髅弓手",
+		"enemy_type": "ranged",
+		"hp": 50,
+		"atk": 15,
+		"def": 1,
+		"attack_speed": 0.8,
+		"move_speed": 1.5,
+		"attack_range": 4.0,
+		"search_range": 6.0,
+		"skills": [],
+		"tags": [
+			"undead",
+			"ranged"
+		]
+	},
+	"ogre": {
+		"enemy_id": "ogre",
+		"enabled": true,
+		"name": "食人魔",
+		"enemy_type": "brute",
+		"hp": 200,
+		"atk": 25,
+		"def": 8,
+		"attack_speed": 0.5,
+		"move_speed": 1.0,
+		"attack_range": 1.5,
+		"search_range": 4.0,
+		"skills": [],
+		"tags": [
+			"large",
+			"elite"
+		]
+	},
+	"gargoyle": {
+		"enemy_id": "gargoyle",
+		"enabled": true,
+		"name": "石像鬼",
+		"enemy_type": "ranged",
+		"hp": 70,
+		"atk": 18,
+		"def": 3,
+		"attack_speed": 1.0,
+		"move_speed": 3.0,
+		"attack_range": 3.0,
+		"search_range": 7.0,
+		"skills": [],
+		"tags": [
+			"flying",
+			"ranged"
+		]
+	},
+	"dragon_boss": {
+		"enemy_id": "dragon_boss",
+		"enabled": true,
+		"name": "巨龙Boss",
+		"enemy_type": "boss",
+		"hp": 500,
+		"atk": 40,
+		"def": 12,
+		"attack_speed": 0.4,
+		"move_speed": 0.8,
+		"attack_range": 3.0,
+		"search_range": 8.0,
+		"skills": [],
+		"tags": [
+			"boss",
+			"large"
+		]
+	}
+}

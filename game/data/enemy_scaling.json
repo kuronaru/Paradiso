@@ -1,0 +1,22 @@
+{
+	"map_floor": {
+		"scaling_id": "map_floor",
+		"base_multiplier": 1.0,
+		"hp_per_floor": 0.3,
+		"atk_per_floor": 0.3,
+		"def_per_floor": 0.3,
+		"elite_multiplier": 1.5,
+		"boss_hp_per_floor": 0.5,
+		"boss_atk_per_floor": 0.5,
+		"fallback_boss_hp_floor_base": 2.0,
+		"fallback_boss_atk_multiplier": 2.0
+	},
+	"roguelike_round": {
+		"scaling_id": "roguelike_round",
+		"base_multiplier": 1.0,
+		"hp_per_round": 0.12,
+		"atk_per_round": 0.12,
+		"def_per_round": 0.12,
+		"elite_multiplier": 1.35
+	}
+}

@@ -67,13 +67,19 @@ func _get_enemy_pool_for_floor(_floor: int, is_elite: bool) -> Array:
 
 		var scaled: Dictionary = enemy_template.duplicate(true)
 		# 楼层强化
-		var scale_factor := 1.0 + (_floor - 1) * 0.3
+		var scaling := _scaling("map_floor")
+		var hp_scale := float(scaling.get("base_multiplier", 1.0)) + float(_floor - 1) * float(scaling.get("hp_per_floor", 0.3))
+		var atk_scale := float(scaling.get("base_multiplier", 1.0)) + float(_floor - 1) * float(scaling.get("atk_per_floor", 0.3))
+		var def_scale := float(scaling.get("base_multiplier", 1.0)) + float(_floor - 1) * float(scaling.get("def_per_floor", 0.3))
 		if is_elite:
-			scale_factor *= 1.5
+			var elite_multiplier := float(scaling.get("elite_multiplier", 1.5))
+			hp_scale *= elite_multiplier
+			atk_scale *= elite_multiplier
+			def_scale *= elite_multiplier
 
-		scaled["hp"] = int(scaled["hp"] * scale_factor)
-		scaled["atk"] = int(scaled["atk"] * scale_factor)
-		scaled["def"] = int(scaled["def"] * scale_factor)
+		scaled["hp"] = int(scaled["hp"] * hp_scale)
+		scaled["atk"] = int(scaled["atk"] * atk_scale)
+		scaled["def"] = int(scaled["def"] * def_scale)
 		filtered.append(scaled)
 
 	return filtered
@@ -87,9 +93,11 @@ func _get_boss_pool(_floor: int) -> Array:
 	for template in pool:
 		if template.get("type") == EnemyUnit.EnemyType.BOSS:
 			var scaled: Dictionary = template.duplicate(true)
-			var sf := 1.0 + (_floor - 1) * 0.5
-			scaled["hp"] = int(scaled["hp"] * sf)
-			scaled["atk"] = int(scaled["atk"] * sf)
+			var scaling := _scaling("map_floor")
+			var hp_scale := float(scaling.get("base_multiplier", 1.0)) + float(_floor - 1) * float(scaling.get("boss_hp_per_floor", 0.5))
+			var atk_scale := float(scaling.get("base_multiplier", 1.0)) + float(_floor - 1) * float(scaling.get("boss_atk_per_floor", 0.5))
+			scaled["hp"] = int(scaled["hp"] * hp_scale)
+			scaled["atk"] = int(scaled["atk"] * atk_scale)
 			bosses.append(scaled)
 
 	if bosses.is_empty():
@@ -97,10 +105,27 @@ func _get_boss_pool(_floor: int) -> Array:
 		for template in pool:
 			if template.get("name") == "食人魔":
 				var scaled: Dictionary = template.duplicate(true)
-				scaled["hp"] = scaled["hp"] * (2 + _floor)
-				scaled["atk"] = scaled["atk"] * 2
+				var scaling := _scaling("map_floor")
+				scaled["hp"] = scaled["hp"] * int(float(scaling.get("fallback_boss_hp_floor_base", 2.0)) + float(_floor))
+				scaled["atk"] = scaled["atk"] * int(scaling.get("fallback_boss_atk_multiplier", 2.0))
 				scaled["name"] = "食人魔首领"
 				bosses.append(scaled)
 				break
 
 	return bosses
+
+
+func _scaling(scaling_id: String) -> Dictionary:
+	var registry := _registry()
+	if registry and registry.has_method("get_enemy_scaling"):
+		var data: Dictionary = registry.get_enemy_scaling(scaling_id)
+		if not data.is_empty():
+			return data
+	return {}
+
+
+func _registry() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	if not tree or not tree.root:
+		return null
+	return tree.root.get_node_or_null("DataRegistry")

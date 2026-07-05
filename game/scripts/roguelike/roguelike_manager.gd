@@ -126,7 +126,7 @@ func _setup_round_preparation() -> void:
 	if not BattleManager.battle_lost.is_connected(_on_battle_lost):
 		BattleManager.battle_lost.connect(_on_battle_lost)
 
-	ResourceManager.reset_dp(20, 100)
+	ResourceManager.reset_dp()
 
 
 ## 同步deployment手牌。
@@ -199,7 +199,7 @@ func _start_battle(node: Dictionary) -> void:
 		BattleManager.battle_lost.connect(_on_battle_lost)
 
 	# 重置DP，给准备阶段足够的资源
-	ResourceManager.reset_dp(20, 100)
+	ResourceManager.reset_dp()
 	# 不自动开始战斗——等待玩家部署后按 F 键手动推进
 
 
@@ -235,7 +235,7 @@ func _on_battle_won() -> void:
 ## 战斗失败
 func _on_battle_lost() -> void:
 	"""战斗失败"""
-	GameManager.earn_run_gold(2)
+	GameManager.earn_run_gold(_cfg_int("battle_loss_gold", 2))
 	Log.i(M, "战斗失败! 冒险结束")
 	_end_run(false)
 
@@ -243,7 +243,7 @@ func _on_battle_lost() -> void:
 ## 计算奖励金币
 func _calculate_reward() -> int:
 	"""计算奖励金币"""
-	return 4
+	return _cfg_int("battle_reward_gold", 4)
 
 
 ## 处理restandadvance逻辑。
@@ -279,9 +279,16 @@ func _build_round_node(round_number: int) -> Dictionary:
 func _get_scaled_enemy_pool(round_number: int, is_elite: bool, is_boss: bool) -> Array:
 	var source_pool := EnemyUnit.get_enemy_pool()
 	var result: Array = []
-	var scale_factor := 1.0 + float(maxi(0, round_number - 1)) * 0.12
+	var scaling := _scaling("roguelike_round")
+	var round_offset := float(maxi(0, round_number - 1))
+	var hp_scale := float(scaling.get("base_multiplier", 1.0)) + round_offset * float(scaling.get("hp_per_round", 0.12))
+	var atk_scale := float(scaling.get("base_multiplier", 1.0)) + round_offset * float(scaling.get("atk_per_round", 0.12))
+	var def_scale := float(scaling.get("base_multiplier", 1.0)) + round_offset * float(scaling.get("def_per_round", 0.12))
 	if is_elite:
-		scale_factor *= 1.35
+		var elite_multiplier := float(scaling.get("elite_multiplier", 1.35))
+		hp_scale *= elite_multiplier
+		atk_scale *= elite_multiplier
+		def_scale *= elite_multiplier
 
 	for template in source_pool:
 		var enemy_type = template.get("type", EnemyUnit.EnemyType.MELEE)
@@ -292,11 +299,34 @@ func _get_scaled_enemy_pool(round_number: int, is_elite: bool, is_boss: bool) ->
 			continue
 
 		var scaled: Dictionary = template.duplicate(true)
-		scaled["hp"] = int(round(float(scaled.get("hp", 80)) * scale_factor))
-		scaled["atk"] = int(round(float(scaled.get("atk", 10)) * scale_factor))
-		scaled["def"] = int(round(float(scaled.get("def", 3)) * scale_factor))
+		scaled["hp"] = int(round(float(scaled.get("hp", 80)) * hp_scale))
+		scaled["atk"] = int(round(float(scaled.get("atk", 10)) * atk_scale))
+		scaled["def"] = int(round(float(scaled.get("def", 3)) * def_scale))
 		result.append(scaled)
 
 	if result.is_empty():
 		return source_pool
 	return result
+
+
+func _cfg_int(key: String, default_value: int) -> int:
+	var registry := _registry()
+	if registry and registry.has_method("get_config"):
+		return int(registry.get_config(key, default_value))
+	return default_value
+
+
+func _scaling(scaling_id: String) -> Dictionary:
+	var registry := _registry()
+	if registry and registry.has_method("get_enemy_scaling"):
+		var data: Dictionary = registry.get_enemy_scaling(scaling_id)
+		if not data.is_empty():
+			return data
+	return {}
+
+
+func _registry() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	if not tree or not tree.root:
+		return null
+	return tree.root.get_node_or_null("DataRegistry")
