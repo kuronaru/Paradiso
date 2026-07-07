@@ -6,6 +6,8 @@ extends Node
 const M = "CombatTest"
 
 var debug_visuals_enabled: bool = true
+var test_synergies_enabled: bool = false
+var test_synergy_specs: Array[Dictionary] = []
 
 ## 默认玩家角色配置；可在测试代码中改写后调用 restart_test()
 var hero_specs: Array = [
@@ -48,6 +50,7 @@ func restart_test() -> void:
 	_prepare_test_battle()
 	_clear_grid_units()
 	_place_configured_units()
+	_apply_current_test_synergy_state()
 	_start_unit_ai()
 
 
@@ -184,6 +187,69 @@ func set_debug_visuals(enabled: bool) -> void:
 				_apply_debug_visuals_to_unit(unit as UnitBase)
 
 
+## 获取测试羁绊选项。
+func get_test_synergy_options() -> Array[Dictionary]:
+	if SynergyManager and SynergyManager.has_method("get_test_synergy_options"):
+		return SynergyManager.get_test_synergy_options()
+	return []
+
+
+## 获取测试面板当前配置的羁绊。
+func get_test_synergy_specs() -> Array:
+	return test_synergy_specs.duplicate(true)
+
+
+## 添加或更新测试羁绊配置。count <= 0 时移除该项。
+func set_test_synergy_spec(synergy_id: String, count: int, layer: int) -> void:
+	if synergy_id.strip_edges() == "":
+		return
+	var next_specs: Array[Dictionary] = []
+	var updated := false
+	for spec in test_synergy_specs:
+		var existing_id := str(spec.get("id", ""))
+		if existing_id == synergy_id:
+			updated = true
+			if count > 0:
+				next_specs.append({
+					"id": synergy_id,
+					"count": count,
+					"layer": layer,
+				})
+		else:
+			next_specs.append(spec.duplicate(true))
+	if not updated and count > 0:
+		next_specs.append({
+			"id": synergy_id,
+			"count": count,
+			"layer": layer,
+		})
+	test_synergy_specs = next_specs
+
+
+## 让测试羁绊配置立即生效。
+func apply_test_synergies() -> Array:
+	test_synergies_enabled = true
+	if SynergyManager and SynergyManager.has_method("set_test_synergy_override"):
+		SynergyManager.set_test_synergy_override(test_synergy_specs)
+		return SynergyManager.get_synergy_summary()
+	return []
+
+
+## 清空测试羁绊配置并恢复场上阵容自动计算。
+func clear_test_synergies() -> void:
+	test_synergies_enabled = false
+	test_synergy_specs.clear()
+	if SynergyManager and SynergyManager.has_method("clear_test_synergy_override"):
+		SynergyManager.clear_test_synergy_override()
+	elif SynergyManager and SynergyManager.has_method("recalculate"):
+		SynergyManager.recalculate()
+
+
+## 测试羁绊配置是否正在覆盖场上阵容羁绊。
+func is_test_synergies_enabled() -> bool:
+	return test_synergies_enabled
+
+
 ## 重置战斗全局状态，避免测试场景受到肉鸽流程影响
 func _prepare_test_battle() -> void:
 	"""重置战斗全局状态，避免测试场景受到肉鸽流程影响"""
@@ -201,8 +267,7 @@ func _prepare_test_battle() -> void:
 			ResourceManager.get_configured_max_dp()
 		)
 		ResourceManager.set_regen_enabled(true)
-	if SynergyManager and SynergyManager.has_method("recalculate"):
-		SynergyManager.recalculate()
+	_apply_current_test_synergy_state()
 
 
 ## 清空网格中的旧单位
@@ -257,6 +322,18 @@ func _apply_debug_visuals_to_unit(unit: UnitBase) -> void:
 	unit.show_collision_debug_ring = debug_visuals_enabled
 	unit.show_attack_range_debug_ring = debug_visuals_enabled
 	unit.refresh_ground_collision()
+
+
+## 根据测试开关应用手动羁绊或恢复自动计算。
+func _apply_current_test_synergy_state() -> void:
+	if not SynergyManager:
+		return
+	if test_synergies_enabled and SynergyManager.has_method("set_test_synergy_override"):
+		SynergyManager.set_test_synergy_override(test_synergy_specs)
+	elif SynergyManager.has_method("clear_test_synergy_override") and SynergyManager.is_test_synergy_override_enabled():
+		SynergyManager.clear_test_synergy_override()
+	elif SynergyManager.has_method("recalculate"):
+		SynergyManager.recalculate()
 
 
 ## 获取下一个可用的玩家测试位置

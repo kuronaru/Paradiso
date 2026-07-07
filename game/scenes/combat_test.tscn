@@ -72,3 +72,75 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "测试面板已就绪"
 vertical_alignment = 1
+
+[node name="SynergyPanel" type="PanelContainer" parent="CombatTestControls"]
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = -228.0
+offset_right = -12.0
+offset_bottom = -96.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="Margin" type="MarginContainer" parent="CombatTestControls/SynergyPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="Layout" type="VBoxContainer" parent="CombatTestControls/SynergyPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="EditorRow" type="HBoxContainer" parent="CombatTestControls/SynergyPanel/Margin/Layout"]
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="SynergyOption" type="OptionButton" parent="CombatTestControls/SynergyPanel/Margin/Layout/EditorRow"]
+custom_minimum_size = Vector2(280, 0)
+layout_mode = 2
+tooltip_text = "选择要手动配置的测试羁绊"
+
+[node name="CountSpin" type="SpinBox" parent="CombatTestControls/SynergyPanel/Margin/Layout/EditorRow"]
+custom_minimum_size = Vector2(84, 0)
+layout_mode = 2
+tooltip_text = "测试羁绊人数，0会从配置中移除"
+max_value = 12.0
+value = 3.0
+rounded = true
+
+[node name="LayerSpin" type="SpinBox" parent="CombatTestControls/SynergyPanel/Margin/Layout/EditorRow"]
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+tooltip_text = "测试羁绊层数，直接影响可成长数值"
+max_value = 999.0
+step = 10.0
+value = 60.0
+rounded = true
+
+[node name="UpdateSynergyButton" type="Button" parent="CombatTestControls/SynergyPanel/Margin/Layout/EditorRow"]
+layout_mode = 2
+text = "设置羁绊"
+
+[node name="ApplySynergyButton" type="Button" parent="CombatTestControls/SynergyPanel/Margin/Layout/EditorRow"]
+layout_mode = 2
+text = "羁绊机制生效"
+
+[node name="ClearSynergyButton" type="Button" parent="CombatTestControls/SynergyPanel/Margin/Layout/EditorRow"]
+layout_mode = 2
+text = "清空测试羁绊"
+
+[node name="SynergyHint" type="Label" parent="CombatTestControls/SynergyPanel/Margin/Layout"]
+layout_mode = 2
+text = "测试羁绊：待生效 · 0项配置"
+
+[node name="SynergyList" type="ItemList" parent="CombatTestControls/SynergyPanel/Margin/Layout"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+size_flags_vertical = 3
+auto_height = true

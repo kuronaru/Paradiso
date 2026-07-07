@@ -12,6 +12,8 @@ var _summaries: Array[Dictionary] = []
 var _active_modifiers: Dictionary = {}
 var _active_fixed_modifiers: Dictionary = {}
 var _active_main_effects: Dictionary = {}
+var _test_override_enabled: bool = false
+var _test_synergy_specs: Array[Dictionary] = []
 
 
 func _ready() -> void:
@@ -32,23 +34,10 @@ func recalculate() -> void:
 	var layer_per_star := _cfg_int("synergy_layer_per_star", 20)
 	var max_layer := _cfg_int("synergy_max_layer", 999)
 
-	for unit in BattleManager.player_units:
-		if not is_instance_valid(unit):
-			continue
-		if not (unit is HeroUnit):
-			continue
-		var hero := unit as HeroUnit
-		if not hero.class_template:
-			continue
-
-		var ids := _get_unit_synergy_ids(hero)
-		var star_layers := clampi(int(hero.star_level), 1, 3) * layer_per_star
-		for synergy_id in ids:
-			count_by_id[synergy_id] = int(count_by_id.get(synergy_id, 0)) + 1
-			layer_by_id[synergy_id] = int(layer_by_id.get(synergy_id, 0)) + star_layers
-			if not member_names_by_id.has(synergy_id):
-				member_names_by_id[synergy_id] = []
-			member_names_by_id[synergy_id].append(hero.unit_name)
+	if _test_override_enabled:
+		_collect_test_synergy_counts(count_by_id, layer_by_id, member_names_by_id, max_layer)
+	else:
+		_collect_roster_synergy_counts(count_by_id, layer_by_id, member_names_by_id, layer_per_star)
 
 	_active_modifiers = _default_modifiers()
 	_active_fixed_modifiers = {}
@@ -93,6 +82,49 @@ func get_active_main_effects() -> Dictionary:
 	return _active_main_effects.duplicate(true)
 
 
+func get_test_synergy_options() -> Array[Dictionary]:
+	var options: Array[Dictionary] = []
+	var layer_per_star := _cfg_int("synergy_layer_per_star", 20)
+	var max_layer := _cfg_int("synergy_max_layer", 999)
+	for synergy_id in _definition_order:
+		var definition := _definitions[synergy_id] as SynergyDefinition
+		var activation_count := definition.thresholds[0] if not definition.thresholds.is_empty() else 1
+		options.append({
+			"id": definition.synergy_id,
+			"display_name": definition.display_name,
+			"short_name": definition.short_name,
+			"type": definition.type,
+			"type_name": _type_name(definition.type),
+			"thresholds": definition.thresholds.duplicate(),
+			"activation_count": activation_count,
+			"max_threshold": definition.get_max_threshold(),
+			"default_layer": activation_count * layer_per_star,
+			"max_layer": max_layer,
+			"order": definition.order,
+		})
+	return options
+
+
+func set_test_synergy_override(specs: Array) -> void:
+	_test_override_enabled = true
+	_test_synergy_specs = _sanitize_test_synergy_specs(specs)
+	recalculate()
+
+
+func clear_test_synergy_override() -> void:
+	_test_override_enabled = false
+	_test_synergy_specs.clear()
+	recalculate()
+
+
+func is_test_synergy_override_enabled() -> bool:
+	return _test_override_enabled
+
+
+func get_test_synergy_specs() -> Array:
+	return _test_synergy_specs.duplicate(true)
+
+
 func get_discounted_deploy_cost(base_cost: int) -> int:
 	var discount := clampf(float(_active_fixed_modifiers.get("deploy_cost_discount", 0.0)), 0.0, 0.75)
 	return maxi(1, int(ceil(float(base_cost) * (1.0 - discount))))
@@ -122,6 +154,68 @@ func _get_unit_synergy_ids(hero: HeroUnit) -> Array[String]:
 	for tag in ct.alignment_tags:
 		ids.append("alignment_%s" % str(tag).to_lower())
 	return ids
+
+
+func _collect_roster_synergy_counts(count_by_id: Dictionary, layer_by_id: Dictionary, member_names_by_id: Dictionary, layer_per_star: int) -> void:
+	for unit in BattleManager.player_units:
+		if not is_instance_valid(unit):
+			continue
+		if not (unit is HeroUnit):
+			continue
+		var hero := unit as HeroUnit
+		if not hero.class_template:
+			continue
+
+		var ids := _get_unit_synergy_ids(hero)
+		var star_layers := clampi(int(hero.star_level), 1, 3) * layer_per_star
+		for synergy_id in ids:
+			count_by_id[synergy_id] = int(count_by_id.get(synergy_id, 0)) + 1
+			layer_by_id[synergy_id] = int(layer_by_id.get(synergy_id, 0)) + star_layers
+			if not member_names_by_id.has(synergy_id):
+				member_names_by_id[synergy_id] = []
+			member_names_by_id[synergy_id].append(hero.unit_name)
+
+
+func _collect_test_synergy_counts(count_by_id: Dictionary, layer_by_id: Dictionary, member_names_by_id: Dictionary, max_layer: int) -> void:
+	for spec in _test_synergy_specs:
+		var synergy_id := str(spec.get("id", ""))
+		if not _definitions.has(synergy_id):
+			continue
+		var count := maxi(0, int(spec.get("count", 0)))
+		if count <= 0:
+			continue
+		var layer := clampi(int(spec.get("layer", 0)), 0, max_layer)
+		count_by_id[synergy_id] = count
+		layer_by_id[synergy_id] = layer
+		member_names_by_id[synergy_id] = ["测试配置 %d人" % count]
+
+
+func _sanitize_test_synergy_specs(specs: Array) -> Array[Dictionary]:
+	var max_layer := _cfg_int("synergy_max_layer", 999)
+	var layer_per_star := _cfg_int("synergy_layer_per_star", 20)
+	var by_id: Dictionary = {}
+	for raw_spec in specs:
+		if not (raw_spec is Dictionary):
+			continue
+		var spec: Dictionary = raw_spec
+		var synergy_id := str(spec.get("id", spec.get("synergy_id", "")))
+		if not _definitions.has(synergy_id):
+			continue
+		var count := maxi(0, int(spec.get("count", 0)))
+		if count <= 0:
+			continue
+		var layer := int(spec.get("layer", count * layer_per_star))
+		by_id[synergy_id] = {
+			"id": synergy_id,
+			"count": count,
+			"layer": clampi(layer, 0, max_layer),
+		}
+
+	var result: Array[Dictionary] = []
+	for synergy_id in _definition_order:
+		if by_id.has(synergy_id):
+			result.append((by_id[synergy_id] as Dictionary).duplicate(true))
+	return result
 
 
 func _build_summary(definition: SynergyDefinition, count: int, active_tier: int, layer: int, members: Array) -> Dictionary:
