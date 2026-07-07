@@ -32,7 +32,7 @@ func _ready() -> void:
 	_populate_synergy_options()
 	_refresh_synergy_list()
 	_connect_signals()
-	_set_status("测试面板已就绪")
+	_set_status("测试场景已暂停")
 
 
 ## 连接按钮和输入框信号。

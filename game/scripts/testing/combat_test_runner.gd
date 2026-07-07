@@ -8,6 +8,7 @@ const M = "CombatTest"
 var debug_visuals_enabled: bool = true
 var test_synergies_enabled: bool = false
 var test_synergy_specs: Array[Dictionary] = []
+var start_paused_on_ready: bool = true
 
 ## 默认玩家角色配置；可在测试代码中改写后调用 restart_test()
 var hero_specs: Array = [
@@ -40,7 +41,14 @@ var enemy_specs: Array = [
 ## 测试场景启动时自动创建默认对战双方
 func _ready() -> void:
 	"""测试场景启动时自动创建默认对战双方"""
-	call_deferred("restart_test")
+	call_deferred("_start_initial_test")
+
+
+## 首次进入测试场景时生成默认单位，并按配置保持暂停。
+func _start_initial_test() -> void:
+	restart_test()
+	if start_paused_on_ready:
+		pause_test()
 
 
 ## 清空当前场面并按配置重新开始测试
