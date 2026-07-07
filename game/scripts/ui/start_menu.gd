@@ -1,13 +1,11 @@
 # start_menu.gd — 游戏开始界面
-# 显示标题与主菜单按钮，负责进入主战斗场景、图鉴界面或退出游戏。
+# 负责存档选择、游戏设置和进入存档后的AFK大厅。
 class_name StartMenu
 extends Control
 
 const M = "StartMenu"
-const MAIN_SCENE_PATH := "res://scenes/main.tscn"
-const ENCYCLOPEDIA_SCENE_PATH := "res://scenes/encyclopedia.tscn"
+const AFK_HUB_SCENE_PATH := "res://scenes/afk_hub.tscn"
 
-var storage_overlay: CharacterStorageUI = null
 var load_overlay: Control = null
 var settings_overlay: SettingsUI = null
 var primary_game_button: Button = null
@@ -80,8 +78,6 @@ func _build_menu() -> void:
 	primary_game_button = _create_menu_button(_get_primary_game_button_text(), _on_primary_game_pressed)
 	menu.add_child(primary_game_button)
 	menu.add_child(_create_menu_button("加载游戏", _on_load_pressed))
-	menu.add_child(_create_menu_button("冒险小队", _on_storage_pressed))
-	menu.add_child(_create_menu_button("角色图鉴", _on_catalog_pressed))
 	menu.add_child(_create_menu_button("游戏设置", _on_settings_pressed))
 	menu.add_child(_create_menu_button("退出游戏", _on_quit_pressed))
 
@@ -118,7 +114,7 @@ func _on_primary_game_pressed() -> void:
 		GameManager.load_save(GameManager.current_save_id)
 	else:
 		GameManager.create_new_save(GameManager.current_save_id)
-	get_tree().change_scene_to_file(MAIN_SCENE_PATH)
+	get_tree().change_scene_to_file(AFK_HUB_SCENE_PATH)
 
 
 ## 打开存档选择界面
@@ -127,40 +123,12 @@ func _on_load_pressed() -> void:
 	_open_load_overlay()
 
 
-## 进入角色/敌人图鉴界面
-func _on_catalog_pressed() -> void:
-	"""进入角色/敌人图鉴界面"""
-	get_tree().change_scene_to_file(ENCYCLOPEDIA_SCENE_PATH)
-
-
-## 打开局外冒险小队养成界面
-func _on_storage_pressed() -> void:
-	"""打开局外冒险小队养成界面"""
-	if storage_overlay and is_instance_valid(storage_overlay):
-		storage_overlay.move_to_front()
-		return
-	storage_overlay = CharacterStorageUI.new()
-	storage_overlay.set_return_callback(_close_storage_overlay)
-	storage_overlay.z_index = 100
-	add_child(storage_overlay)
-
-
-## 关闭冒险小队养成界面
-func _close_storage_overlay() -> void:
-	"""关闭冒险小队养成界面"""
-	if storage_overlay and is_instance_valid(storage_overlay):
-		storage_overlay.queue_free()
-	storage_overlay = null
-
-
 ## 打开三槽位存档选择界面
 func _open_load_overlay() -> void:
 	"""打开三槽位存档选择界面"""
 	if load_overlay and is_instance_valid(load_overlay):
 		load_overlay.move_to_front()
 		return
-	if storage_overlay and is_instance_valid(storage_overlay):
-		_close_storage_overlay()
 
 	load_overlay = Control.new()
 	load_overlay.anchor_left = 0.0
@@ -258,8 +226,9 @@ func _create_save_slot_button(save_id: String) -> Button:
 func _select_save_slot(save_id: String) -> void:
 	"""选择一个存档槽位并返回主菜单"""
 	GameManager.switch_save_slot(save_id)
-	_refresh_primary_game_button()
-	_close_load_overlay()
+	if not GameManager.has_active_save:
+		GameManager.create_new_save(save_id)
+	get_tree().change_scene_to_file(AFK_HUB_SCENE_PATH)
 
 
 ## 关闭存档选择界面并返回主菜单
@@ -284,8 +253,6 @@ func _open_settings_overlay() -> void:
 		return
 	if load_overlay and is_instance_valid(load_overlay):
 		_close_load_overlay()
-	if storage_overlay and is_instance_valid(storage_overlay):
-		_close_storage_overlay()
 
 	settings_overlay = SettingsUI.new()
 	settings_overlay.set_return_callback(_close_settings_overlay)
