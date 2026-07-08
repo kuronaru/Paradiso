@@ -7,12 +7,12 @@ const M = "AfkHub"
 const START_MENU_SCENE_PATH := "res://scenes/start_menu.tscn"
 const MAIN_SCENE_PATH := "res://scenes/main.tscn"
 const MAX_DISPLAY_PARTY := 5
-const MOCK_TOWER_FLOOR := 1
 
 var storage_overlay: CharacterStorageUI = null
 var encyclopedia_overlay: EncyclopediaUI = null
 var settings_overlay: SettingsUI = null
 var equipment_overlay: Control = null
+var afk_tower_manager: AfkTowerManager = null
 
 var save_label: Label = null
 var gold_label: Label = null
@@ -22,6 +22,11 @@ var synergy_label: Label = null
 var tower_label: Label = null
 var reward_label: Label = null
 var status_label: Label = null
+var enemy_name_label: Label = null
+var enemy_hp_bar: ProgressBar = null
+var enemy_hp_label: Label = null
+var turn_label: Label = null
+var boost_label: Label = null
 
 var panel_style: StyleBoxFlat = null
 var stage_style: StyleBoxFlat = null
@@ -37,6 +42,7 @@ func _ready() -> void:
 	_build_background()
 	_build_layout()
 	_connect_game_manager_signals()
+	_setup_afk_tower_manager()
 	_refresh_all()
 
 
@@ -201,7 +207,9 @@ func _build_center_stage() -> Control:
 	var stage_area := PanelContainer.new()
 	stage_area.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	stage_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	stage_area.mouse_filter = Control.MOUSE_FILTER_STOP
 	stage_area.add_theme_stylebox_override("panel", _make_flat_style(Color(0.045, 0.054, 0.067, 1.0), Color(0.18, 0.2, 0.24, 1.0)))
+	stage_area.gui_input.connect(_on_stage_gui_input)
 	root.add_child(stage_area)
 
 	var stage_margin := MarginContainer.new()
@@ -241,13 +249,21 @@ func _build_center_stage() -> Control:
 	sigil.add_theme_color_override("font_color", Color(0.9, 0.72, 0.38, 1.0))
 	middle.add_child(sigil)
 
-	var tower_hint := Label.new()
-	tower_hint.text = "战斗动画\n待接入"
-	tower_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	tower_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	tower_hint.add_theme_font_size_override("font_size", 14)
-	tower_hint.add_theme_color_override("font_color", Color(0.65, 0.7, 0.78, 1.0))
-	middle.add_child(tower_hint)
+	turn_label = Label.new()
+	turn_label.text = "英雄准备"
+	turn_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	turn_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	turn_label.add_theme_font_size_override("font_size", 14)
+	turn_label.add_theme_color_override("font_color", Color(0.74, 0.82, 0.9, 1.0))
+	middle.add_child(turn_label)
+
+	boost_label = Label.new()
+	boost_label.text = "点击中心舞台\n攻击频率 +50%"
+	boost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	boost_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	boost_label.add_theme_font_size_override("font_size", 13)
+	boost_label.add_theme_color_override("font_color", Color(0.86, 0.72, 0.36, 1.0))
+	middle.add_child(boost_label)
 
 	var mid_spacer_b := Control.new()
 	mid_spacer_b.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -259,6 +275,7 @@ func _build_center_stage() -> Control:
 	var tower_content := tower_panel.find_child("Content", true, false) as VBoxContainer
 	_populate_enemy_placeholders(tower_content)
 
+	_set_mouse_filter_recursive(stage_margin, Control.MOUSE_FILTER_IGNORE)
 	return panel
 
 
@@ -306,7 +323,7 @@ func _build_right_panel() -> Control:
 	box.add_child(spacer)
 
 	box.add_child(_create_nav_button("领取挂机收益", _claim_idle_rewards))
-	box.add_child(_create_nav_button("挑战本层", _preview_tower_challenge))
+	box.add_child(_create_nav_button("手动加速", _apply_click_boost))
 	return panel
 
 
@@ -321,7 +338,7 @@ func _build_bottom_bar() -> Control:
 	panel.add_child(row)
 
 	var note := Label.new()
-	note.text = "中心舞台用于后续播放小队爬塔战斗表现。"
+	note.text = "英雄小队会自动攻击；点击中心舞台可让英雄攻击频率短暂提高 50%，敌人动作不造成伤害。"
 	note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	note.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	note.add_theme_font_size_override("font_size", 15)
@@ -367,6 +384,35 @@ func _create_stage_side_panel(title_text: String) -> PanelContainer:
 
 ## 填充敌影占位。
 func _populate_enemy_placeholders(container: VBoxContainer) -> void:
+	enemy_name_label = Label.new()
+	enemy_name_label.text = "当前敌人"
+	enemy_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	enemy_name_label.add_theme_font_size_override("font_size", 18)
+	enemy_name_label.add_theme_color_override("font_color", Color(0.95, 0.78, 0.58, 1.0))
+	container.add_child(enemy_name_label)
+
+	enemy_hp_bar = ProgressBar.new()
+	enemy_hp_bar.custom_minimum_size = Vector2(1, 22)
+	enemy_hp_bar.min_value = 0.0
+	enemy_hp_bar.max_value = 1.0
+	enemy_hp_bar.value = 1.0
+	enemy_hp_bar.show_percentage = false
+	container.add_child(enemy_hp_bar)
+
+	enemy_hp_label = Label.new()
+	enemy_hp_label.text = "HP 0 / 0"
+	enemy_hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	enemy_hp_label.add_theme_font_size_override("font_size", 13)
+	enemy_hp_label.add_theme_color_override("font_color", Color(0.72, 0.76, 0.82, 1.0))
+	container.add_child(enemy_hp_label)
+
+	var next_title := Label.new()
+	next_title.text = "后续敌影"
+	next_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	next_title.add_theme_font_size_override("font_size", 14)
+	next_title.add_theme_color_override("font_color", Color(0.62, 0.66, 0.72, 1.0))
+	container.add_child(next_title)
+
 	for i in range(3):
 		var row := HBoxContainer.new()
 		row.custom_minimum_size = Vector2(1, 54)
@@ -395,11 +441,22 @@ func _connect_game_manager_signals() -> void:
 		GameManager.save_slot_changed.connect(_on_save_slot_changed)
 
 
+## 创建AFK爬塔逻辑节点。
+func _setup_afk_tower_manager() -> void:
+	afk_tower_manager = AfkTowerManager.new()
+	afk_tower_manager.name = "AfkTowerManager"
+	afk_tower_manager.state_changed.connect(_on_afk_tower_state_changed)
+	add_child(afk_tower_manager)
+	afk_tower_manager.configure_party(_get_display_party())
+	afk_tower_manager.start_battle()
+
+
 ## 刷新整个大厅显示。
 func _refresh_all() -> void:
 	_refresh_top_bar()
 	_refresh_party_cards()
 	_refresh_status_panel()
+	_refresh_combat_display()
 
 
 ## 刷新资源和存档信息。
@@ -408,6 +465,13 @@ func _refresh_top_bar() -> void:
 		save_label.text = "当前存档: %s" % GameManager.current_save_id
 	if gold_label:
 		gold_label.text = "金币: %d" % GameManager.gold
+
+
+## 获取AFK逻辑状态。
+func _get_afk_state() -> Dictionary:
+	if afk_tower_manager:
+		return afk_tower_manager.get_state()
+	return {}
 
 
 ## 刷新中心小队卡。
@@ -428,41 +492,78 @@ func _refresh_party_cards() -> void:
 
 ## 刷新右侧战力和奖励信息。
 func _refresh_status_panel() -> void:
-	var team_power := _calculate_team_power()
-	var required_power := _get_required_power(MOCK_TOWER_FLOOR)
-	var reward_gold := _get_preview_reward_gold(MOCK_TOWER_FLOOR)
+	var state := _get_afk_state()
+	var team_attack := int(state.get("team_attack", CombatPowerCalculator.calculate_team_attack(_get_display_party())))
+	var current_floor := int(state.get("current_floor", 1))
+	var current_enemy_index := int(state.get("current_enemy_index", 0))
+	var enemies_per_floor := int(state.get("enemies_per_floor", 1))
+	var required_attack := int(state.get("required_attack", CombatPowerCalculator.get_required_attack(current_floor)))
+	var reward_gold := int(state.get("preview_reward_gold", CombatPowerCalculator.get_preview_reward_gold(current_floor)))
+	var defeated_enemy_count := int(state.get("defeated_enemy_count", 0))
 
 	if tower_label:
-		tower_label.text = "静默之塔 第%d层\n推荐战力: %d" % [MOCK_TOWER_FLOOR, required_power]
+		tower_label.text = "静默之塔 第%d层\n敌人进度: %d / %d\n推荐攻击: %d" % [
+			current_floor,
+			current_enemy_index + 1,
+			enemies_per_floor,
+			required_attack
+		]
 	if power_label:
-		power_label.text = "小队战力: %d" % team_power
+		power_label.text = "小队攻击力: %d" % team_attack
 	if synergy_label:
 		synergy_label.text = "羁绊概览:\n%s" % _format_synergy_summary()
 	if reward_label:
-		reward_label.text = "预计挂机收益:\n金币 +%d / 小时\n装备掉落: 低概率\n重铸材料: 未开放" % reward_gold
-	if status_label:
-		status_label.text = "可挑战" if team_power >= required_power else "战力不足"
+		reward_label.text = "预计挂机收益:\n金币 +%d / 小时\n已击败敌人: %d\n装备掉落: 低概率\n重铸材料: 未开放" % [
+			reward_gold,
+			defeated_enemy_count
+		]
+	if status_label and state.has("status_text"):
+		status_label.text = str(state.get("status_text", ""))
+
+
+## 刷新当前战斗表现信息。
+func _refresh_combat_display() -> void:
+	var state := _get_afk_state()
+	var enemy_name := str(state.get("enemy_name", "当前敌人"))
+	var enemy_hp := float(state.get("enemy_hp", 0.0))
+	var enemy_max_hp := float(state.get("enemy_max_hp", 1.0))
+	var combat_turn := str(state.get("combat_turn", "hero"))
+	var turn_timer := float(state.get("turn_timer", 0.0))
+	var click_boost_timer := float(state.get("click_boost_timer", 0.0))
+
+	if enemy_name_label:
+		enemy_name_label.text = enemy_name
+	if enemy_hp_bar:
+		enemy_hp_bar.max_value = enemy_max_hp
+		enemy_hp_bar.value = enemy_hp
+	if enemy_hp_label:
+		enemy_hp_label.text = "HP %d / %d" % [int(ceil(enemy_hp)), int(enemy_max_hp)]
+	if turn_label:
+		var turn_text := "英雄攻击" if combat_turn == "hero" else "敌人动作"
+		turn_label.text = "%s\n%.1fs" % [turn_text, max(0.0, turn_timer)]
+	if boost_label:
+		if click_boost_timer > 0.0:
+			boost_label.text = "点击加速中\n%.1fs" % click_boost_timer
+		else:
+			boost_label.text = "点击中心舞台\n攻击频率 +50%"
+
+
+## 点击中心舞台，短暂提高英雄小队攻击频率。
+func _apply_click_boost() -> void:
+	if afk_tower_manager:
+		afk_tower_manager.apply_click_boost()
+
+
+## 处理中心舞台点击输入。
+func _on_stage_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		_apply_click_boost()
+		accept_event()
 
 
 ## 获取当前展示的小队。
 func _get_display_party() -> Array:
-	var result: Array = []
-	for card in GameManager.owned_characters:
-		if result.size() >= MAX_DISPLAY_PARTY:
-			break
-		if card is Dictionary:
-			result.append(card.duplicate(true))
-	if not result.is_empty():
-		return result
-
-	for class_id in ClassDefinitions.get_all_class_ids():
-		if result.size() >= MAX_DISPLAY_PARTY:
-			break
-		result.append({
-			"class_id": class_id,
-			"level": 1
-		})
-	return result
+	return CombatPowerCalculator.build_display_party(GameManager.owned_characters, MAX_DISPLAY_PARTY)
 
 
 ## 创建英雄卡牌占位。
@@ -519,45 +620,9 @@ func _create_empty_hero_slot() -> Control:
 	return panel
 
 
-## 计算展示小队总战力。
-func _calculate_team_power() -> int:
-	var total := 0
-	for card in _get_display_party():
-		var class_id := ClassDefinitions.canonicalize_class_id(str(card.get("class_id", ClassDefinitions.FALLBACK_CLASS_ID)))
-		var level := int(card.get("level", 1))
-		total += _calculate_character_power(ClassDefinitions.get_template(class_id), level)
-	return total
-
-
-## 计算单名英雄的AFK展示战力。
-func _calculate_character_power(ct: ClassTemplate, level: int) -> int:
-	var level_scale := 1.0 + float(maxi(1, level) - 1) * 0.05
-	var base_power := float(ct.base_hp) * 0.08 + float(ct.base_atk) * 5.0 + float(ct.base_def) * 2.0 + ct.attack_speed * 20.0
-	return int(round(base_power * level_scale))
-
-
 ## 格式化羁绊概览。
 func _format_synergy_summary() -> String:
-	var group_counts: Dictionary = {}
-	for card in _get_display_party():
-		var class_id := ClassDefinitions.canonicalize_class_id(str(card.get("class_id", ClassDefinitions.FALLBACK_CLASS_ID)))
-		var ct := ClassDefinitions.get_template(class_id)
-		group_counts[ct.class_group] = int(group_counts.get(ct.class_group, 0)) + 1
-
-	var parts: Array[String] = []
-	for group in group_counts.keys():
-		parts.append("%s x%d" % [ClassDefinitions.get_class_group_label(str(group)), int(group_counts[group])])
-	return "无" if parts.is_empty() else "，".join(parts)
-
-
-## 获取当前层推荐战力。
-func _get_required_power(floor: int) -> int:
-	return 420 + maxi(0, floor - 1) * 120
-
-
-## 获取预览挂机金币收益。
-func _get_preview_reward_gold(floor: int) -> int:
-	return 18 + maxi(0, floor - 1) * 4
+	return CombatPowerCalculator.format_synergy_summary(_get_display_party())
 
 
 ## 创建左侧导航按钮。
@@ -611,6 +676,14 @@ func _make_flat_style(bg_color: Color, border_color: Color) -> StyleBoxFlat:
 	return style
 
 
+## 让展示控件不截获舞台点击。
+func _set_mouse_filter_recursive(node: Node, filter: MouseFilter) -> void:
+	if node is Control:
+		(node as Control).mouse_filter = filter
+	for child in node.get_children():
+		_set_mouse_filter_recursive(child, filter)
+
+
 ## 打开英雄养成覆盖层。
 func _open_storage_overlay() -> void:
 	if storage_overlay and is_instance_valid(storage_overlay):
@@ -627,6 +700,8 @@ func _close_storage_overlay() -> void:
 	if storage_overlay and is_instance_valid(storage_overlay):
 		storage_overlay.queue_free()
 	storage_overlay = null
+	if afk_tower_manager:
+		afk_tower_manager.configure_party(_get_display_party())
 	_refresh_all()
 
 
@@ -786,11 +861,6 @@ func _claim_idle_rewards() -> void:
 	status_label.text = "挂机收益结算待接入"
 
 
-## 挑战本层占位。
-func _preview_tower_challenge() -> void:
-	status_label.text = "战斗动画待接入"
-
-
 func _on_gold_changed(_gold: int) -> void:
 	_refresh_top_bar()
 	_refresh_status_panel()
@@ -798,8 +868,14 @@ func _on_gold_changed(_gold: int) -> void:
 
 func _on_owned_characters_changed(_characters: Array) -> void:
 	_refresh_party_cards()
-	_refresh_status_panel()
+	if afk_tower_manager:
+		afk_tower_manager.configure_party(_get_display_party())
 
 
 func _on_save_slot_changed(_save_id: String) -> void:
 	_refresh_top_bar()
+
+
+func _on_afk_tower_state_changed(_state: Dictionary) -> void:
+	_refresh_status_panel()
+	_refresh_combat_display()
