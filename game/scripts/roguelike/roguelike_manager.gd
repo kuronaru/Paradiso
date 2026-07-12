@@ -219,6 +219,7 @@ func _on_battle_won() -> void:
 	var reward := _calculate_reward()
 	if SynergyManager and SynergyManager.has_method("apply_victory_gold_bonus"):
 		reward = SynergyManager.apply_victory_gold_bonus(reward)
+	reward = GameManager.apply_roguelike_relic_victory_reward(reward)
 	GameManager.earn_run_gold(reward)
 	BattleManager.prepare_player_units_for_next_round()
 	recruit_system.advance_round()

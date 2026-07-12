@@ -96,7 +96,7 @@ func clear_options() -> void:
 ## 重置单局酒馆状态。
 func reset_run() -> void:
 	"""重置单局酒馆状态。"""
-	tavern_level = 1
+	tavern_level = clampi(1 + GameManager.get_roguelike_relic_modifier("starting_tavern_level_bonus"), 1, _cfg_int("tavern_max_level", MAX_TAVERN_LEVEL))
 	upgrade_discount = 0
 	is_frozen = false
 	clear_options()
@@ -111,7 +111,7 @@ func advance_round() -> void:
 
 ## 获取消耗。
 func get_refresh_cost() -> int:
-	return _cfg_int("tavern_refresh_cost", REFRESH_COST)
+	return GameManager.apply_roguelike_relic_refresh_cost(_cfg_int("tavern_refresh_cost", REFRESH_COST))
 
 
 ## 获取选项槽位数量。

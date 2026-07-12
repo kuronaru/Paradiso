@@ -15,6 +15,55 @@ const ROGUELIKE_MAX_HAND_CARDS := 10
 const ROGUELIKE_MAX_DEPLOYED_UNITS := 8
 const ROGUELIKE_MAX_ROUNDS := 15
 const ROGUELIKE_MAX_CARD_STAR := 3
+const ROGUELIKE_DEFAULT_RELIC_ID := "merchant_ledger"
+
+const ROGUELIKE_RELIC_DEFINITIONS := [
+	{
+		"id": "merchant_ledger",
+		"name": "商队账本",
+		"summary": "开局额外获得 2 金币。",
+		"description": "适合稳健开局，能在第一回合多买一名低费角色或保留一次刷新空间。",
+		"modifiers": {
+			"starting_gold_bonus": 2
+		}
+	},
+	{
+		"id": "bounty_seal",
+		"name": "悬赏印章",
+		"summary": "每次战斗胜利额外获得 1 金币。",
+		"description": "偏长期经济的占位信物，鼓励尽快稳定阵容并滚动胜利收益。",
+		"modifiers": {
+			"victory_gold_bonus": 1
+		}
+	},
+	{
+		"id": "regular_coupon",
+		"name": "熟客酒券",
+		"summary": "手动刷新酒馆费用降低 1，最低为 0。",
+		"description": "提高找对子和关键羁绊的效率，适合围绕刷新构筑阵容。",
+		"modifiers": {
+			"refresh_cost_delta": -1
+		}
+	},
+	{
+		"id": "spare_card_box",
+		"name": "备用牌匣",
+		"summary": "手牌区上限增加 2。",
+		"description": "给等待三合一和保留功能卡更多空间，降低爆手牌的压力。",
+		"modifiers": {
+			"hand_limit_bonus": 2
+		}
+	},
+	{
+		"id": "tavern_signboard",
+		"name": "翻新招牌",
+		"summary": "开局酒馆等级提高 1。",
+		"description": "牺牲纯经济换取更早的高等阶招募池，适合想快速成型的路线。",
+		"modifiers": {
+			"starting_tavern_level_bonus": 1
+		}
+	}
+]
 
 signal gold_changed(gold: int)
 signal run_gold_changed(gold: int)
@@ -22,6 +71,7 @@ signal run_round_changed(round: int, max_rounds: int)
 signal owned_characters_changed(characters: Array)
 signal party_changed(party: Array)
 signal save_slot_changed(save_id: String)
+signal run_relic_changed(relic: Dictionary)
 
 enum GameMode {
 	BATTLE,        ## 战斗模式
@@ -47,6 +97,8 @@ var has_active_save: bool = false
 ## 肉鸽运行状态
 var run_history: Array = []         # 经过的节点记录
 var blessings: Array = []           # 祝福/遗物
+var pending_run_relic_id: String = ""
+var active_run_relic_id: String = ""
 var _next_run_card_instance_id: int = 1
 
 
@@ -65,21 +117,25 @@ func start_battle(party_data: Array, enemy_pool: Array, wave_count: int = 3) -> 
 
 
 ## 开始一次新的肉鸽流程
-func start_roguelike_run() -> void:
+func start_roguelike_run(relic_id: String = "") -> void:
 	"""开始一次新的肉鸽流程"""
 	_ensure_save_data()
+	active_run_relic_id = _resolve_run_relic_id(relic_id)
+	pending_run_relic_id = ""
 	is_roguelike_run = true
 	party.clear()
 	current_floor = 1
 	current_run_round = 1
 	max_run_rounds = _cfg_int("roguelike_max_rounds", ROGUELIKE_MAX_ROUNDS)
-	run_gold = _cfg_int("roguelike_starting_gold", ROGUELIKE_STARTING_GOLD)
+	run_gold = _cfg_int("roguelike_starting_gold", ROGUELIKE_STARTING_GOLD) + get_roguelike_relic_modifier("starting_gold_bonus")
 	_next_run_card_instance_id = 1
 	run_history.clear()
 	blessings.clear()
+	blessings.append(get_active_roguelike_relic())
 	party_changed.emit(party)
 	run_gold_changed.emit(run_gold)
 	run_round_changed.emit(current_run_round, max_run_rounds)
+	run_relic_changed.emit(get_active_roguelike_relic())
 	_enter_recruit_phase()
 
 
@@ -94,6 +150,78 @@ func _add_starter_party() -> void:
 func _enter_recruit_phase() -> void:
 	"""进入酒馆招募阶段"""
 	current_mode = GameMode.RECRUIT
+
+
+## 获取所有可选肉鸽信物定义。
+func get_roguelike_relic_definitions() -> Array:
+	return ROGUELIKE_RELIC_DEFINITIONS.duplicate(true)
+
+
+## 获取指定信物定义。
+func get_roguelike_relic_definition(relic_id: String) -> Dictionary:
+	for relic in ROGUELIKE_RELIC_DEFINITIONS:
+		var data: Dictionary = relic
+		if str(data.get("id", "")) == relic_id:
+			return data.duplicate(true)
+	return {}
+
+
+## 暂存下一局肉鸽将要携带的信物。
+func set_pending_roguelike_relic(relic_id: String) -> bool:
+	var resolved_id := _resolve_relic_id(relic_id)
+	if resolved_id == "":
+		return false
+	pending_run_relic_id = resolved_id
+	return true
+
+
+## 获取待选择信物；未选择时返回默认信物。
+func get_pending_roguelike_relic() -> Dictionary:
+	var resolved_id := _resolve_relic_id(pending_run_relic_id)
+	if resolved_id == "":
+		resolved_id = ROGUELIKE_DEFAULT_RELIC_ID
+	return get_roguelike_relic_definition(resolved_id)
+
+
+## 获取当前局生效信物。
+func get_active_roguelike_relic() -> Dictionary:
+	var resolved_id := _resolve_relic_id(active_run_relic_id)
+	if resolved_id == "":
+		resolved_id = ROGUELIKE_DEFAULT_RELIC_ID
+	return get_roguelike_relic_definition(resolved_id)
+
+
+## 获取当前信物的整数修正值。
+func get_roguelike_relic_modifier(key: String, default_value: int = 0) -> int:
+	var relic := get_active_roguelike_relic()
+	var modifiers: Dictionary = relic.get("modifiers", {})
+	return int(modifiers.get(key, default_value))
+
+
+## 应用当前信物对刷新费用的修正。
+func apply_roguelike_relic_refresh_cost(base_cost: int) -> int:
+	return maxi(0, base_cost + get_roguelike_relic_modifier("refresh_cost_delta"))
+
+
+## 应用当前信物对胜利金币的修正。
+func apply_roguelike_relic_victory_reward(base_reward: int) -> int:
+	return maxi(0, base_reward + get_roguelike_relic_modifier("victory_gold_bonus"))
+
+
+func _resolve_run_relic_id(relic_id: String) -> String:
+	var resolved_id := _resolve_relic_id(relic_id)
+	if resolved_id != "":
+		return resolved_id
+	resolved_id = _resolve_relic_id(pending_run_relic_id)
+	if resolved_id != "":
+		return resolved_id
+	return ROGUELIKE_DEFAULT_RELIC_ID
+
+
+func _resolve_relic_id(relic_id: String) -> String:
+	if relic_id != "" and not get_roguelike_relic_definition(relic_id).is_empty():
+		return relic_id
+	return ""
 
 
 ## 推进到下一层
@@ -689,7 +817,7 @@ func get_max_character_level() -> int:
 
 
 func get_roguelike_max_hand_cards() -> int:
-	return _cfg_int("roguelike_max_hand_cards", ROGUELIKE_MAX_HAND_CARDS)
+	return _cfg_int("roguelike_max_hand_cards", ROGUELIKE_MAX_HAND_CARDS) + get_roguelike_relic_modifier("hand_limit_bonus")
 
 
 func _max_character_level() -> int:

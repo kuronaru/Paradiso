@@ -5,7 +5,7 @@ extends Control
 
 const M = "AfkHub"
 const START_MENU_SCENE_PATH := "res://scenes/start_menu.tscn"
-const MAIN_SCENE_PATH := "res://scenes/main.tscn"
+const ROGUELIKE_RELIC_SELECT_SCENE_PATH := "res://scenes/roguelike_relic_select.tscn"
 const MAX_DISPLAY_PARTY := 5
 
 var storage_overlay: CharacterStorageUI = null
@@ -847,7 +847,7 @@ func _close_settings_overlay() -> void:
 ## 进入自走棋肉鸽模式。
 func _enter_roguelike_mode() -> void:
 	GameManager.save_game()
-	get_tree().change_scene_to_file(MAIN_SCENE_PATH)
+	get_tree().change_scene_to_file(ROGUELIKE_RELIC_SELECT_SCENE_PATH)
 
 
 ## 返回主菜单。
