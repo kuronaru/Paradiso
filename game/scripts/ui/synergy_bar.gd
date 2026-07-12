@@ -322,6 +322,8 @@ func _format_modifier_value(stat: String, value: float) -> String:
 		text = "+%d" % int(round(value))
 	elif stat == "search_range_bonus":
 		text = "+%s" % _format_number(value)
+	elif stat in ["trench_counter_duration", "poem_cooldown_seconds"]:
+		text = "+%s秒" % _format_number(value)
 	else:
 		text = "+%s" % _format_number(value)
 	return "[color=#ffd166][b]%s[/b][/color]" % text
@@ -353,6 +355,8 @@ func _is_multiplier_stat(stat: String) -> bool:
 		"skill_damage_multiplier",
 		"nature_damage_multiplier",
 		"burning_damage_multiplier",
+		"forbidden_damage_taken_multiplier",
+		"trench_counter_damage_multiplier",
 		"heal_multiplier",
 		"incoming_heal_multiplier",
 		"crit_damage_multiplier",
@@ -369,6 +373,12 @@ func _is_fraction_stat(stat: String) -> bool:
 		"poison_attack_ratio",
 		"slow_percent",
 		"explosion_chance",
+		"law_retaliation_attack_ratio",
+		"forbidden_death_burst_multiplier",
+		"forbidden_execute_attack_ratio",
+		"trench_dodge_chance",
+		"poem_stat_share_ratio",
+		"poem_cooldown_chance",
 	]
 
 
@@ -413,6 +423,26 @@ func _stat_display_name(stat: String) -> String:
 			return "自然减速"
 		"explosion_chance":
 			return "爆炸概率"
+		"law_retaliation_attack_ratio":
+			return "律法反击系数"
+		"forbidden_damage_taken_multiplier":
+			return "禁忌易伤"
+		"forbidden_death_burst_multiplier":
+			return "死亡爆发系数"
+		"forbidden_execute_attack_ratio":
+			return "禁忌处决阈值"
+		"trench_dodge_chance":
+			return "战壕闪避"
+		"trench_counter_damage_multiplier":
+			return "闪避后增伤"
+		"trench_counter_duration":
+			return "增伤持续"
+		"poem_stat_share_ratio":
+			return "长诗祝福系数"
+		"poem_cooldown_chance":
+			return "冷却祝福概率"
+		"poem_cooldown_seconds":
+			return "冷却缩减"
 		"search_range_bonus":
 			return "索敌范围"
 		"max_dp_bonus":

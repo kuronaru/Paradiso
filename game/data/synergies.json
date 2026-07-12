@@ -2,8 +2,8 @@
 	"main_anmarit": {
 		"synergy_id": "main_anmarit",
 		"enabled": true,
-		"name": "安马里特",
-		"display_name": "安马里特",
+		"name": "瘴林威胁",
+		"display_name": "瘴林威胁",
 		"short_name": "瘴",
 		"type": "main_nation",
 		"tag": "anmarit",
@@ -12,7 +12,7 @@
 			6
 		],
 		"order": 0,
-		"description": "国家主羁绊：安马里特瘴林。3人时攻击叠加随层数成长的毒层并造成持续伤害；6人时毒伤扩散为小范围群体伤害。",
+		"description": "主羁绊：安马里特森林的瘴林威胁。3人时攻击叠加随层数成长的毒层并造成持续伤害；6人时毒伤扩散为小范围群体伤害。",
 		"scalable_modifiers": [
 			{
 				"min_tier": 3,
@@ -45,8 +45,8 @@
 	"main_laferida": {
 		"synergy_id": "main_laferida",
 		"enabled": true,
-		"name": "拉费里达",
-		"display_name": "拉费里达",
+		"name": "扭曲生命",
+		"display_name": "扭曲生命",
 		"short_name": "森",
 		"type": "main_nation",
 		"tag": "laferida",
@@ -55,7 +55,7 @@
 			6
 		],
 		"order": 1,
-		"description": "国家主羁绊：拉费里达共生。3人时攻击积累自然值，满值爆条并造成随层数成长的减速；6人时爆条额外造成基于最高攻击力的自然伤害。",
+		"description": "主羁绊：拉费里达平原的扭曲生命。3人时攻击积累自然值，满值爆条并造成随层数成长的减速；6人时爆条额外造成基于最高攻击力的自然伤害。",
 		"scalable_modifiers": [
 			{
 				"min_tier": 3,
@@ -98,8 +98,8 @@
 	"main_naka": {
 		"synergy_id": "main_naka",
 		"enabled": true,
-		"name": "纳卡",
-		"display_name": "纳卡",
+		"name": "龙焰吐息",
+		"display_name": "龙焰吐息",
 		"short_name": "火",
 		"type": "main_nation",
 		"tag": "naka",
@@ -108,7 +108,7 @@
 			6
 		],
 		"order": 2,
-		"description": "国家主羁绊：纳卡烈焰。3人时提升攻击并叠加灼烧值，满值点燃敌人；6人时对燃烧目标增伤，并有随层数成长的概率追加爆炸伤害。",
+		"description": "主羁绊：考特火山的龙焰吐息。3人时提升攻击并叠加灼烧值，满值点燃敌人；6人时对燃烧目标增伤，并有随层数成长的概率追加爆炸伤害。",
 		"scalable_modifiers": [
 			{
 				"min_tier": 3,
@@ -159,6 +159,255 @@
 			"explosion_radius": 1.0
 		}
 	},
+	"main_remolino_law": {
+		"synergy_id": "main_remolino_law",
+		"enabled": true,
+		"name": "骑士律法",
+		"display_name": "骑士律法",
+		"short_name": "律",
+		"type": "main_nation",
+		"tag": "remolino_law",
+		"thresholds": [
+			3,
+			6
+		],
+		"order": 3,
+		"description": "主羁绊：莱茵刻伯的骑士律法。3人时提升防御，并由盟约成员均摊同等生命比例的伤害；6人时攻击盟约成员的敌人会受到基于全体成员攻击力总和的无视防御律法反击。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 3,
+				"stat": "defense_multiplier",
+				"base": 1.25,
+				"per_layer": 0.0048,
+				"max_value": 6.0
+			},
+			{
+				"min_tier": 6,
+				"stat": "law_retaliation_attack_ratio",
+				"base": 0.35,
+				"per_layer": 0.0065,
+				"max_value": 7.0
+			}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "remolino_law",
+		"main_effect": {
+			"law_share_enabled": {
+				"min_tier": 3,
+				"value": true,
+				"fallback": false
+			},
+			"law_retaliation_attack_ratio": {
+				"min_tier": 6,
+				"base": 0.35,
+				"per_layer": 0.0065,
+				"max_value": 7.0,
+				"fallback": 0.0
+			}
+		}
+	},
+	"main_moon_cult": {
+		"synergy_id": "main_moon_cult",
+		"enabled": true,
+		"name": "窥探禁忌",
+		"display_name": "窥探禁忌",
+		"short_name": "禁",
+		"type": "main_nation",
+		"tag": "moon_cult",
+		"thresholds": [
+			3,
+			6
+		],
+		"order": 4,
+		"description": "主羁绊：月神邪教的窥探禁忌。3人时敌人承受更多伤害，并在被攻击后3秒内死亡时爆发范围伤害；6人时被攻击敌人若在3秒内低于施术者攻击力阈值则被禁忌诅咒处决。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 3,
+				"stat": "forbidden_damage_taken_multiplier",
+				"base": 1.25,
+				"per_layer": 0.0075,
+				"max_value": 8.5
+			},
+			{
+				"min_tier": 3,
+				"stat": "forbidden_death_burst_multiplier",
+				"base": 0.9,
+				"per_layer": 0.008,
+				"max_value": 8.5
+			},
+			{
+				"min_tier": 6,
+				"stat": "forbidden_execute_attack_ratio",
+				"base": 0.8,
+				"per_layer": 0.0075,
+				"max_value": 8.0
+			}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "moon_forbidden",
+		"main_effect": {
+			"forbidden_damage_taken_multiplier": {
+				"min_tier": 3,
+				"base": 1.25,
+				"per_layer": 0.0075,
+				"max_value": 8.5,
+				"fallback": 1.0
+			},
+			"forbidden_mark_duration": 3.0,
+			"forbidden_death_burst_multiplier": {
+				"min_tier": 3,
+				"base": 0.9,
+				"per_layer": 0.008,
+				"max_value": 8.5,
+				"fallback": 0.0
+			},
+			"forbidden_burst_radius": 1.0,
+			"forbidden_execute_attack_ratio": {
+				"min_tier": 6,
+				"base": 0.8,
+				"per_layer": 0.0075,
+				"max_value": 8.0,
+				"fallback": 0.0
+			}
+		}
+	},
+	"main_kroen_trench": {
+		"synergy_id": "main_kroen_trench",
+		"enabled": true,
+		"name": "不灭战壕",
+		"display_name": "不灭战壕",
+		"short_name": "壕",
+		"type": "main_nation",
+		"tag": "kroen_trench",
+		"thresholds": [
+			3,
+			6
+		],
+		"order": 5,
+		"description": "主羁绊：沙特尔地区的不灭战壕。3人时提升移动速度，并按移动速度获得闪避率；6人时成功闪避后短时间获得随层数成长的伤害提升。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 3,
+				"stat": "move_speed_multiplier",
+				"base": 1.2,
+				"per_layer": 0.004,
+				"max_value": 5.0
+			},
+			{
+				"min_tier": 3,
+				"stat": "trench_dodge_chance",
+				"base": 0.08,
+				"per_layer": 0.00028,
+				"max_value": 0.35
+			},
+			{
+				"min_tier": 6,
+				"stat": "trench_counter_damage_multiplier",
+				"base": 1.3,
+				"per_layer": 0.007,
+				"max_value": 8.0
+			},
+			{
+				"min_tier": 6,
+				"stat": "trench_counter_duration",
+				"base": 1.2,
+				"per_layer": 0.004,
+				"max_value": 4.0
+			}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "kroen_trench",
+		"main_effect": {
+			"trench_dodge_chance": {
+				"min_tier": 3,
+				"base": 0.08,
+				"per_layer": 0.00028,
+				"max_value": 0.35,
+				"fallback": 0.0
+			},
+			"trench_move_speed_dodge_ratio": 0.035,
+			"trench_dodge_final_cap": 0.45,
+			"trench_counter_damage_multiplier": {
+				"min_tier": 6,
+				"base": 1.3,
+				"per_layer": 0.007,
+				"max_value": 8.0,
+				"fallback": 1.0
+			},
+			"trench_counter_duration": {
+				"min_tier": 6,
+				"base": 1.2,
+				"per_layer": 0.004,
+				"max_value": 4.0,
+				"fallback": 0.0
+			}
+		}
+	},
+	"main_tro_poem": {
+		"synergy_id": "main_tro_poem",
+		"enabled": true,
+		"name": "十一长诗",
+		"display_name": "十一长诗",
+		"short_name": "诗",
+		"type": "main_nation",
+		"tag": "tro_poem",
+		"thresholds": [
+			3,
+			6
+		],
+		"order": 6,
+		"description": "主羁绊：特罗群岛的十一长诗。3人时盟约成员为攻击范围内友方提供基于自身全属性的祝福；6人时盟约成员释放技能有概率为攻击范围内友方减少技能冷却。",
+		"scalable_modifiers": [
+			{
+				"min_tier": 3,
+				"stat": "poem_stat_share_ratio",
+				"base": 0.1,
+				"per_layer": 0.0019,
+				"max_value": 2.0
+			},
+			{
+				"min_tier": 6,
+				"stat": "poem_cooldown_chance",
+				"base": 0.12,
+				"per_layer": 0.0005,
+				"max_value": 0.6
+			},
+			{
+				"min_tier": 6,
+				"stat": "poem_cooldown_seconds",
+				"base": 0.5,
+				"per_layer": 0.004,
+				"max_value": 4.0
+			}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "tro_poem",
+		"main_effect": {
+			"poem_stat_share_ratio": {
+				"min_tier": 3,
+				"base": 0.1,
+				"per_layer": 0.0019,
+				"max_value": 2.0,
+				"fallback": 0.0
+			},
+			"poem_aura_interval": 0.5,
+			"poem_aura_duration": 0.8,
+			"poem_cooldown_chance": {
+				"min_tier": 6,
+				"base": 0.12,
+				"per_layer": 0.0005,
+				"max_value": 0.6,
+				"fallback": 0.0
+			},
+			"poem_cooldown_seconds": {
+				"min_tier": 6,
+				"base": 0.5,
+				"per_layer": 0.004,
+				"max_value": 4.0,
+				"fallback": 0.0
+			}
+		}
+	},
 	"stat_str": {
 		"synergy_id": "stat_str",
 		"enabled": true,
@@ -171,7 +420,7 @@
 			2,
 			3
 		],
-		"order": 3,
+		"order": 7,
 		"description": "小羁绊：提升物理攻击倍率，3人后获得破甲。",
 		"scalable_modifiers": [
 			{
@@ -205,7 +454,7 @@
 			2,
 			3
 		],
-		"order": 4,
+		"order": 8,
 		"description": "小羁绊：提升攻速倍率，3人后获得暴击。",
 		"scalable_modifiers": [
 			{
@@ -239,7 +488,7 @@
 			2,
 			3
 		],
-		"order": 5,
+		"order": 9,
 		"description": "小羁绊：提升最大生命倍率，3人后提升防御倍率。",
 		"scalable_modifiers": [
 			{
@@ -280,7 +529,7 @@
 			2,
 			3
 		],
-		"order": 6,
+		"order": 10,
 		"description": "小羁绊：提升技能伤害倍率，3人后获得技能冷却缩减。",
 		"scalable_modifiers": [
 			{
@@ -314,7 +563,7 @@
 			2,
 			3
 		],
-		"order": 7,
+		"order": 11,
 		"description": "小羁绊：提升治疗/护盾倍率，3人后提升异常抗性与索敌数值。",
 		"scalable_modifiers": [
 			{
@@ -348,7 +597,7 @@
 			2,
 			3
 		],
-		"order": 8,
+		"order": 12,
 		"description": "小羁绊：提升团队泛用输出与治疗，3人后提供固定资源优势。",
 		"scalable_modifiers": [
 			{
@@ -388,7 +637,7 @@
 			2,
 			3
 		],
-		"order": 9,
+		"order": 13,
 		"description": "小羁绊：提升有效防御倍率，3人后降低部署费用。",
 		"scalable_modifiers": [
 			{
@@ -421,7 +670,7 @@
 			2,
 			3
 		],
-		"order": 10,
+		"order": 14,
 		"description": "小羁绊：提升暴击伤害，3人后获得暴击率。",
 		"scalable_modifiers": [
 			{
@@ -455,7 +704,7 @@
 			2,
 			3
 		],
-		"order": 11,
+		"order": 15,
 		"description": "小羁绊：提升治疗与承疗数值。",
 		"scalable_modifiers": [
 			{
@@ -489,7 +738,7 @@
 			2,
 			3
 		],
-		"order": 12,
+		"order": 16,
 		"description": "小羁绊：提供攻击吸血，3人后提高胜利金币收益。",
 		"scalable_modifiers": [
 			{
@@ -522,7 +771,7 @@
 			2,
 			3
 		],
-		"order": 13,
+		"order": 17,
 		"description": "小羁绊：提升全队泛用属性，3人后获得资源上限和胜利金币。",
 		"scalable_modifiers": [
 			{

@@ -245,7 +245,7 @@ func _build_summary(definition: SynergyDefinition, count: int, active_tier: int,
 func _type_name(type: SynergyDefinition.SynergyType) -> String:
 	match type:
 		SynergyDefinition.SynergyType.MAIN_NATION:
-			return "国家主羁绊"
+			return "主羁绊"
 		SynergyDefinition.SynergyType.MINOR_STAT:
 			return "六维小羁绊"
 		SynergyDefinition.SynergyType.MINOR_ALIGNMENT:

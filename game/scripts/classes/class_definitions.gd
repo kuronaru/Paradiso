@@ -17,6 +17,10 @@ const CLASS_GROUP_ORDER: Array[String] = [
 	"anmarit",
 	"laferida",
 	"naka",
+	"remolino_law",
+	"moon_cult",
+	"kroen_trench",
+	"tro_poem",
 ]
 
 
@@ -115,11 +119,19 @@ static func get_random_classes(count: int, exclude: Array = []) -> Array:
 static func get_class_group_label(class_group: String) -> String:
 	match class_group:
 		"anmarit":
-			return "安马里特"
+			return "瘴林威胁"
 		"laferida":
-			return "拉费里达"
+			return "扭曲生命"
 		"naka":
-			return "纳卡"
+			return "龙焰吐息"
+		"remolino_law":
+			return "骑士律法"
+		"moon_cult":
+			return "窥探禁忌"
+		"kroen_trench":
+			return "不灭战壕"
+		"tro_poem":
+			return "十一长诗"
 	return class_group
 
 
@@ -132,6 +144,14 @@ static func get_template_color(class_id: String) -> Color:
 			return Color(0.26, 0.66, 0.42, 1.0)
 		"naka":
 			return Color(0.84, 0.32, 0.18, 1.0)
+		"remolino_law":
+			return Color(0.72, 0.72, 0.82, 1.0)
+		"moon_cult":
+			return Color(0.56, 0.34, 0.76, 1.0)
+		"kroen_trench":
+			return Color(0.62, 0.54, 0.38, 1.0)
+		"tro_poem":
+			return Color(0.32, 0.58, 0.86, 1.0)
 	return Color(0.48, 0.52, 0.58, 1.0)
 
 
@@ -158,7 +178,7 @@ static func _fallback_class_data(class_id: String) -> Dictionary:
 	return {
 		"class_id": class_id,
 		"job_name": class_id,
-		"class_group": "naka",
+		"class_group": "remolino_law",
 		"subclass_id": "champion",
 		"stat_tags": ["STR", "CON"],
 		"alignment_tags": ["NEUTRAL"],

@@ -9,7 +9,7 @@ extends Resource
 ## 职业名称
 @export var job_name: String = ""
 
-## 主羁绊国家代号（anmarit/laferida/naka）
+## 主羁绊临时代号（当前仍沿用 class_group 字段）
 @export var class_group: String = ""
 
 ## 职业小分支

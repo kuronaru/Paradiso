@@ -385,13 +385,6 @@ func _get_synergy_line(ct: ClassTemplate) -> String:
 
 
 func _main_group_label(class_group: String) -> String:
-	match class_group:
-		"anmarit":
-			return "安马里特"
-		"laferida":
-			return "拉费里达"
-		"naka":
-			return "纳卡"
 	return ClassDefinitions.get_class_group_label(class_group)
 
 

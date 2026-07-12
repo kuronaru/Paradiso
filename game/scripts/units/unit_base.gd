@@ -67,6 +67,7 @@ var skill_cooldowns: Dictionary = {}  # {skill_id: remaining_time}
 ## 主羁绊运行时状态
 var combat_statuses: Dictionary = {}
 var status_move_speed_multiplier: float = 1.0
+var law_damage_share_guard: bool = false
 
 ## 团队标识
 @export var team: String = "player"   # "player" | "enemy"
@@ -115,6 +116,7 @@ func _process(delta: float) -> void:
 	if not is_alive:
 		return
 	_update_combat_statuses(delta)
+	_update_tro_poem_aura(delta)
 	# 更新冷却
 	if attack_cooldown > 0:
 		attack_cooldown -= delta
@@ -153,6 +155,7 @@ func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 	synergy_modifiers = _default_synergy_modifiers()
 	combat_statuses.clear()
 	status_move_speed_multiplier = 1.0
+	law_damage_share_guard = false
 	# 初始化技能冷却
 	for sid in class_data.skill_ids:
 		skill_cooldowns[sid] = 0.0
@@ -173,6 +176,7 @@ func set_base_stats_from_current() -> void:
 		synergy_modifiers = _default_synergy_modifiers()
 	combat_statuses.clear()
 	status_move_speed_multiplier = 1.0
+	law_damage_share_guard = false
 
 
 ## 应用全队羁绊数值修正
@@ -214,6 +218,9 @@ func _recalculate_stats(preserve_hp_ratio: bool) -> void:
 	max_hp = maxi(1, int(round(float(base_max_hp) * float(synergy_modifiers.get("max_hp_multiplier", 1.0)))))
 	attack = maxi(1, int(round(float(base_attack) * float(synergy_modifiers.get("attack_multiplier", 1.0)))))
 	defense = maxi(0, int(round(float(base_defense) * float(synergy_modifiers.get("defense_multiplier", 1.0)))))
+	max_hp += _get_status_flat_bonus("max_hp_bonus")
+	attack += _get_status_flat_bonus("attack_bonus")
+	defense += _get_status_flat_bonus("defense_bonus")
 	attack_speed = max(0.05, base_attack_speed * float(synergy_modifiers.get("attack_speed_multiplier", 1.0)))
 	move_speed = max(0.0, base_move_speed * float(synergy_modifiers.get("move_speed_multiplier", 1.0)))
 	attack_range = base_attack_range
@@ -548,15 +555,33 @@ func finish_grid_move(final_grid_pos: Vector2i) -> void:
 ## 受到伤害
 func take_damage(amount: int, armor_pierce: float = 0.0) -> int:
 	"""受到伤害"""
+	return receive_attack_damage(amount, armor_pierce, null)
+
+
+## 受到一次来自攻击者的伤害。
+func receive_attack_damage(amount: int, armor_pierce: float = 0.0, attacker: UnitBase = null) -> int:
+	if not is_alive or amount <= 0:
+		return 0
+	if _try_kroen_trench_dodge(attacker):
+		return 0
 	var effective_defense := int(round(float(defense) * (1.0 - clampf(armor_pierce, 0.0, 0.95))))
 	var actual: int = max(1, amount - effective_defense)
-	current_hp -= actual
-	_show_floating_number(-actual, Color(1.0, 0.2, 0.2, 1.0))
+	if _try_remolino_law_share(actual, attacker):
+		_apply_remolino_law_retaliation(attacker)
+		return actual
+	_apply_hp_loss(actual, Color(1.0, 0.2, 0.2, 1.0))
+	_apply_remolino_law_retaliation(attacker)
+	return actual
+
+
+## 直接扣除生命值。
+func _apply_hp_loss(amount: int, text_color: Color) -> void:
+	var actual := maxi(1, amount)
+	current_hp = max(0, current_hp - actual)
+	_show_floating_number(-actual, text_color)
 	hp_changed.emit(current_hp, max_hp)
 	if current_hp <= 0:
-		current_hp = 0
 		_die()
-	return actual
 
 
 ## 恢复生命
@@ -574,10 +599,12 @@ func heal(amount: int) -> int:
 
 ## 清除主羁绊运行时状态。
 func clear_combat_statuses() -> void:
+	var had_status_bonuses := combat_statuses.has("tro_poem_sources")
 	combat_statuses.clear()
+	law_damage_share_guard = false
 	var had_slow := not is_equal_approx(status_move_speed_multiplier, 1.0)
 	status_move_speed_multiplier = 1.0
-	if had_slow:
+	if had_slow or had_status_bonuses:
 		_recalculate_stats(true)
 
 
@@ -655,6 +682,53 @@ func apply_naka_burn(attacker: UnitBase, effect: Dictionary) -> void:
 	combat_statuses["naka_burn_value"] = burn_value
 
 
+## 应用窥探禁忌标记。
+func apply_moon_forbidden_mark(attacker: UnitBase, effect: Dictionary, try_execute: bool = true) -> void:
+	if not _can_receive_hostile_status(attacker):
+		return
+	var mark: Dictionary = combat_statuses.get("moon_forbidden_mark", {})
+	var duration := maxf(0.1, float(effect.get("forbidden_mark_duration", 3.0)))
+	var burst_damage := float(attacker.attack) * float(effect.get("forbidden_death_burst_multiplier", 0.0))
+	var execute_threshold := float(attacker.attack) * float(effect.get("forbidden_execute_attack_ratio", 0.0))
+	mark["remaining"] = maxf(float(mark.get("remaining", 0.0)), duration)
+	mark["burst_damage"] = maxf(float(mark.get("burst_damage", 0.0)), burst_damage)
+	mark["burst_radius"] = maxf(float(mark.get("burst_radius", 0.0)), float(effect.get("forbidden_burst_radius", 1.0)))
+	mark["execute_threshold"] = maxf(float(mark.get("execute_threshold", 0.0)), execute_threshold)
+	combat_statuses["moon_forbidden_mark"] = mark
+	if try_execute:
+		_try_moon_forbidden_execute(mark)
+
+
+## 应用十一长诗祝福。
+func apply_tro_poem_blessing(source: UnitBase, effect: Dictionary) -> void:
+	if not is_alive or not is_instance_valid(source) or not source.is_alive or source.team != team:
+		return
+	var ratio := maxf(0.0, float(effect.get("poem_stat_share_ratio", 0.0)))
+	if ratio <= 0.0:
+		return
+	var duration := maxf(0.1, float(effect.get("poem_aura_duration", 0.8)))
+	var source_max_hp := source._get_tro_poem_source_max_hp()
+	var source_attack := source._get_tro_poem_source_attack()
+	var source_defense := source._get_tro_poem_source_defense()
+	var sources: Dictionary = combat_statuses.get("tro_poem_sources", {})
+	sources[str(source.get_instance_id())] = {
+		"remaining": duration,
+		"max_hp_bonus": maxi(0, int(round(float(source_max_hp) * ratio))),
+		"attack_bonus": maxi(0, int(round(float(source_attack) * ratio))),
+		"defense_bonus": maxi(0, int(round(float(source_defense) * ratio))),
+	}
+	combat_statuses["tro_poem_sources"] = sources
+	_recalculate_stats(true)
+
+
+## 减少技能冷却。
+func reduce_skill_cooldowns(seconds: float) -> void:
+	if seconds <= 0.0:
+		return
+	for skill_id in skill_cooldowns:
+		skill_cooldowns[skill_id] = max(0.0, float(skill_cooldowns[skill_id]) - seconds)
+
+
 ## 更新主羁绊状态。
 func _update_combat_statuses(delta: float) -> void:
 	_update_anmarit_poison(delta)
@@ -664,6 +738,9 @@ func _update_combat_statuses(delta: float) -> void:
 	if not is_alive:
 		return
 	_update_laferida_slow(delta)
+	_update_moon_forbidden_mark(delta)
+	_update_kroen_counter(delta)
+	_update_tro_poem_sources(delta)
 
 
 ## 更新安马里特瘴毒。
@@ -733,6 +810,56 @@ func _update_laferida_slow(delta: float) -> void:
 	combat_statuses["laferida_slow"] = slow
 
 
+## 更新窥探禁忌标记。
+func _update_moon_forbidden_mark(delta: float) -> void:
+	if not combat_statuses.has("moon_forbidden_mark"):
+		return
+	var mark: Dictionary = combat_statuses.get("moon_forbidden_mark", {})
+	var remaining := float(mark.get("remaining", 0.0)) - delta
+	if remaining <= 0.0:
+		combat_statuses.erase("moon_forbidden_mark")
+		return
+	mark["remaining"] = remaining
+	combat_statuses["moon_forbidden_mark"] = mark
+	_try_moon_forbidden_execute(mark)
+
+
+## 更新不灭战壕闪避后的增伤状态。
+func _update_kroen_counter(delta: float) -> void:
+	if not combat_statuses.has("kroen_counter"):
+		return
+	var counter: Dictionary = combat_statuses.get("kroen_counter", {})
+	var remaining := float(counter.get("remaining", 0.0)) - delta
+	if remaining <= 0.0:
+		combat_statuses.erase("kroen_counter")
+		return
+	counter["remaining"] = remaining
+	combat_statuses["kroen_counter"] = counter
+
+
+## 更新十一长诗祝福来源。
+func _update_tro_poem_sources(delta: float) -> void:
+	if not combat_statuses.has("tro_poem_sources"):
+		return
+	var sources: Dictionary = combat_statuses.get("tro_poem_sources", {})
+	var changed := false
+	for source_id in sources.keys():
+		var source_data: Dictionary = sources.get(source_id, {})
+		source_data["remaining"] = float(source_data.get("remaining", 0.0)) - delta
+		if float(source_data.get("remaining", 0.0)) <= 0.0:
+			sources.erase(source_id)
+			changed = true
+		else:
+			sources[source_id] = source_data
+	if sources.is_empty():
+		combat_statuses.erase("tro_poem_sources")
+		changed = true
+	else:
+		combat_statuses["tro_poem_sources"] = sources
+	if changed:
+		_recalculate_stats(true)
+
+
 ## 应用拉费里达减速状态。
 func _apply_laferida_slow(slow_percent: float, duration: float) -> void:
 	var multiplier := 1.0 - clampf(slow_percent, 0.0, 0.95)
@@ -756,10 +883,11 @@ func _ignite_naka_burning(attacker: UnitBase, effect: Dictionary) -> void:
 
 
 ## 对范围内单位造成状态伤害。
-func _deal_status_area_damage(amount: int, radius: float, target_team: String, text_color: Color) -> void:
+func _deal_status_area_damage(amount: int, radius: float, target_team: String, text_color: Color, exclude_unit: UnitBase = null) -> void:
 	var grid: GridSystem = BattleManager.grid
 	if not grid:
-		take_status_damage(amount, text_color)
+		if exclude_unit != self:
+			take_status_damage(amount, text_color)
 		return
 	var targets := grid.get_units_in_range(grid_position, radius, target_team)
 	if targets.is_empty():
@@ -769,6 +897,8 @@ func _deal_status_area_damage(amount: int, radius: float, target_team: String, t
 		if not is_instance_valid(candidate) or not (candidate is UnitBase):
 			continue
 		var combat_unit := candidate as UnitBase
+		if combat_unit == exclude_unit:
+			continue
 		if combat_unit.is_alive:
 			combat_unit.take_status_damage(amount, text_color)
 
@@ -776,6 +906,213 @@ func _deal_status_area_damage(amount: int, radius: float, target_team: String, t
 ## 是否能接收来自攻击者的负面状态。
 func _can_receive_hostile_status(attacker: UnitBase) -> bool:
 	return is_alive and is_instance_valid(attacker) and attacker.is_alive and attacker.team != team
+
+
+## 获取单个已激活主羁绊效果。
+func _get_active_main_effect(tag: String) -> Dictionary:
+	var effects := _get_active_main_effects()
+	if not effects.has(tag):
+		return {}
+	return effects.get(tag, {})
+
+
+## 当前单位是否是某个主羁绊成员。
+func _is_main_effect_member(tag: String) -> bool:
+	return team == "player" and class_template and class_template.class_group == tag
+
+
+## 获取存活的玩家主羁绊成员。
+func _get_alive_main_effect_members(tag: String) -> Array[UnitBase]:
+	var result: Array[UnitBase] = []
+	for candidate in BattleManager.player_units:
+		if not is_instance_valid(candidate) or not (candidate is UnitBase):
+			continue
+		var unit := candidate as UnitBase
+		if unit.is_alive and unit._is_main_effect_member(tag):
+			result.append(unit)
+	return result
+
+
+## 尝试触发骑士律法的生命比例均摊。
+func _try_remolino_law_share(actual_damage: int, attacker: UnitBase) -> bool:
+	if law_damage_share_guard or actual_damage <= 0:
+		return false
+	if not _is_hostile_attack(attacker) or not _is_main_effect_member("remolino_law"):
+		return false
+	var law := _get_active_main_effect("remolino_law")
+	if law.is_empty() or int(law.get("tier", 0)) < 3 or not bool(law.get("law_share_enabled", false)):
+		return false
+	var members := _get_alive_main_effect_members("remolino_law")
+	if members.is_empty():
+		return false
+	var hp_percent := float(actual_damage) / float(max(max_hp, 1))
+	for member in members:
+		if not is_instance_valid(member) or not member.is_alive:
+			continue
+		var shared_damage := maxi(1, int(round(float(member.max_hp) * hp_percent)))
+		member._take_remolino_law_shared_damage(shared_damage)
+	return true
+
+
+## 承受骑士律法均摊伤害。
+func _take_remolino_law_shared_damage(amount: int) -> void:
+	if not is_alive:
+		return
+	law_damage_share_guard = true
+	_apply_hp_loss(amount, Color(0.92, 0.86, 0.58, 1.0))
+	law_damage_share_guard = false
+
+
+## 尝试触发骑士律法反击。
+func _apply_remolino_law_retaliation(attacker: UnitBase) -> void:
+	if not _is_hostile_attack(attacker) or not _is_main_effect_member("remolino_law"):
+		return
+	var law := _get_active_main_effect("remolino_law")
+	if law.is_empty() or int(law.get("tier", 0)) < 6:
+		return
+	var ratio := maxf(0.0, float(law.get("law_retaliation_attack_ratio", 0.0)))
+	if ratio <= 0.0:
+		return
+	var attack_sum := 0
+	for member in _get_alive_main_effect_members("remolino_law"):
+		attack_sum += member.attack
+	var damage := maxi(1, int(round(float(attack_sum) * ratio)))
+	attacker.take_status_damage(damage, Color(0.96, 0.90, 0.62, 1.0))
+
+
+## 尝试触发不灭战壕闪避。
+func _try_kroen_trench_dodge(attacker: UnitBase) -> bool:
+	if not _is_hostile_attack(attacker) or not _is_main_effect_member("kroen_trench"):
+		return false
+	var trench := _get_active_main_effect("kroen_trench")
+	if trench.is_empty() or int(trench.get("tier", 0)) < 3:
+		return false
+	var chance := float(trench.get("trench_dodge_chance", 0.0))
+	chance += move_speed * float(trench.get("trench_move_speed_dodge_ratio", 0.035))
+	chance = clampf(chance, 0.0, float(trench.get("trench_dodge_final_cap", 0.45)))
+	if randf() > chance:
+		return false
+	_show_floating_text("闪避", Color(0.68, 0.88, 1.0, 1.0))
+	if int(trench.get("tier", 0)) >= 6:
+		_apply_kroen_counter(trench)
+	return true
+
+
+## 应用不灭战壕闪避后的反击姿态。
+func _apply_kroen_counter(effect: Dictionary) -> void:
+	var duration := maxf(0.0, float(effect.get("trench_counter_duration", 0.0)))
+	if duration <= 0.0:
+		return
+	var counter: Dictionary = combat_statuses.get("kroen_counter", {})
+	counter["remaining"] = maxf(float(counter.get("remaining", 0.0)), duration)
+	counter["damage_multiplier"] = maxf(float(counter.get("damage_multiplier", 1.0)), float(effect.get("trench_counter_damage_multiplier", 1.0)))
+	combat_statuses["kroen_counter"] = counter
+
+
+## 判断是否是敌对攻击。
+func _is_hostile_attack(attacker: UnitBase) -> bool:
+	return is_instance_valid(attacker) and attacker.is_alive and attacker.team != team
+
+
+## 尝试触发窥探禁忌处决。
+func _try_moon_forbidden_execute(mark: Dictionary) -> void:
+	if not is_alive:
+		return
+	var threshold := float(mark.get("execute_threshold", 0.0))
+	if threshold <= 0.0 or float(current_hp) > threshold:
+		return
+	take_status_damage(current_hp, Color(0.74, 0.44, 1.0, 1.0))
+
+
+## 触发窥探禁忌死亡爆发。
+func _trigger_moon_forbidden_death_burst() -> void:
+	if team != "enemy" or not combat_statuses.has("moon_forbidden_mark"):
+		return
+	var mark: Dictionary = combat_statuses.get("moon_forbidden_mark", {})
+	if float(mark.get("remaining", 0.0)) <= 0.0:
+		return
+	var damage := maxi(0, int(round(float(mark.get("burst_damage", 0.0)))))
+	if damage <= 0:
+		return
+	_deal_status_area_damage(damage, maxf(0.0, float(mark.get("burst_radius", 1.0))), team, Color(0.72, 0.34, 1.0, 1.0), self)
+
+
+## 更新十一长诗范围祝福。
+func _update_tro_poem_aura(delta: float) -> void:
+	if not _is_main_effect_member("tro_poem"):
+		return
+	var poem := _get_active_main_effect("tro_poem")
+	if poem.is_empty() or int(poem.get("tier", 0)) < 3:
+		return
+	var interval := maxf(0.1, float(poem.get("poem_aura_interval", 0.5)))
+	var timer := float(combat_statuses.get("tro_poem_aura_timer", 0.0)) - delta
+	if timer > 0.0:
+		combat_statuses["tro_poem_aura_timer"] = timer
+		return
+	timer += interval
+	combat_statuses["tro_poem_aura_timer"] = timer
+	var grid: GridSystem = BattleManager.grid
+	if not grid:
+		return
+	for candidate in grid.get_units_in_range(grid_position, attack_range, team):
+		if not is_instance_valid(candidate) or not (candidate is UnitBase):
+			continue
+		var ally := candidate as UnitBase
+		if ally.is_alive:
+			ally.apply_tro_poem_blessing(self, poem)
+
+
+## 尝试触发十一长诗技能冷却祝福。
+func _apply_tro_poem_skill_cooldown_aura() -> void:
+	if not _is_main_effect_member("tro_poem"):
+		return
+	var poem := _get_active_main_effect("tro_poem")
+	if poem.is_empty() or int(poem.get("tier", 0)) < 6:
+		return
+	var chance := clampf(float(poem.get("poem_cooldown_chance", 0.0)), 0.0, 1.0)
+	if chance <= 0.0 or randf() > chance:
+		return
+	var seconds := maxf(0.0, float(poem.get("poem_cooldown_seconds", 0.0)))
+	if seconds <= 0.0:
+		return
+	var grid: GridSystem = BattleManager.grid
+	if not grid:
+		return
+	for candidate in grid.get_units_in_range(grid_position, attack_range, team):
+		if not is_instance_valid(candidate) or not (candidate is UnitBase):
+			continue
+		var ally := candidate as UnitBase
+		if ally.is_alive:
+			ally.reduce_skill_cooldowns(seconds)
+			ally._show_floating_text("-CD", Color(0.50, 0.82, 1.0, 1.0))
+
+
+## 获取状态提供的固定属性。
+func _get_status_flat_bonus(key: String) -> int:
+	var total := 0
+	var sources: Dictionary = combat_statuses.get("tro_poem_sources", {})
+	for source_id in sources.keys():
+		var source_data: Dictionary = sources.get(source_id, {})
+		total += int(source_data.get(key, 0))
+	return total
+
+
+## 获取十一长诗的非递归生命基准。
+func _get_tro_poem_source_max_hp() -> int:
+	return maxi(1, int(round(float(base_max_hp) * float(synergy_modifiers.get("max_hp_multiplier", 1.0)))))
+
+
+## 获取十一长诗的非递归攻击基准。
+func _get_tro_poem_source_attack() -> int:
+	return maxi(1, int(round(float(base_attack) * float(synergy_modifiers.get("attack_multiplier", 1.0)))))
+
+
+## 获取十一长诗的非递归防御基准。
+func _get_tro_poem_source_defense() -> int:
+	var value := maxi(0, int(round(float(base_defense) * float(synergy_modifiers.get("defense_multiplier", 1.0)))))
+	if stance == Stance.STATIONED and class_template:
+		value = maxi(0, int(round(float(value) * class_template.stance_defense_bonus)))
+	return value
 
 
 ## 显示伤害/治疗飘字：从单位中心向上跳起后淡出
@@ -806,8 +1143,38 @@ func _show_floating_number(amount: int, text_color: Color) -> void:
 	tween.finished.connect(label.queue_free)
 
 
+## 显示状态飘字。
+func _show_floating_text(text: String, text_color: Color) -> void:
+	if not SettingsManager.show_floating_numbers:
+		return
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 18)
+	label.add_theme_color_override("font_color", text_color)
+	label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	label.add_theme_constant_override("shadow_offset_x", 1)
+	label.add_theme_constant_override("shadow_offset_y", 1)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.size = Vector2(unit_radius * 3.0, 28.0)
+	label.position = -label.size * 0.5
+	label.z_index = 100
+	add_child(label)
+
+	var start_pos := label.position
+	var end_pos := start_pos + Vector2(0.0, -floating_number_rise)
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(label, "position", end_pos, floating_number_duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(label, "modulate:a", 0.0, floating_number_duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.finished.connect(label.queue_free)
+
+
 ## 处理die逻辑。
 func _die() -> void:
+	if not is_alive:
+		return
+	_trigger_moon_forbidden_death_burst()
 	is_alive = false
 	died.emit(self)
 	if team == "player":
@@ -865,6 +1232,7 @@ func use_skill(skill_id: String) -> bool:
 	_execute_skill(sd)
 	var cooldown_reduction := clampf(float(synergy_modifiers.get("skill_cooldown_reduction", 0.0)), 0.0, 0.40)
 	skill_cooldowns[skill_id] = max(0.1, sd.cooldown * (1.0 - cooldown_reduction))
+	_apply_tro_poem_skill_cooldown_aura()
 	return true
 
 
@@ -940,7 +1308,10 @@ func _deal_damage_to_target(target_unit: Node, base_amount: float, is_skill: boo
 	var target_combat_unit: UnitBase = target_unit as UnitBase if target_unit is UnitBase else null
 	if target_combat_unit:
 		damage = _apply_pre_damage_main_synergies(target_combat_unit, damage)
-	var dealt: int = target_unit.take_damage(damage, _get_armor_pierce())
+		var moon := _get_active_main_effect("moon_cult")
+		if not moon.is_empty() and int(moon.get("tier", 0)) >= 3:
+			target_combat_unit.apply_moon_forbidden_mark(self, moon, false)
+	var dealt: int = target_combat_unit.receive_attack_damage(damage, _get_armor_pierce(), self) if target_combat_unit else target_unit.take_damage(damage, _get_armor_pierce())
 	_apply_life_steal(dealt)
 	if target_combat_unit:
 		_apply_damage_hit_main_synergies(target_combat_unit, dealt, is_skill)
@@ -956,6 +1327,10 @@ func _apply_pre_damage_main_synergies(target_unit: UnitBase, damage: int) -> int
 		var naka: Dictionary = effects.get("naka", {})
 		if int(naka.get("tier", 0)) >= 6:
 			damage = maxi(1, int(round(float(damage) * float(naka.get("burning_damage_multiplier", 1.0)))))
+	if effects.has("moon_cult"):
+		var moon: Dictionary = effects.get("moon_cult", {})
+		if int(moon.get("tier", 0)) >= 3:
+			damage = maxi(1, int(round(float(damage) * float(moon.get("forbidden_damage_taken_multiplier", 1.0)))))
 	return damage
 
 
@@ -973,6 +1348,8 @@ func _apply_damage_hit_main_synergies(target_unit: UnitBase, damage_dealt: int, 
 		target_unit.apply_naka_burn(self, naka)
 		if target_unit.is_alive and target_unit.has_burning_status() and int(naka.get("tier", 0)) >= 6:
 			_try_naka_explosion(target_unit, naka)
+	if effects.has("moon_cult") and target_unit.is_alive:
+		target_unit.apply_moon_forbidden_mark(self, effects.get("moon_cult", {}))
 
 
 ## 尝试触发纳卡爆炸。
@@ -1008,6 +1385,9 @@ func _calculate_damage(base_amount: float, is_skill: bool) -> int:
 	var amount := base_amount * float(synergy_modifiers.get("damage_multiplier", 1.0))
 	if is_skill:
 		amount *= float(synergy_modifiers.get("skill_damage_multiplier", 1.0))
+	if combat_statuses.has("kroen_counter"):
+		var counter: Dictionary = combat_statuses.get("kroen_counter", {})
+		amount *= float(counter.get("damage_multiplier", 1.0))
 	if randf() < clampf(float(synergy_modifiers.get("crit_chance", 0.0)), 0.0, 0.75):
 		amount *= 1.5 * float(synergy_modifiers.get("crit_damage_multiplier", 1.0))
 	return maxi(1, int(round(amount)))

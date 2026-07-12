@@ -121,7 +121,7 @@
 		"enabled": true,
 		"name": "学识歌者",
 		"job_name": "学识歌者",
-		"class_group": "laferida",
+		"class_group": "tro_poem",
 		"subclass_id": "lore",
 		"stat_tags": [
 			"CHA",
@@ -160,7 +160,7 @@
 		"enabled": true,
 		"name": "勇气歌者",
 		"job_name": "勇气歌者",
-		"class_group": "laferida",
+		"class_group": "tro_poem",
 		"subclass_id": "valor",
 		"stat_tags": [
 			"CHA",
@@ -199,7 +199,7 @@
 		"enabled": true,
 		"name": "迷魅歌者",
 		"job_name": "迷魅歌者",
-		"class_group": "laferida",
+		"class_group": "tro_poem",
 		"subclass_id": "glamour",
 		"stat_tags": [
 			"CHA",
@@ -238,7 +238,7 @@
 		"enabled": true,
 		"name": "生命助祭",
 		"job_name": "生命助祭",
-		"class_group": "laferida",
+		"class_group": "moon_cult",
 		"subclass_id": "life_domain",
 		"stat_tags": [
 			"WIS",
@@ -277,7 +277,7 @@
 		"enabled": true,
 		"name": "光明助祭",
 		"job_name": "光明助祭",
-		"class_group": "laferida",
+		"class_group": "moon_cult",
 		"subclass_id": "light_domain",
 		"stat_tags": [
 			"WIS",
@@ -316,7 +316,7 @@
 		"enabled": true,
 		"name": "战争助祭",
 		"job_name": "战争助祭",
-		"class_group": "laferida",
+		"class_group": "moon_cult",
 		"subclass_id": "war_domain",
 		"stat_tags": [
 			"WIS",
@@ -355,7 +355,7 @@
 		"enabled": true,
 		"name": "月环德鲁伊",
 		"job_name": "月环德鲁伊",
-		"class_group": "anmarit",
+		"class_group": "laferida",
 		"subclass_id": "moon",
 		"stat_tags": [
 			"WIS",
@@ -393,7 +393,7 @@
 		"enabled": true,
 		"name": "大地德鲁伊",
 		"job_name": "大地德鲁伊",
-		"class_group": "anmarit",
+		"class_group": "laferida",
 		"subclass_id": "land",
 		"stat_tags": [
 			"WIS",
@@ -432,7 +432,7 @@
 		"enabled": true,
 		"name": "孢子德鲁伊",
 		"job_name": "孢子德鲁伊",
-		"class_group": "anmarit",
+		"class_group": "laferida",
 		"subclass_id": "spores",
 		"stat_tags": [
 			"WIS",
@@ -471,7 +471,7 @@
 		"enabled": true,
 		"name": "冠军剑士",
 		"job_name": "冠军剑士",
-		"class_group": "naka",
+		"class_group": "remolino_law",
 		"subclass_id": "champion",
 		"stat_tags": [
 			"STR",
@@ -510,7 +510,7 @@
 		"enabled": true,
 		"name": "战斗教官",
 		"job_name": "战斗教官",
-		"class_group": "naka",
+		"class_group": "remolino_law",
 		"subclass_id": "battle_master",
 		"stat_tags": [
 			"STR",
@@ -549,7 +549,7 @@
 		"enabled": true,
 		"name": "奥法骑士",
 		"job_name": "奥法骑士",
-		"class_group": "naka",
+		"class_group": "remolino_law",
 		"subclass_id": "eldritch_knight",
 		"stat_tags": [
 			"STR",
@@ -588,7 +588,7 @@
 		"enabled": true,
 		"name": "散打武僧",
 		"job_name": "散打武僧",
-		"class_group": "laferida",
+		"class_group": "kroen_trench",
 		"subclass_id": "open_hand",
 		"stat_tags": [
 			"DEX",
@@ -627,7 +627,7 @@
 		"enabled": true,
 		"name": "暗影武僧",
 		"job_name": "暗影武僧",
-		"class_group": "laferida",
+		"class_group": "kroen_trench",
 		"subclass_id": "shadow",
 		"stat_tags": [
 			"DEX",
@@ -666,7 +666,7 @@
 		"enabled": true,
 		"name": "四象武僧",
 		"job_name": "四象武僧",
-		"class_group": "laferida",
+		"class_group": "kroen_trench",
 		"subclass_id": "four_elements",
 		"stat_tags": [
 			"DEX",
@@ -705,7 +705,7 @@
 		"enabled": true,
 		"name": "奉献侍卫",
 		"job_name": "奉献侍卫",
-		"class_group": "laferida",
+		"class_group": "remolino_law",
 		"subclass_id": "devotion",
 		"stat_tags": [
 			"STR",
@@ -744,7 +744,7 @@
 		"enabled": true,
 		"name": "复仇侍卫",
 		"job_name": "复仇侍卫",
-		"class_group": "laferida",
+		"class_group": "remolino_law",
 		"subclass_id": "vengeance",
 		"stat_tags": [
 			"STR",
@@ -783,7 +783,7 @@
 		"enabled": true,
 		"name": "古贤侍卫",
 		"job_name": "古贤侍卫",
-		"class_group": "laferida",
+		"class_group": "remolino_law",
 		"subclass_id": "ancients",
 		"stat_tags": [
 			"STR",
@@ -1290,7 +1290,7 @@
 		"enabled": true,
 		"name": "塑能法师",
 		"job_name": "塑能法师",
-		"class_group": "naka",
+		"class_group": "moon_cult",
 		"subclass_id": "evocation",
 		"stat_tags": [
 			"INT",
@@ -1329,7 +1329,7 @@
 		"enabled": true,
 		"name": "防护法师",
 		"job_name": "防护法师",
-		"class_group": "naka",
+		"class_group": "moon_cult",
 		"subclass_id": "abjuration",
 		"stat_tags": [
 			"INT",
@@ -1368,7 +1368,7 @@
 		"enabled": true,
 		"name": "预言法师",
 		"job_name": "预言法师",
-		"class_group": "naka",
+		"class_group": "moon_cult",
 		"subclass_id": "divination",
 		"stat_tags": [
 			"INT",
@@ -1407,7 +1407,7 @@
 		"enabled": true,
 		"name": "炼金学徒",
 		"job_name": "炼金学徒",
-		"class_group": "naka",
+		"class_group": "kroen_trench",
 		"subclass_id": "alchemist",
 		"stat_tags": [
 			"INT",
@@ -1446,7 +1446,7 @@
 		"enabled": true,
 		"name": "铸甲学徒",
 		"job_name": "铸甲学徒",
-		"class_group": "naka",
+		"class_group": "kroen_trench",
 		"subclass_id": "armorer",
 		"stat_tags": [
 			"INT",
@@ -1485,7 +1485,7 @@
 		"enabled": true,
 		"name": "炮术学徒",
 		"job_name": "炮术学徒",
-		"class_group": "naka",
+		"class_group": "kroen_trench",
 		"subclass_id": "artillerist",
 		"stat_tags": [
 			"INT",
