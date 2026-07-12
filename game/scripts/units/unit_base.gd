@@ -51,6 +51,8 @@ var base_search_range: float = 5.0
 
 ## 当前羁绊数值修正
 var synergy_modifiers: Dictionary = {}
+var intrinsic_passives: Array = []
+var passive_effects: Array = []
 
 ## 职业数据
 var class_template: ClassTemplate = null
@@ -116,7 +118,7 @@ func _process(delta: float) -> void:
 	if not is_alive:
 		return
 	_update_combat_statuses(delta)
-	_update_tro_poem_aura(delta)
+	_notify_passives("on_tick", {"delta": delta})
 	# 更新冷却
 	if attack_cooldown > 0:
 		attack_cooldown -= delta
@@ -160,6 +162,7 @@ func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 	for sid in class_data.skill_ids:
 		skill_cooldowns[sid] = 0.0
 	refresh_ground_collision()
+	_rebuild_passive_list()
 
 
 ## 敌人或测试单位直接写属性后，同步基础属性缓存
@@ -177,6 +180,7 @@ func set_base_stats_from_current() -> void:
 	combat_statuses.clear()
 	status_move_speed_multiplier = 1.0
 	law_damage_share_guard = false
+	_rebuild_passive_list()
 
 
 ## 应用全队羁绊数值修正
@@ -184,6 +188,10 @@ func apply_synergy_modifiers(modifiers: Dictionary) -> void:
 	"""应用全队羁绊数值修正"""
 	if team != "player":
 		return
+	apply_passive_modifiers(modifiers)
+
+
+func apply_passive_modifiers(modifiers: Dictionary) -> void:
 	synergy_modifiers = _default_synergy_modifiers()
 	for key in modifiers:
 		synergy_modifiers[key] = modifiers[key]
@@ -209,6 +217,104 @@ func _default_synergy_modifiers() -> Dictionary:
 		"life_steal_percent": 0.0,
 		"search_range_bonus": 0.0,
 	}
+
+
+func setup_intrinsic_passives_from_configs(configs) -> void:
+	var passives: Array = []
+	if not (configs is Array):
+		set_intrinsic_passives(passives)
+		return
+	for raw_config in configs:
+		var config := {}
+		if raw_config is Dictionary:
+			config = raw_config.duplicate(true)
+		else:
+			config = {"passive_id": str(raw_config)}
+		var script_path := str(config.get("script", config.get("script_path", "")))
+		var passive_script = load(script_path) if script_path != "" else load("res://scripts/passives/unit_passive.gd")
+		if passive_script == null:
+			push_warning("Failed to load passive script: %s" % script_path)
+			continue
+		var passive = passive_script.new()
+		if passive and passive.has_method("setup"):
+			passive.setup(self, config)
+			passives.append(passive)
+	set_intrinsic_passives(passives)
+
+
+func set_intrinsic_passives(passives: Array) -> void:
+	intrinsic_passives.clear()
+	for passive in passives:
+		if passive:
+			intrinsic_passives.append(passive)
+	_rebuild_passive_list()
+
+
+func add_intrinsic_passive(passive) -> void:
+	if not passive:
+		return
+	intrinsic_passives.append(passive)
+	_rebuild_passive_list()
+
+
+func clear_intrinsic_passives() -> void:
+	intrinsic_passives.clear()
+	_rebuild_passive_list()
+
+
+## 获取当前单位拥有的战斗被动。
+func get_combat_passives() -> Array:
+	return passive_effects
+
+
+func _get_extra_combat_passives() -> Array:
+	return []
+
+
+func _rebuild_passive_list() -> void:
+	passive_effects.clear()
+	passive_effects.append_array(intrinsic_passives)
+	passive_effects.append_array(_get_extra_combat_passives())
+	_refresh_passive_modifiers()
+
+
+func _refresh_passive_modifiers() -> void:
+	var merged := _default_synergy_modifiers()
+	for passive in passive_effects:
+		if not passive or not passive.has_method("get_modifiers"):
+			continue
+		var modifiers: Dictionary = passive.get_modifiers()
+		for stat in modifiers.keys():
+			_merge_passive_modifier(merged, str(stat), float(modifiers[stat]))
+	apply_passive_modifiers(merged)
+
+
+func _merge_passive_modifier(target: Dictionary, stat: String, value: float) -> void:
+	if stat == "":
+		return
+	var multiply_stats := [
+		"max_hp_multiplier",
+		"attack_multiplier",
+		"defense_multiplier",
+		"attack_speed_multiplier",
+		"move_speed_multiplier",
+		"damage_multiplier",
+		"skill_damage_multiplier",
+		"heal_multiplier",
+		"incoming_heal_multiplier",
+		"crit_damage_multiplier",
+	]
+	if stat in multiply_stats:
+		target[stat] = float(target.get(stat, 1.0)) * value
+	else:
+		target[stat] = float(target.get(stat, 0.0)) + value
+
+
+## 将战斗事件分发给当前单位的被动。
+func _notify_passives(event_name: String, context: Dictionary) -> void:
+	for passive in get_combat_passives():
+		if passive and passive.has_method(event_name):
+			passive.call(event_name, context)
 
 
 ## 处理recalculatestats逻辑。
@@ -562,15 +668,36 @@ func take_damage(amount: int, armor_pierce: float = 0.0) -> int:
 func receive_attack_damage(amount: int, armor_pierce: float = 0.0, attacker: UnitBase = null) -> int:
 	if not is_alive or amount <= 0:
 		return 0
-	if _try_kroen_trench_dodge(attacker):
+	var receive_context := {
+		"attacker": attacker,
+		"amount": amount,
+		"armor_pierce": armor_pierce,
+		"canceled": false,
+	}
+	_notify_passives("before_receive_attack", receive_context)
+	if bool(receive_context.get("canceled", false)):
 		return 0
-	var effective_defense := int(round(float(defense) * (1.0 - clampf(armor_pierce, 0.0, 0.95))))
-	var actual: int = max(1, amount - effective_defense)
-	if _try_remolino_law_share(actual, attacker):
-		_apply_remolino_law_retaliation(attacker)
-		return actual
-	_apply_hp_loss(actual, Color(1.0, 0.2, 0.2, 1.0))
-	_apply_remolino_law_retaliation(attacker)
+	var incoming_amount := maxi(1, int(receive_context.get("amount", amount)))
+	var incoming_armor_pierce := float(receive_context.get("armor_pierce", armor_pierce))
+	var effective_defense := int(round(float(defense) * (1.0 - clampf(incoming_armor_pierce, 0.0, 0.95))))
+	var actual: int = max(1, incoming_amount - effective_defense)
+	var damage_context := {
+		"attacker": attacker,
+		"damage": actual,
+		"skip_hp_loss": false,
+	}
+	_notify_passives("before_apply_attack_damage", damage_context)
+	actual = maxi(0, int(damage_context.get("damage", actual)))
+	if actual <= 0:
+		return 0
+	var skip_hp_loss := bool(damage_context.get("skip_hp_loss", false))
+	if not skip_hp_loss:
+		_apply_hp_loss(actual, Color(1.0, 0.2, 0.2, 1.0))
+	_notify_passives("after_receive_attack", {
+		"attacker": attacker,
+		"damage_dealt": actual,
+		"skip_hp_loss": skip_hp_loss,
+	})
 	return actual
 
 
@@ -908,112 +1035,6 @@ func _can_receive_hostile_status(attacker: UnitBase) -> bool:
 	return is_alive and is_instance_valid(attacker) and attacker.is_alive and attacker.team != team
 
 
-## 获取单个已激活主羁绊效果。
-func _get_active_main_effect(tag: String) -> Dictionary:
-	var effects := _get_active_main_effects()
-	if not effects.has(tag):
-		return {}
-	return effects.get(tag, {})
-
-
-## 当前单位是否是某个主羁绊成员。
-func _is_main_effect_member(tag: String) -> bool:
-	return team == "player" and class_template and class_template.class_group == tag
-
-
-## 获取存活的玩家主羁绊成员。
-func _get_alive_main_effect_members(tag: String) -> Array[UnitBase]:
-	var result: Array[UnitBase] = []
-	for candidate in BattleManager.player_units:
-		if not is_instance_valid(candidate) or not (candidate is UnitBase):
-			continue
-		var unit := candidate as UnitBase
-		if unit.is_alive and unit._is_main_effect_member(tag):
-			result.append(unit)
-	return result
-
-
-## 尝试触发骑士律法的生命比例均摊。
-func _try_remolino_law_share(actual_damage: int, attacker: UnitBase) -> bool:
-	if law_damage_share_guard or actual_damage <= 0:
-		return false
-	if not _is_hostile_attack(attacker) or not _is_main_effect_member("remolino_law"):
-		return false
-	var law := _get_active_main_effect("remolino_law")
-	if law.is_empty() or int(law.get("tier", 0)) < 3 or not bool(law.get("law_share_enabled", false)):
-		return false
-	var members := _get_alive_main_effect_members("remolino_law")
-	if members.is_empty():
-		return false
-	var hp_percent := float(actual_damage) / float(max(max_hp, 1))
-	for member in members:
-		if not is_instance_valid(member) or not member.is_alive:
-			continue
-		var shared_damage := maxi(1, int(round(float(member.max_hp) * hp_percent)))
-		member._take_remolino_law_shared_damage(shared_damage)
-	return true
-
-
-## 承受骑士律法均摊伤害。
-func _take_remolino_law_shared_damage(amount: int) -> void:
-	if not is_alive:
-		return
-	law_damage_share_guard = true
-	_apply_hp_loss(amount, Color(0.92, 0.86, 0.58, 1.0))
-	law_damage_share_guard = false
-
-
-## 尝试触发骑士律法反击。
-func _apply_remolino_law_retaliation(attacker: UnitBase) -> void:
-	if not _is_hostile_attack(attacker) or not _is_main_effect_member("remolino_law"):
-		return
-	var law := _get_active_main_effect("remolino_law")
-	if law.is_empty() or int(law.get("tier", 0)) < 6:
-		return
-	var ratio := maxf(0.0, float(law.get("law_retaliation_attack_ratio", 0.0)))
-	if ratio <= 0.0:
-		return
-	var attack_sum := 0
-	for member in _get_alive_main_effect_members("remolino_law"):
-		attack_sum += member.attack
-	var damage := maxi(1, int(round(float(attack_sum) * ratio)))
-	attacker.take_status_damage(damage, Color(0.96, 0.90, 0.62, 1.0))
-
-
-## 尝试触发不灭战壕闪避。
-func _try_kroen_trench_dodge(attacker: UnitBase) -> bool:
-	if not _is_hostile_attack(attacker) or not _is_main_effect_member("kroen_trench"):
-		return false
-	var trench := _get_active_main_effect("kroen_trench")
-	if trench.is_empty() or int(trench.get("tier", 0)) < 3:
-		return false
-	var chance := float(trench.get("trench_dodge_chance", 0.0))
-	chance += move_speed * float(trench.get("trench_move_speed_dodge_ratio", 0.035))
-	chance = clampf(chance, 0.0, float(trench.get("trench_dodge_final_cap", 0.45)))
-	if randf() > chance:
-		return false
-	_show_floating_text("闪避", Color(0.68, 0.88, 1.0, 1.0))
-	if int(trench.get("tier", 0)) >= 6:
-		_apply_kroen_counter(trench)
-	return true
-
-
-## 应用不灭战壕闪避后的反击姿态。
-func _apply_kroen_counter(effect: Dictionary) -> void:
-	var duration := maxf(0.0, float(effect.get("trench_counter_duration", 0.0)))
-	if duration <= 0.0:
-		return
-	var counter: Dictionary = combat_statuses.get("kroen_counter", {})
-	counter["remaining"] = maxf(float(counter.get("remaining", 0.0)), duration)
-	counter["damage_multiplier"] = maxf(float(counter.get("damage_multiplier", 1.0)), float(effect.get("trench_counter_damage_multiplier", 1.0)))
-	combat_statuses["kroen_counter"] = counter
-
-
-## 判断是否是敌对攻击。
-func _is_hostile_attack(attacker: UnitBase) -> bool:
-	return is_instance_valid(attacker) and attacker.is_alive and attacker.team != team
-
-
 ## 尝试触发窥探禁忌处决。
 func _try_moon_forbidden_execute(mark: Dictionary) -> void:
 	if not is_alive:
@@ -1035,56 +1056,6 @@ func _trigger_moon_forbidden_death_burst() -> void:
 	if damage <= 0:
 		return
 	_deal_status_area_damage(damage, maxf(0.0, float(mark.get("burst_radius", 1.0))), team, Color(0.72, 0.34, 1.0, 1.0), self)
-
-
-## 更新十一长诗范围祝福。
-func _update_tro_poem_aura(delta: float) -> void:
-	if not _is_main_effect_member("tro_poem"):
-		return
-	var poem := _get_active_main_effect("tro_poem")
-	if poem.is_empty() or int(poem.get("tier", 0)) < 3:
-		return
-	var interval := maxf(0.1, float(poem.get("poem_aura_interval", 0.5)))
-	var timer := float(combat_statuses.get("tro_poem_aura_timer", 0.0)) - delta
-	if timer > 0.0:
-		combat_statuses["tro_poem_aura_timer"] = timer
-		return
-	timer += interval
-	combat_statuses["tro_poem_aura_timer"] = timer
-	var grid: GridSystem = BattleManager.grid
-	if not grid:
-		return
-	for candidate in grid.get_units_in_range(grid_position, attack_range, team):
-		if not is_instance_valid(candidate) or not (candidate is UnitBase):
-			continue
-		var ally := candidate as UnitBase
-		if ally.is_alive:
-			ally.apply_tro_poem_blessing(self, poem)
-
-
-## 尝试触发十一长诗技能冷却祝福。
-func _apply_tro_poem_skill_cooldown_aura() -> void:
-	if not _is_main_effect_member("tro_poem"):
-		return
-	var poem := _get_active_main_effect("tro_poem")
-	if poem.is_empty() or int(poem.get("tier", 0)) < 6:
-		return
-	var chance := clampf(float(poem.get("poem_cooldown_chance", 0.0)), 0.0, 1.0)
-	if chance <= 0.0 or randf() > chance:
-		return
-	var seconds := maxf(0.0, float(poem.get("poem_cooldown_seconds", 0.0)))
-	if seconds <= 0.0:
-		return
-	var grid: GridSystem = BattleManager.grid
-	if not grid:
-		return
-	for candidate in grid.get_units_in_range(grid_position, attack_range, team):
-		if not is_instance_valid(candidate) or not (candidate is UnitBase):
-			continue
-		var ally := candidate as UnitBase
-		if ally.is_alive:
-			ally.reduce_skill_cooldowns(seconds)
-			ally._show_floating_text("-CD", Color(0.50, 0.82, 1.0, 1.0))
 
 
 ## 获取状态提供的固定属性。
@@ -1232,7 +1203,10 @@ func use_skill(skill_id: String) -> bool:
 	_execute_skill(sd)
 	var cooldown_reduction := clampf(float(synergy_modifiers.get("skill_cooldown_reduction", 0.0)), 0.0, 0.40)
 	skill_cooldowns[skill_id] = max(0.1, sd.cooldown * (1.0 - cooldown_reduction))
-	_apply_tro_poem_skill_cooldown_aura()
+	_notify_passives("after_skill_used", {
+		"skill_id": skill_id,
+		"skill": sd,
+	})
 	return true
 
 
@@ -1307,77 +1281,23 @@ func _deal_damage_to_target(target_unit: Node, base_amount: float, is_skill: boo
 	var damage := _calculate_damage(base_amount, is_skill)
 	var target_combat_unit: UnitBase = target_unit as UnitBase if target_unit is UnitBase else null
 	if target_combat_unit:
-		damage = _apply_pre_damage_main_synergies(target_combat_unit, damage)
-		var moon := _get_active_main_effect("moon_cult")
-		if not moon.is_empty() and int(moon.get("tier", 0)) >= 3:
-			target_combat_unit.apply_moon_forbidden_mark(self, moon, false)
+		var damage_context := {
+			"target": target_combat_unit,
+			"base_amount": base_amount,
+			"damage": damage,
+			"is_skill": is_skill,
+		}
+		_notify_passives("before_deal_damage", damage_context)
+		damage = maxi(1, int(damage_context.get("damage", damage)))
 	var dealt: int = target_combat_unit.receive_attack_damage(damage, _get_armor_pierce(), self) if target_combat_unit else target_unit.take_damage(damage, _get_armor_pierce())
 	_apply_life_steal(dealt)
 	if target_combat_unit:
-		_apply_damage_hit_main_synergies(target_combat_unit, dealt, is_skill)
+		_notify_passives("after_deal_damage", {
+			"target": target_combat_unit,
+			"damage_dealt": dealt,
+			"is_skill": is_skill,
+		})
 	return dealt
-
-
-## 伤害前主羁绊修正。
-func _apply_pre_damage_main_synergies(target_unit: UnitBase, damage: int) -> int:
-	if team != "player" or not target_unit or not target_unit.is_alive:
-		return damage
-	var effects := _get_active_main_effects()
-	if effects.has("naka") and target_unit.has_burning_status():
-		var naka: Dictionary = effects.get("naka", {})
-		if int(naka.get("tier", 0)) >= 6:
-			damage = maxi(1, int(round(float(damage) * float(naka.get("burning_damage_multiplier", 1.0)))))
-	if effects.has("moon_cult"):
-		var moon: Dictionary = effects.get("moon_cult", {})
-		if int(moon.get("tier", 0)) >= 3:
-			damage = maxi(1, int(round(float(damage) * float(moon.get("forbidden_damage_taken_multiplier", 1.0)))))
-	return damage
-
-
-## 伤害命中后主羁绊效果。
-func _apply_damage_hit_main_synergies(target_unit: UnitBase, damage_dealt: int, _is_skill: bool) -> void:
-	if team != "player" or damage_dealt <= 0 or not target_unit or not target_unit.is_alive:
-		return
-	var effects := _get_active_main_effects()
-	if effects.has("anmarit"):
-		target_unit.apply_anmarit_poison(self, effects.get("anmarit", {}))
-	if effects.has("laferida") and target_unit.is_alive:
-		target_unit.apply_laferida_nature(self, effects.get("laferida", {}))
-	if effects.has("naka") and target_unit.is_alive:
-		var naka: Dictionary = effects.get("naka", {})
-		target_unit.apply_naka_burn(self, naka)
-		if target_unit.is_alive and target_unit.has_burning_status() and int(naka.get("tier", 0)) >= 6:
-			_try_naka_explosion(target_unit, naka)
-	if effects.has("moon_cult") and target_unit.is_alive:
-		target_unit.apply_moon_forbidden_mark(self, effects.get("moon_cult", {}))
-
-
-## 尝试触发纳卡爆炸。
-func _try_naka_explosion(target_unit: UnitBase, effect: Dictionary) -> void:
-	var chance := clampf(float(effect.get("explosion_chance", 0.0)), 0.0, 1.0)
-	if chance <= 0.0 or randf() > chance:
-		return
-	var grid: GridSystem = BattleManager.grid
-	if not grid:
-		return
-	var radius := maxf(0.0, float(effect.get("explosion_radius", 1.0)))
-	var explosion_damage := maxi(1, int(round(float(attack) * float(effect.get("explosion_damage_multiplier", 1.20)))))
-	var targets := grid.get_units_in_range(target_unit.grid_position, radius, _enemy_team())
-	for candidate in targets:
-		if not is_instance_valid(candidate) or not (candidate is UnitBase):
-			continue
-		var combat_unit := candidate as UnitBase
-		if combat_unit.is_alive:
-			combat_unit.take_status_damage(explosion_damage, Color(1.0, 0.28, 0.08, 1.0))
-
-
-## 获取已激活主羁绊效果。
-func _get_active_main_effects() -> Dictionary:
-	if team != "player":
-		return {}
-	if not SynergyManager or not SynergyManager.has_method("get_active_main_effects"):
-		return {}
-	return SynergyManager.get_active_main_effects()
 
 
 ## 计算伤害。

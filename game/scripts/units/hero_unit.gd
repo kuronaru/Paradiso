@@ -2,11 +2,14 @@
 class_name HeroUnit
 extends UnitBase
 
+const SynergyPassiveScript = preload("res://scripts/passives/synergy_passive.gd")
+
 var deploy_cost: int = 10
 var is_selected: bool = false
 var star_level: int = 1
 var deployed_grid_position: Vector2i = Vector2i.ZERO
 var run_card_data: Dictionary = {}
+var synergy_passives: Array = []
 
 @export var hero_color: Color = Color(0.3, 0.6, 1.0)
 
@@ -26,6 +29,8 @@ func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 		if child is ColorRect:
 			child.color = color
 	BattleManager.register_player_unit(self)
+	if SynergyManager and SynergyManager.has_method("get_active_synergy_passive_effects"):
+		sync_synergy_passives(SynergyManager.get_active_synergy_passive_effects())
 
 	# 根据战斗状态决定初始AI行为
 	# PREPARING → 静态部署（角色静止）
@@ -35,6 +40,41 @@ func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 			deactivate_ai()
 		_:
 			activate_ai()
+
+
+## 同步当前已激活羁绊提供给该英雄的被动。
+func sync_synergy_passives(active_synergy_effects: Dictionary) -> void:
+	synergy_passives.clear()
+	if not class_template:
+		_rebuild_passive_list()
+		return
+	var hero_main_tag := str(class_template.class_group)
+	for synergy_id in active_synergy_effects.keys():
+		var effect_data = active_synergy_effects.get(synergy_id, {})
+		if not (effect_data is Dictionary):
+			continue
+		var tag := str(effect_data.get("tag", ""))
+		var is_main := bool(effect_data.get("is_main", false))
+		var mechanics_enabled := is_main and tag != "" and tag == hero_main_tag
+		var modifiers = effect_data.get("modifiers", {})
+		var main_effect = effect_data.get("main_effect", {})
+		if not mechanics_enabled and (not (modifiers is Dictionary) or modifiers.is_empty()):
+			continue
+		var passive = SynergyPassiveScript.new()
+		passive.setup(self, {
+			"tag": tag,
+			"effect": main_effect,
+			"modifiers": modifiers,
+			"mechanics_enabled": mechanics_enabled,
+			"passive_id": "synergy_%s" % synergy_id,
+			"display_name": str(effect_data.get("display_name", synergy_id)),
+		})
+		synergy_passives.append(passive)
+	_rebuild_passive_list()
+
+
+func _get_extra_combat_passives() -> Array:
+	return synergy_passives
 
 
 ## 处理未被界面消费的输入事件。

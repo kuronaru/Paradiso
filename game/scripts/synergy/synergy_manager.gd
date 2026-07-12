@@ -12,6 +12,7 @@ var _summaries: Array[Dictionary] = []
 var _active_modifiers: Dictionary = {}
 var _active_fixed_modifiers: Dictionary = {}
 var _active_main_effects: Dictionary = {}
+var _active_synergy_passive_effects: Dictionary = {}
 var _test_override_enabled: bool = false
 var _test_synergy_specs: Array[Dictionary] = []
 
@@ -42,6 +43,7 @@ func recalculate() -> void:
 	_active_modifiers = _default_modifiers()
 	_active_fixed_modifiers = {}
 	_active_main_effects = {}
+	_active_synergy_passive_effects = {}
 	_summaries.clear()
 
 	for synergy_id in _definition_order:
@@ -56,12 +58,15 @@ func recalculate() -> void:
 		_summaries.append(summary)
 
 		if active_tier > 0:
-			_apply_definition_modifiers(definition, active_tier, layer)
+			var unit_modifiers := _build_definition_unit_modifiers(definition, active_tier, layer)
+			_merge_modifiers_into(_active_modifiers, unit_modifiers)
+			_apply_definition_fixed_modifiers(definition, active_tier)
+			_active_synergy_passive_effects[definition.synergy_id] = _build_synergy_passive_payload(definition, active_tier, layer, unit_modifiers)
 			if definition.type == SynergyDefinition.SynergyType.MAIN_NATION:
 				_active_main_effects[definition.tag] = _build_main_effect_payload(definition, active_tier, layer)
 
 	_summaries.sort_custom(_sort_summaries)
-	_apply_modifiers_to_units()
+	_sync_passives_to_units()
 	_apply_resource_modifiers()
 	synergy_changed.emit(get_synergy_summary())
 
@@ -80,6 +85,10 @@ func get_fixed_modifiers() -> Dictionary:
 
 func get_active_main_effects() -> Dictionary:
 	return _active_main_effects.duplicate(true)
+
+
+func get_active_synergy_passive_effects() -> Dictionary:
+	return _active_synergy_passive_effects.duplicate(true)
 
 
 func get_test_synergy_options() -> Array[Dictionary]:
@@ -290,7 +299,8 @@ func _default_modifiers() -> Dictionary:
 	}
 
 
-func _apply_definition_modifiers(definition: SynergyDefinition, active_tier: int, layer: int) -> void:
+func _build_definition_unit_modifiers(definition: SynergyDefinition, active_tier: int, layer: int) -> Dictionary:
+	var result := {}
 	for modifier in definition.scalable_modifiers:
 		if active_tier < int(modifier.get("min_tier", 0)):
 			continue
@@ -299,14 +309,22 @@ func _apply_definition_modifiers(definition: SynergyDefinition, active_tier: int
 		var per_layer := float(modifier.get("per_layer", 0.0))
 		var max_value := float(modifier.get("max_value", base))
 		var value: float = minf(base + float(layer) * per_layer, max_value)
-		_merge_modifier_value(_active_modifiers, stat, value)
+		_merge_modifier_value(result, stat, value)
+	return result
 
+
+func _apply_definition_fixed_modifiers(definition: SynergyDefinition, active_tier: int) -> void:
 	for modifier in definition.fixed_modifiers:
 		if active_tier < int(modifier.get("min_tier", 0)):
 			continue
 		var stat := str(modifier.get("stat", ""))
 		var value := float(modifier.get("value", 0.0))
 		_merge_fixed_value(stat, value)
+
+
+func _merge_modifiers_into(target: Dictionary, source: Dictionary) -> void:
+	for stat in source.keys():
+		_merge_modifier_value(target, str(stat), float(source[stat]))
 
 
 func _merge_modifier_value(target: Dictionary, stat: String, value: float) -> void:
@@ -350,6 +368,24 @@ func _build_main_effect_payload(definition: SynergyDefinition, active_tier: int,
 	return payload
 
 
+func _build_synergy_passive_payload(definition: SynergyDefinition, active_tier: int, layer: int, unit_modifiers: Dictionary) -> Dictionary:
+	var main_effect := {}
+	var is_main := definition.type == SynergyDefinition.SynergyType.MAIN_NATION
+	if is_main:
+		main_effect = _build_main_effect_payload(definition, active_tier, layer)
+	return {
+		"synergy_id": definition.synergy_id,
+		"display_name": definition.display_name,
+		"type": definition.type,
+		"tag": definition.tag,
+		"tier": active_tier,
+		"layer": layer,
+		"is_main": is_main,
+		"modifiers": unit_modifiers.duplicate(true),
+		"main_effect": main_effect,
+	}
+
+
 func _resolve_main_effect_value(value, active_tier: int, layer: int):
 	if value is Dictionary:
 		var min_tier := int(value.get("min_tier", 0))
@@ -369,10 +405,10 @@ func _linear_cap(base: float, per_layer: float, max_value: float, layer: int) ->
 	return minf(base + float(layer) * per_layer, max_value)
 
 
-func _apply_modifiers_to_units() -> void:
+func _sync_passives_to_units() -> void:
 	for unit in BattleManager.player_units:
-		if is_instance_valid(unit) and unit is UnitBase:
-			(unit as UnitBase).apply_synergy_modifiers(_active_modifiers)
+		if is_instance_valid(unit) and unit is HeroUnit:
+			(unit as HeroUnit).sync_synergy_passives(_active_synergy_passive_effects)
 
 
 func _apply_resource_modifiers() -> void:

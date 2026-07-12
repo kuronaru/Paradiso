@@ -39,6 +39,7 @@ func setup_from_template(template: Dictionary) -> void:
 	attack_range = template.get("attack_range", 1.5)
 	search_range = template.get("search_range", 5.0)
 	set_base_stats_from_current()
+	setup_intrinsic_passives_from_configs(template.get("passives", []))
 
 	# 颜色根据类型
 	match enemy_type:
