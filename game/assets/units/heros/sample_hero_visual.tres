@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="UnitVisualConfig" load_steps=2 format=3 uid="uid://clo5ftadq0ofm"]
+
+[ext_resource type="Script" uid="uid://dlm6n2mqga04l" path="res://scripts/data/unit_visual_config.gd" id="1_config"]
+
+[resource]
+script = ExtResource("1_config")
+sprite_scale = Vector2(0.2, 0.2)

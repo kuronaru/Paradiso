@@ -19,6 +19,7 @@ config/features=PackedStringArray("4.5")
 [autoload]
 
 DataRegistry="*res://scripts/data/data_registry.gd"
+ArtRegistry="*res://scripts/data/art_registry.gd"
 SettingsManager="*res://scripts/core/settings_manager.gd"
 GameManager="*res://scripts/core/game_manager.gd"
 BattleManager="*res://scripts/core/battle_manager.gd"

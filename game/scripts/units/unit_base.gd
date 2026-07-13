@@ -89,9 +89,18 @@ var ai_enabled: bool = true
 @export var show_attack_range_debug_ring: bool = true
 @export var floating_number_rise: float = 28.0
 @export var floating_number_duration: float = 0.65
+@export var visual_id: String = ""
 ## 血条节点
 var hp_bar_bg: ColorRect = null
 var hp_bar_fill: ColorRect = null
+var body_placeholder: ColorRect = null
+var body_sprite: Sprite2D = null
+var animated_body_sprite: AnimatedSprite2D = null
+var visual_node: Node2D = null
+var visual_default_animation: String = "idle"
+var visual_walk_animation: String = "walk"
+var visual_flip_when_moving_left: bool = true
+var last_visual_position: Vector2 = Vector2.ZERO
 var ground_collision_area: Area2D = null
 var ground_collision_shape: CollisionShape2D = null
 var body_debug_ring: Line2D = null
@@ -109,6 +118,7 @@ func _ready() -> void:
 	_setup_collision_debug_ring()
 	_setup_attack_range_debug_ring()
 	_setup_ai()
+	last_visual_position = global_position
 	hp_changed.connect(_update_hp_bar)
 	_update_hp_bar(current_hp, max_hp)
 
@@ -127,6 +137,7 @@ func _process(delta: float) -> void:
 	# 执行AI（仅在启用时）
 	if ai_enabled and ai_controller:
 		ai_controller.execute(delta)
+	_update_visual_animation()
 	_update_body_debug_ring()
 	_update_attack_range_debug_ring()
 
@@ -137,6 +148,7 @@ func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 	class_template = class_data
 	level = clampi(lvl, 1, GameManager.get_max_character_level())
 	unit_name = class_data.job_name
+	visual_id = class_data.visual_id
 	var level_scale := 1.0 + float(level - 1) * 0.05
 	base_max_hp = int(round(class_data.base_hp * level_scale))
 	base_attack = int(round(class_data.base_atk * level_scale))
@@ -162,6 +174,7 @@ func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 	for sid in class_data.skill_ids:
 		skill_cooldowns[sid] = 0.0
 	refresh_ground_collision()
+	_apply_visual_config(visual_id)
 	_rebuild_passive_list()
 
 
@@ -367,12 +380,24 @@ func _setup_visual() -> void:
 	# 颜色在 _update_hp_bar 中根据 team 设置
 	add_child(hp_bar_fill)
 
-	# 单位方块
-	var rect := ColorRect.new()
-	rect.size = Vector2(unit_radius * 2, unit_radius * 2)
-	rect.position = -Vector2(unit_radius, unit_radius)
-	rect.color = color
-	add_child(rect)
+	# Unit placeholder, kept as a fallback when art is missing.
+	body_placeholder = ColorRect.new()
+	body_placeholder.name = "BodyPlaceholder"
+	body_placeholder.size = Vector2(unit_radius * 2, unit_radius * 2)
+	body_placeholder.position = -Vector2(unit_radius, unit_radius)
+	body_placeholder.color = color
+	add_child(body_placeholder)
+
+	body_sprite = Sprite2D.new()
+	body_sprite.name = "BodySprite"
+	body_sprite.z_index = 10
+	add_child(body_sprite)
+
+	animated_body_sprite = AnimatedSprite2D.new()
+	animated_body_sprite.name = "AnimatedBodySprite"
+	animated_body_sprite.z_index = 10
+	add_child(animated_body_sprite)
+	_apply_visual_config(visual_id)
 
 	# 名称标签
 	var label := Label.new()
@@ -381,6 +406,134 @@ func _setup_visual() -> void:
 	label.position = Vector2(-20, unit_radius + 4)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(label)
+
+
+func _apply_visual_config(next_visual_id: String) -> void:
+	if next_visual_id == "":
+		_set_placeholder_visible(true)
+		return
+	var registry := _art_registry()
+	if not registry or not registry.has_method("get_unit_visual_config"):
+		return
+	var config: UnitVisualConfig = registry.get_unit_visual_config(next_visual_id)
+	if not config:
+		_set_placeholder_visible(true)
+		return
+
+	visual_default_animation = config.idle_animation
+	visual_walk_animation = config.walk_animation
+	visual_flip_when_moving_left = config.flip_when_moving_left
+	var has_visual := false
+	if config.texture:
+		_apply_texture_visual(config.texture, config.sprite_offset, config.sprite_scale)
+		has_visual = true
+	if config.sprite_frames:
+		_apply_sprite_frames_visual(config.sprite_frames, config.sprite_offset, config.sprite_scale)
+		has_visual = true
+	if has_visual:
+		_set_placeholder_visible(false)
+		_show_idle_visual()
+		return
+
+	_set_placeholder_visible(true)
+
+
+func _apply_texture_visual(texture: Texture2D, offset: Vector2, scale_value: Vector2) -> void:
+	if not body_sprite:
+		return
+	body_sprite.texture = texture
+	body_sprite.centered = true
+	body_sprite.position = offset
+	body_sprite.scale = scale_value
+	body_sprite.visible = false
+	visual_node = body_sprite
+
+
+func _apply_sprite_frames_visual(frames: SpriteFrames, offset: Vector2, scale_value: Vector2) -> void:
+	if not animated_body_sprite:
+		return
+	animated_body_sprite.sprite_frames = frames
+	animated_body_sprite.position = offset
+	animated_body_sprite.scale = scale_value
+	animated_body_sprite.visible = false
+	visual_node = animated_body_sprite
+
+
+func _update_visual_animation() -> void:
+	var moved := global_position.distance_squared_to(last_visual_position) > 1.0
+	if moved:
+		var delta_pos := global_position - last_visual_position
+		_set_visual_flip(delta_pos.x < 0.0)
+	var should_walk := is_moving() or moved
+	if should_walk and _play_animated_visual(visual_walk_animation):
+		last_visual_position = global_position
+		return
+	if should_walk and _play_animated_visual(visual_default_animation):
+		last_visual_position = global_position
+		return
+	_show_idle_visual()
+	last_visual_position = global_position
+
+
+func _play_animated_visual(animation_name: String) -> bool:
+	if not animated_body_sprite or not animated_body_sprite.sprite_frames:
+		return false
+	if animation_name == "" or not animated_body_sprite.sprite_frames.has_animation(animation_name):
+		return false
+	if body_sprite:
+		body_sprite.visible = false
+	animated_body_sprite.visible = true
+	visual_node = animated_body_sprite
+	if animated_body_sprite.animation != animation_name or not animated_body_sprite.is_playing():
+		animated_body_sprite.play(animation_name)
+	return true
+
+
+func _show_idle_visual() -> void:
+	if animated_body_sprite and animated_body_sprite.sprite_frames and animated_body_sprite.sprite_frames.has_animation(visual_default_animation):
+		_play_animated_visual(visual_default_animation)
+		return
+	if body_sprite and body_sprite.texture:
+		body_sprite.visible = true
+		visual_node = body_sprite
+		if animated_body_sprite:
+			animated_body_sprite.visible = false
+			animated_body_sprite.stop()
+		return
+	if animated_body_sprite and animated_body_sprite.sprite_frames:
+		animated_body_sprite.visible = true
+		animated_body_sprite.stop()
+		animated_body_sprite.frame = 0
+		visual_node = animated_body_sprite
+		return
+	_set_placeholder_visible(true)
+
+
+func _set_visual_flip(flip_left: bool) -> void:
+	if not visual_flip_when_moving_left:
+		return
+	if body_sprite:
+		body_sprite.flip_h = flip_left
+	if animated_body_sprite:
+		animated_body_sprite.flip_h = flip_left
+
+
+func _set_placeholder_visible(visible_value: bool) -> void:
+	if body_placeholder:
+		body_placeholder.visible = visible_value
+	if body_sprite and visible_value:
+		body_sprite.visible = false
+	if animated_body_sprite and visible_value:
+		animated_body_sprite.visible = false
+	if visible_value:
+		visual_node = null
+
+
+func _art_registry() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	if not tree or not tree.root:
+		return null
+	return tree.root.get_node_or_null("ArtRegistry")
 
 
 ## 初始化AI。

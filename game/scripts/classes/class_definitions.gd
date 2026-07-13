@@ -57,6 +57,7 @@ static func get_template(class_id: String) -> ClassTemplate:
 	template.job_name = str(data.get("job_name", data.get("name", canonical_id)))
 	template.class_group = str(data.get("class_group", "naka"))
 	template.subclass_id = str(data.get("subclass_id", "champion"))
+	template.visual_id = str(data.get("visual_id", "sample_visual"))
 	template.stat_tags = _string_array(data.get("stat_tags", []))
 	template.alignment_tags = _string_array(data.get("alignment_tags", []))
 	template.deploy_cost = int(data.get("deploy_cost", 10))

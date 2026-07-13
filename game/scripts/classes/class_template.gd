@@ -14,6 +14,7 @@ extends Resource
 
 ## 职业小分支
 @export var subclass_id: String = ""
+@export var visual_id: String = ""
 
 ## 六维小羁绊标签
 @export var stat_tags: Array[String] = []
