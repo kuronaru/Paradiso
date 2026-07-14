@@ -90,6 +90,13 @@ var ai_enabled: bool = true
 @export var floating_number_rise: float = 28.0
 @export var floating_number_duration: float = 0.65
 @export var visual_id: String = ""
+@export var projectile_visual_scene: PackedScene = null
+@export var projectile_texture: Texture2D = null
+@export var projectile_speed: float = 640.0
+@export var projectile_visual_color: Color = Color(1.0, 0.0, 0.0, 1.0)
+@export var projectile_visual_radius: float = 6.0
+@export var projectile_launch_offset: Vector2 = Vector2.ZERO
+@export var projectile_hit_offset: Vector2 = Vector2.ZERO
 ## 血条节点
 var hp_bar_bg: ColorRect = null
 var hp_bar_fill: ColorRect = null
@@ -1419,12 +1426,66 @@ func perform_attack() -> void:
 	var interval := 999.0 if attack_speed <= 0 else 1.0 / attack_speed
 	attack_cooldown = interval
 
+	var target_snapshot := target
+	var attack_snapshot := float(attack)
 	if class_template and class_template.attack_mode == ClassTemplate.AttackMode.HEAL:
-		if target.has_method("heal"):
-			target.heal(_calculate_heal(attack))
+		if target_snapshot.has_method("heal"):
+			_launch_basic_attack_projectile(target_snapshot, true, attack_snapshot)
 	else:
-		if target.has_method("take_damage"):
-			_deal_damage_to_target(target, attack, false)
+		if target_snapshot.has_method("take_damage"):
+			_launch_basic_attack_projectile(target_snapshot, false, attack_snapshot)
+
+
+## 发射一次普通攻击投射物，命中后再结算伤害或治疗。
+func _launch_basic_attack_projectile(target_unit: Node, is_heal_projectile: bool, base_amount: float) -> void:
+	if not target_unit or not is_instance_valid(target_unit):
+		return
+	var projectile_script = load("res://scripts/combat/projectile.gd")
+	if not projectile_script:
+		_resolve_basic_attack_projectile_hit(target_unit, is_heal_projectile, base_amount)
+		return
+
+	var projectile = projectile_script.new()
+	if not projectile:
+		_resolve_basic_attack_projectile_hit(target_unit, is_heal_projectile, base_amount)
+		return
+
+	var parent := _get_projectile_parent()
+	parent.add_child(projectile)
+	projectile.setup({
+		"source": self,
+		"target": target_unit,
+		"on_hit": Callable(self, "_resolve_basic_attack_projectile_hit").bind(target_unit, is_heal_projectile, base_amount),
+		"speed": projectile_speed,
+		"start_position": global_position + projectile_launch_offset,
+		"target_offset": projectile_hit_offset,
+		"visual_scene": projectile_visual_scene,
+		"visual_texture": projectile_texture,
+		"visual_color": projectile_visual_color,
+		"visual_radius": projectile_visual_radius,
+	})
+
+
+## 处理普通攻击投射物命中。
+func _resolve_basic_attack_projectile_hit(target_unit: Node, is_heal_projectile: bool, base_amount: float) -> void:
+	if not target_unit or not is_instance_valid(target_unit):
+		return
+	if target_unit is UnitBase and not (target_unit as UnitBase).is_alive:
+		return
+	if is_heal_projectile:
+		if target_unit.has_method("heal"):
+			target_unit.heal(_calculate_heal(base_amount))
+	elif target_unit.has_method("take_damage"):
+		_deal_damage_to_target(target_unit, base_amount, false)
+
+
+## 投射物挂在战斗场景节点下，避免跟随发射者移动或被发射者缩放影响。
+func _get_projectile_parent() -> Node:
+	if BattleManager.grid:
+		return BattleManager.grid
+	if get_parent():
+		return get_parent()
+	return get_tree().root
 
 
 ## 对目标造成一次攻击/技能伤害并触发主羁绊命中效果。
