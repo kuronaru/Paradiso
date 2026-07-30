@@ -10,12 +10,15 @@ const SAVE_VERSION := 1
 const SAVE_DIR_PATH := "res://userdata"
 const SAVE_SLOT_IDS: Array[String] = ["save1", "save2", "save3"]
 const LAST_SAVE_FILE_PATH := "res://userdata/last_save"
-const ROGUELIKE_STARTING_GOLD := 6
+const ROGUELIKE_STARTING_GOLD := 0
 const ROGUELIKE_MAX_HAND_CARDS := 10
 const ROGUELIKE_MAX_DEPLOYED_UNITS := 8
 const ROGUELIKE_MAX_ROUNDS := 15
 const ROGUELIKE_MAX_CARD_STAR := 3
 const ROGUELIKE_DEFAULT_RELIC_ID := "merchant_ledger"
+const ROGUELIKE_PLAYER_MAX_LIFE := 20
+const TAVERN_BASE_INCOME := 4
+const TAVERN_INCOME_PER_ROUND := 1
 
 const ROGUELIKE_RELIC_DEFINITIONS := [
 	{
@@ -68,6 +71,8 @@ const ROGUELIKE_RELIC_DEFINITIONS := [
 signal gold_changed(gold: int)
 signal run_gold_changed(gold: int)
 signal run_round_changed(round: int, max_rounds: int)
+signal run_life_changed(current: int, maximum: int)
+signal run_player_eliminated
 signal owned_characters_changed(characters: Array)
 signal party_changed(party: Array)
 signal save_slot_changed(save_id: String)
@@ -87,10 +92,13 @@ var party: Array = []               # 本次冒险队伍 [{class_id, star_level,
 var owned_characters: Array = []    # 存档持有角色 [{class_id, level}]
 var gold: int = 0                   # 存档金币
 var run_gold: int = 0                # 单局肉鸽金币
+var run_life: int = ROGUELIKE_PLAYER_MAX_LIFE
+var run_max_life: int = ROGUELIKE_PLAYER_MAX_LIFE
 var current_floor: int = 1          # 当前层数
 var current_run_round: int = 1       # 当前肉鸽回合
 var max_run_rounds: int = ROGUELIKE_MAX_ROUNDS
 var is_roguelike_run: bool = false  # 是否在肉鸽流程中
+var last_tavern_income_round: int = 0
 var current_save_id: String = "save1"
 var has_active_save: bool = false
 
@@ -128,6 +136,9 @@ func start_roguelike_run(relic_id: String = "") -> void:
 	current_run_round = 1
 	max_run_rounds = _cfg_int("roguelike_max_rounds", ROGUELIKE_MAX_ROUNDS)
 	run_gold = _cfg_int("roguelike_starting_gold", ROGUELIKE_STARTING_GOLD) + get_roguelike_relic_modifier("starting_gold_bonus")
+	run_max_life = maxi(1, _cfg_int("roguelike_player_max_life", ROGUELIKE_PLAYER_MAX_LIFE))
+	run_life = run_max_life
+	last_tavern_income_round = 0
 	_next_run_card_instance_id = 1
 	run_history.clear()
 	blessings.clear()
@@ -135,6 +146,7 @@ func start_roguelike_run(relic_id: String = "") -> void:
 	party_changed.emit(party)
 	run_gold_changed.emit(run_gold)
 	run_round_changed.emit(current_run_round, max_run_rounds)
+	run_life_changed.emit(run_life, run_max_life)
 	run_relic_changed.emit(get_active_roguelike_relic())
 	_enter_recruit_phase()
 
@@ -236,6 +248,61 @@ func advance_roguelike_round() -> void:
 	current_run_round += 1
 	current_floor = current_run_round
 	run_round_changed.emit(current_run_round, max_run_rounds)
+
+
+## 计算指定回合进入酒馆时获得的固定收入。
+func get_tavern_round_income(round_number: int = current_run_round) -> int:
+	var round_index := maxi(1, round_number)
+	return maxi(0,
+		_cfg_int("tavern_base_income", TAVERN_BASE_INCOME)
+		+ (round_index - 1) * _cfg_int("tavern_income_per_round", TAVERN_INCOME_PER_ROUND)
+	)
+
+
+## 幂等发放当前回合酒馆固定收入。
+func grant_current_round_tavern_income() -> int:
+	if not is_roguelike_run or last_tavern_income_round == current_run_round:
+		return 0
+	var income := get_tavern_round_income(current_run_round)
+	last_tavern_income_round = current_run_round
+	earn_run_gold(income)
+	return income
+
+
+## 重置单局玩家生命。
+func reset_run_life(maximum: int = -1) -> void:
+	run_max_life = maxi(1, maximum if maximum > 0 else _cfg_int("roguelike_player_max_life", ROGUELIKE_PLAYER_MAX_LIFE))
+	run_life = run_max_life
+	run_life_changed.emit(run_life, run_max_life)
+
+
+## 扣除单局玩家生命，返回实际扣除值。
+func damage_run_life(amount: int) -> int:
+	if amount <= 0 or run_life <= 0:
+		return 0
+	var previous := run_life
+	run_life = maxi(0, run_life - amount)
+	var actual := previous - run_life
+	run_life_changed.emit(run_life, run_max_life)
+	if previous > 0 and run_life == 0:
+		run_player_eliminated.emit()
+	return actual
+
+
+## 恢复单局玩家生命，返回实际恢复值。
+func heal_run_life(amount: int) -> int:
+	if amount <= 0 or run_life <= 0:
+		return 0
+	var previous := run_life
+	run_life = mini(run_max_life, run_life + amount)
+	var actual := run_life - previous
+	if actual > 0:
+		run_life_changed.emit(run_life, run_max_life)
+	return actual
+
+
+func is_run_player_alive() -> bool:
+	return run_life > 0
 
 
 ## 检查当前单局手牌区是否还能加入角色。

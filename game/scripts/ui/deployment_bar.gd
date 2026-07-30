@@ -7,13 +7,14 @@ const M = "DeployBar"
 const SHOP_PANEL_HEIGHT := 136.0
 const SHOP_BOTTOM_MARGIN := 8.0
 const HAND_GAP_ABOVE_SHOP := 8.0
+const HAND_FRAME_HORIZONTAL_MARGIN := 48.0
 const LAYOUT_TWEEN_TIME := 0.22
 
 signal card_clicked(card_index: int, class_id: String)
 
 @export var card_size: Vector2 = Vector2(78, 88)
 @export var spacing: float = 8.0
-@export var bar_height: float = 100.0
+@export var bar_height: float = 116.0
 @export var selected_raise_ratio: float = 0.25
 @export var drag_hold_time: float = 0.18
 @export var drag_distance_threshold: float = 16.0
@@ -24,6 +25,7 @@ var card_shades: Array = []          # DP不足时覆盖在卡牌上方的暗色
 var card_labels: Array = []          # 卡牌文字节点，用于刷新DP进度
 var card_slots: Array = []           # HBox中的卡牌槽位
 var deployment_system: DeploymentSystem = null
+var hand_frame: Panel = null
 var hand_center: CenterContainer = null
 var hand_row: HBoxContainer = null
 
@@ -78,6 +80,8 @@ func _setup_layout() -> void:
 	position = Vector2(0.0, _prepare_y())
 	z_index = 80
 
+	_build_hand_frame()
+
 	hand_center = CenterContainer.new()
 	hand_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_fill_parent(hand_center)
@@ -87,6 +91,38 @@ func _setup_layout() -> void:
 	hand_row.add_theme_constant_override("separation", int(spacing))
 	hand_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hand_center.add_child(hand_row)
+
+
+## 为备战手牌区绘制临时外框，明确它与战场的视觉边界。
+func _build_hand_frame() -> void:
+	hand_frame = Panel.new()
+	hand_frame.name = "PreparationAreaFrame"
+	hand_frame.anchor_left = 0.0
+	hand_frame.anchor_top = 0.0
+	hand_frame.anchor_right = 1.0
+	hand_frame.anchor_bottom = 1.0
+	hand_frame.offset_left = HAND_FRAME_HORIZONTAL_MARGIN
+	hand_frame.offset_top = 0.0
+	hand_frame.offset_right = -HAND_FRAME_HORIZONTAL_MARGIN
+	hand_frame.offset_bottom = 0.0
+	hand_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var frame_style := StyleBoxFlat.new()
+	frame_style.bg_color = Color(0.025, 0.035, 0.055, 0.68)
+	frame_style.border_color = Color(0.32, 0.55, 0.86, 0.92)
+	frame_style.set_border_width_all(2)
+	frame_style.set_corner_radius_all(10)
+	hand_frame.add_theme_stylebox_override("panel", frame_style)
+	add_child(hand_frame)
+
+	var title := Label.new()
+	title.name = "PreparationAreaTitle"
+	title.text = "备战区"
+	title.position = Vector2(14.0, 4.0)
+	title.add_theme_font_size_override("font_size", 14)
+	title.add_theme_color_override("font_color", Color(0.68, 0.83, 1.0, 1.0))
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hand_frame.add_child(title)
 
 
 ## 重建卡牌按钮

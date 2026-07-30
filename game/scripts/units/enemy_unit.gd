@@ -13,6 +13,12 @@ enum EnemyType {
 var enemy_type: EnemyType = EnemyType.MELEE
 var enemy_id: String = ""
 var enemy_template_name: String = ""
+var enemy_uid: String = ""
+var source_player_id: int = 1
+var base_damage: int = 1
+var transfer_count: int = 0
+var spawn_template: Dictionary = {}
+var _resolved: bool = false
 
 
 ## 初始化节点状态并连接必要依赖。
@@ -24,13 +30,19 @@ func _ready() -> void:
 ## 从敌人模板字典初始化
 func setup_from_template(template: Dictionary) -> void:
 	"""从敌人模板字典初始化"""
+	spawn_template = template.duplicate(true)
 	enemy_id = str(template.get("enemy_id", ""))
 	enemy_template_name = template.get("name", "Unknown")
 	enemy_type = _enemy_type_from_value(template.get("type", template.get("enemy_type", EnemyType.MELEE)))
+	enemy_uid = str(template.get("enemy_uid", ""))
+	source_player_id = int(template.get("source_player_id", 1))
+	base_damage = maxi(1, int(template.get("base_damage", _cfg_int("enemy_base_damage", 1))))
+	transfer_count = maxi(0, int(template.get("transfer_count", 0)))
+	_resolved = false
 	unit_name = enemy_template_name
 
-	max_hp = template.get("hp", 80)
-	current_hp = max_hp
+	max_hp = int(template.get("max_hp", template.get("hp", 80)))
+	current_hp = clampi(int(template.get("current_hp", max_hp)), 1, max_hp)
 	attack = template.get("atk", 10)
 	defense = template.get("def", 3)
 	attack_speed = template.get("attack_speed", 1.0)
@@ -65,6 +77,38 @@ func setup_from_template(template: Dictionary) -> void:
 
 	BattleManager.register_enemy_unit(self)
 	hp_changed.emit(current_hp, max_hp)
+
+
+## 构建可通过 RPC 传输的敌人快照。
+func to_transfer_payload() -> Dictionary:
+	var payload := spawn_template.duplicate(true)
+	payload["enemy_uid"] = enemy_uid
+	payload["enemy_id"] = enemy_id
+	payload["name"] = enemy_template_name
+	payload["type"] = int(enemy_type)
+	payload["hp"] = max_hp
+	payload["max_hp"] = max_hp
+	payload["current_hp"] = current_hp
+	payload["atk"] = attack
+	payload["def"] = defense
+	payload["attack_speed"] = attack_speed
+	payload["move_speed"] = move_speed
+	payload["attack_range"] = attack_range
+	payload["search_range"] = search_range
+	payload["source_player_id"] = source_player_id
+	payload["base_damage"] = base_damage
+	payload["transfer_count"] = transfer_count
+	return payload
+
+
+func mark_resolved() -> void:
+	_resolved = true
+	is_alive = false
+	deactivate_ai()
+
+
+func is_resolved() -> bool:
+	return _resolved
 
 
 ## 获取敌人池。
@@ -109,3 +153,10 @@ static func _registry() -> Node:
 	if not tree or not tree.root:
 		return null
 	return tree.root.get_node_or_null("DataRegistry")
+
+
+func _cfg_int(key: String, default_value: int) -> int:
+	var registry := _registry()
+	if registry and registry.has_method("get_config"):
+		return int(registry.get_config(key, default_value))
+	return default_value

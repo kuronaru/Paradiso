@@ -42,6 +42,11 @@ const OPTION_SLOTS_BY_LEVEL := {
 	5: 5,
 	6: 5,
 }
+const RECRUIT_COST_BY_TIER := {
+	1: 2,
+	2: 3,
+	3: 4,
+}
 
 var tavern_level: int = 1
 var upgrade_discount: int = 0
@@ -155,19 +160,11 @@ func set_frozen(frozen: bool) -> void:
 
 
 ## 计算招募花费
-func _calculate_cost(class_id: String, level: int) -> int:
+func _calculate_cost(_class_id: String, level: int) -> int:
 	"""计算招募花费"""
-	var data: Dictionary = ClassDefinitions.get_tavern_data(class_id)
-	var base_cost := int(data.get("base_cost", 2))
-	var star := clampi(level, 1, 3)
-	if star == 1:
-		return base_cost
-	var bonuses := _cfg_dict("tavern_star_cost_bonus")
-	var minimums := _cfg_dict("tavern_star_min_cost")
-	return max(
-		int(minimums.get(str(star), 4 if star == 2 else 6)),
-		base_cost + int(bonuses.get(str(star), 2 if star == 2 else 4))
-	)
+	var tier := clampi(level, 1, 3)
+	var configured_costs := _cfg_dict("tavern_recruit_cost_by_tier")
+	return int(configured_costs.get(str(tier), RECRUIT_COST_BY_TIER[tier]))
 
 
 ## 构建可用选项池。

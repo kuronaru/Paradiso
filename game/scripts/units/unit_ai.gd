@@ -34,7 +34,7 @@ func reset_ai_state() -> void:
 
 ## 处理force攻击目标逻辑。
 func force_attack_target(target_unit: Node) -> void:
-	if not owner_unit or not target_unit or not is_instance_valid(target_unit):
+	if not owner_unit or not _is_valid_living_target(target_unit):
 		return
 	owner_unit.target = target_unit
 	path.clear()
@@ -163,7 +163,7 @@ func _on_waiting(delta: float) -> void:
 
 ## 处理 AI 攻击状态。
 func _on_attacking(_delta: float) -> void:
-	if not owner_unit.target or not is_instance_valid(owner_unit.target):
+	if not _is_valid_living_target(owner_unit.target):
 		owner_unit.target = null
 		state = "idle"
 		return
@@ -253,13 +253,19 @@ func _distance_to(target: Node) -> float:
 
 ## 判断攻击范围状态。
 func _is_in_attack_range(target: Node) -> bool:
-	if not target or not is_instance_valid(target):
+	if not _is_valid_living_target(target):
 		return false
 	if owner_unit is UnitBase and target is UnitBase:
 		var target_unit := target as UnitBase
 		if _requires_contact_attack():
 			return owner_unit.is_touching_unit(target_unit)
 	return _distance_to(target) <= owner_unit.attack_range
+
+
+func _is_valid_living_target(target: Node) -> bool:
+	if not target or not is_instance_valid(target):
+		return false
+	return not (target is UnitBase) or (target as UnitBase).is_alive
 
 
 ## 获取攻击入口目标。
@@ -387,6 +393,8 @@ func _move_enemy_toward(target: Node, delta: float) -> void:
 	var travel := minf(speed_px * delta, maxf(0.0, distance - attack_distance))
 	if travel > 0.0:
 		owner_unit.global_position += dir.normalized() * travel
+	if _try_resolve_enemy_base_entry():
+		return
 	if _is_in_attack_range(target_unit):
 		state = "attacking"
 	else:
@@ -396,9 +404,29 @@ func _move_enemy_toward(target: Node, delta: float) -> void:
 
 ## 处理移动敌人forward逻辑。
 func _move_enemy_forward(delta: float) -> void:
-	var direction := Vector2(-1.0, 0.0)
-	owner_unit.global_position += direction * owner_unit.move_speed * _cell_size() * delta
+	var grid: GridSystem = BattleManager.grid
+	if not grid:
+		return
+	var target_world := grid.get_nearest_player_base_world(owner_unit.get_ground_position()) \
+		if grid.has_method("get_nearest_player_base_world") else owner_unit.get_ground_position() + Vector2(-_cell_size(), 0.0)
+	var direction := target_world - owner_unit.get_ground_position()
+	var travel := owner_unit.move_speed * _cell_size() * delta
+	if direction.length_squared() > 0.01:
+		owner_unit.global_position += direction.normalized() * minf(travel, direction.length())
 	_update_continuous_grid_position()
+	_try_resolve_enemy_base_entry()
+
+
+## 敌人进入我方据点后交给 BattleManager 做一次性漏怪结算。
+func _try_resolve_enemy_base_entry() -> bool:
+	if not (owner_unit is EnemyUnit):
+		return false
+	var grid: GridSystem = BattleManager.grid
+	if not grid or not grid.has_method("is_enemy_in_player_base"):
+		return false
+	if not grid.is_enemy_in_player_base(owner_unit):
+		return false
+	return BattleManager.handle_enemy_reached_player_base(owner_unit as EnemyUnit)
 
 
 ## 处理移动过程中的玩家碰撞。

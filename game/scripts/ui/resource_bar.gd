@@ -10,6 +10,7 @@ const M = "ResourceBar"
 var dp_label: Label
 var dp_bar: ProgressBar
 var gold_label: Label
+var life_label: Label
 var wave_label: Label
 var wave_start_btn: Button
 var info_panel: PanelContainer
@@ -23,7 +24,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	info_panel = PanelContainer.new()
-	info_panel.custom_minimum_size = Vector2(300, 96)
+	info_panel.custom_minimum_size = Vector2(300, 116)
 	info_panel.anchor_left = 0.0
 	info_panel.anchor_top = 0.0
 	info_panel.anchor_right = 0.0
@@ -31,7 +32,7 @@ func _ready() -> void:
 	info_panel.offset_left = 10.0
 	info_panel.offset_top = 10.0
 	info_panel.offset_right = 310.0
-	info_panel.offset_bottom = 106.0
+	info_panel.offset_bottom = 126.0
 	info_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var info_style := StyleBoxFlat.new()
 	info_style.bg_color = Color(0.035, 0.04, 0.055, 0.82)
@@ -71,6 +72,13 @@ func _ready() -> void:
 	gold_label.add_theme_font_size_override("font_size", 12)
 	gold_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2))
 	info_stack.add_child(gold_label)
+
+	# 单局玩家生命
+	life_label = Label.new()
+	life_label.name = "LifeLabel"
+	life_label.add_theme_font_size_override("font_size", 12)
+	life_label.add_theme_color_override("font_color", Color(1.0, 0.42, 0.42))
+	info_stack.add_child(life_label)
 
 	# 波次
 	wave_label = Label.new()
@@ -112,6 +120,9 @@ func _process(_delta: float) -> void:
 	# 更新金币和波次
 	if gold_label:
 		gold_label.text = "金币: %d" % GameManager.get_active_gold()
+	if life_label:
+		life_label.visible = GameManager.is_roguelike_run
+		life_label.text = "生命: %d / %d" % [GameManager.run_life, GameManager.run_max_life]
 
 	if wave_label:
 		var state_text := ""

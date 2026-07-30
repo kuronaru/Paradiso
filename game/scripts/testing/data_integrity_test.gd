@@ -35,6 +35,13 @@ func _test_config(registry: Node) -> void:
 		"max_deployment_points",
 		"initial_deployment_points",
 		"roguelike_max_rounds",
+		"roguelike_player_max_life",
+		"battle_grid_width",
+		"battle_grid_height",
+		"tavern_base_income",
+		"tavern_income_per_round",
+		"enemy_base_damage",
+		"hero_revive_delay",
 		"synergy_layer_per_star",
 		"synergy_max_layer",
 	]
@@ -42,6 +49,15 @@ func _test_config(registry: Node) -> void:
 		t.assert_true(registry.get_config(key, null) != null, "config has %s" % key)
 	t.assert_true(int(registry.get_config("max_character_level", 0)) > 0, "max_character_level is positive")
 	t.assert_true(int(registry.get_config("max_deployment_points", 0)) > 0, "max_deployment_points is positive")
+	t.assert_true(int(registry.get_config("roguelike_player_max_life", 0)) > 0, "roguelike_player_max_life is positive")
+	t.assert_eq(int(registry.get_config("battle_grid_width", 0)), 9, "battle grid width is 9")
+	t.assert_eq(int(registry.get_config("battle_grid_height", 0)), 4, "battle grid height is 4")
+	t.assert_eq(int(registry.get_config("tavern_base_income", 0)), 4, "tavern base income starts at 4")
+	t.assert_eq(int(registry.get_config("tavern_income_per_round", 0)), 1, "tavern income grows by 1 per round")
+	var recruit_costs: Dictionary = registry.get_config_section("tavern_recruit_cost_by_tier")
+	t.assert_eq(int(recruit_costs.get("1", 0)), 2, "low-tier recruit price is 2")
+	t.assert_eq(int(recruit_costs.get("2", 0)), 3, "mid-tier recruit price is 3")
+	t.assert_eq(int(recruit_costs.get("3", 0)), 4, "high-tier recruit price is 4")
 	t.assert_true(registry.get_config_section("synergy_default_modifiers").has("attack_multiplier"), "default synergy modifiers include attack_multiplier")
 
 

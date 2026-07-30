@@ -4,12 +4,18 @@ extends UnitBase
 
 const SynergyPassiveScript = preload("res://scripts/passives/synergy_passive.gd")
 
+signal soul_state_changed(in_soul_state: bool, remaining: float)
+
 var deploy_cost: int = 10
 var is_selected: bool = false
 var star_level: int = 1
 var deployed_grid_position: Vector2i = Vector2i.ZERO
 var run_card_data: Dictionary = {}
 var synergy_passives: Array = []
+var is_in_soul_state: bool = false
+var soul_time_remaining: float = 0.0
+var soul_origin_grid_position: Vector2i = Vector2i.ZERO
+var soul_label: Label = null
 
 @export var hero_color: Color = Color(0.3, 0.6, 1.0)
 
@@ -18,6 +24,14 @@ var synergy_passives: Array = []
 func _ready() -> void:
 	team = "player"
 	super._ready()
+
+
+## 灵魂状态仍需逐帧更新复活倒计时。
+func _process(delta: float) -> void:
+	if is_in_soul_state:
+		_update_soul_state(delta)
+		return
+	super._process(delta)
 
 
 ## 初始化单位或组件数据。
@@ -117,9 +131,13 @@ func mark_deployed(card_data: Dictionary, grid_pos: Vector2i) -> void:
 
 ## 准备单位进入下一回合。
 func prepare_for_next_round() -> void:
+	is_in_soul_state = false
+	soul_time_remaining = 0.0
 	is_alive = true
 	visible = true
 	modulate = Color.WHITE
+	_set_ground_collision_enabled(true)
+	_set_soul_label_visible(false)
 	target = null
 	attack_cooldown = 0.0
 	clear_combat_statuses()
@@ -130,24 +148,31 @@ func prepare_for_next_round() -> void:
 		ai_controller.reset_ai_state()
 
 
-## 战斗中被击倒：保留部署身份，等待准备阶段恢复。
+## 战斗中被击倒：进入灵魂状态并在战斗内等待复活。
 func _die() -> void:
 	if not is_alive:
 		return
 
 	is_alive = false
+	is_in_soul_state = true
 	target = null
 	current_hp = 0
 	hp_changed.emit(current_hp, max_hp)
 	deactivate_ai()
 	if ai_controller and ai_controller.has_method("reset_ai_state"):
 		ai_controller.reset_ai_state()
+	var grid: GridSystem = BattleManager.grid
+	soul_origin_grid_position = grid.world_to_grid(get_ground_position()) if grid else grid_position
+	grid_position = soul_origin_grid_position
 	_clear_grid_presence()
-	visible = false
-	modulate = Color(1.0, 1.0, 1.0, 0.35)
+	soul_time_remaining = maxf(0.1, _cfg_float("hero_revive_delay", 5.0))
+	visible = true
+	modulate = Color(0.55, 0.78, 1.0, 0.42)
+	_set_ground_collision_enabled(false)
+	_update_soul_label()
 	died.emit(self)
 	BattleManager.unit_died.emit(self)
-	BattleManager.check_battle_end()
+	soul_state_changed.emit(true, soul_time_remaining)
 
 
 ## 清理击倒英雄的战场占位。
@@ -159,6 +184,80 @@ func _clear_grid_presence() -> void:
 		if grid.occupancy[occupied_pos] == self:
 			grid.free_cell(occupied_pos)
 	grid.release_move_reservation(self)
+
+
+## 推进灵魂倒计时；据点都被占时保持灵魂并短间隔重试。
+func _update_soul_state(delta: float) -> void:
+	if BattleManager.state != BattleManager.BattleState.IN_PROGRESS:
+		return
+	soul_time_remaining = maxf(0.0, soul_time_remaining - delta)
+	_update_soul_label()
+	soul_state_changed.emit(true, soul_time_remaining)
+	if soul_time_remaining > 0.0:
+		return
+	if not _try_revive():
+		soul_time_remaining = 0.25
+
+
+## 原地优先，否则从最近的可用我方据点复活。
+func _try_revive() -> bool:
+	var grid: GridSystem = BattleManager.grid
+	if not grid:
+		return false
+	var revive_pos := grid.find_revive_cell(soul_origin_grid_position, self) \
+		if grid.has_method("find_revive_cell") else grid.find_nearest_open_player_cell(global_position, soul_origin_grid_position, self)
+	if revive_pos.x < 0 or revive_pos.y < 0:
+		return false
+
+	grid.occupy_cell(revive_pos, self)
+	grid_position = revive_pos
+	global_position = grid.grid_to_world(revive_pos)
+	finish_grid_move(revive_pos)
+	is_in_soul_state = false
+	is_alive = true
+	visible = true
+	modulate = Color.WHITE
+	target = null
+	attack_cooldown = 0.0
+	clear_combat_statuses()
+	current_hp = max_hp
+	hp_changed.emit(current_hp, max_hp)
+	_set_ground_collision_enabled(true)
+	_set_soul_label_visible(false)
+	if ai_controller and ai_controller.has_method("reset_ai_state"):
+		ai_controller.reset_ai_state()
+	activate_ai()
+	soul_state_changed.emit(false, 0.0)
+	Log.i(M, "[%s] 从灵魂状态复活于 (%d, %d)" % [unit_name, revive_pos.x, revive_pos.y])
+	return true
+
+
+func _update_soul_label() -> void:
+	if not soul_label:
+		soul_label = Label.new()
+		soul_label.name = "SoulCountdown"
+		soul_label.position = Vector2(-42.0, -unit_radius - 42.0)
+		soul_label.size = Vector2(84.0, 28.0)
+		soul_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		soul_label.add_theme_font_size_override("font_size", 14)
+		soul_label.add_theme_color_override("font_color", Color(0.62, 0.86, 1.0))
+		soul_label.add_theme_color_override("font_outline_color", Color(0.02, 0.05, 0.12, 0.95))
+		soul_label.add_theme_constant_override("outline_size", 3)
+		soul_label.z_index = 110
+		add_child(soul_label)
+	soul_label.visible = true
+	soul_label.text = "灵魂 %.1fs" % soul_time_remaining
+
+
+func _set_soul_label_visible(next_visible: bool) -> void:
+	if soul_label:
+		soul_label.visible = next_visible
+
+
+func _set_ground_collision_enabled(enabled: bool) -> void:
+	if ground_collision_area:
+		ground_collision_area.monitoring = enabled
+		ground_collision_area.monitorable = enabled
 
 
 ## 撤回已部署英雄。

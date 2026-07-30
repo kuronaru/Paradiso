@@ -4,8 +4,8 @@ class_name GridSystem
 extends Node2D
 
 const M = "Grid"
-const PREP_GRID_RECT := Rect2(64, 32, 1152, 560)
-const BATTLE_GRID_RECT := Rect2(64, 32, 1152, 560)
+const PREP_GRID_RECT := Rect2(64, 32, 1152, 400)
+const BATTLE_GRID_RECT := Rect2(64, 32, 1152, 512)
 const LAYOUT_TWEEN_TIME := 0.22
 const INVALID_GRID_POS := Vector2i(-9999, -9999)
 const PATH_DIRS_8 := [
@@ -19,21 +19,34 @@ const PATH_DIRS_8 := [
 	Vector2i(-1, -1),
 ]
 
+enum TerrainType {
+	NORMAL,
+	BLOCKED,
+	PLAYER_BASE,
+	ENEMY_BASE,
+}
+
 signal cell_clicked(grid_pos: Vector2i)
 signal unit_clicked(unit: Node)
 signal unit_placed(unit: Node, grid_pos: Vector2i)
 
 ## 网格配置
-@export var grid_width: int = 19         # 格子列数
-@export var grid_height: int = 10        # 格子行数
+@export var grid_width: int = 9          # 格子列数
+@export var grid_height: int = 4         # 格子行数
 @export var cell_size: float = 64.0      # 格子像素大小
 @export var grid_offset: Vector2 = Vector2(32, 32)  # 网格起始偏移
 
-## 部署区域（玩家可部署的行范围）
-@export var deploy_rows: Vector2i = Vector2i(1, 6)
+## 旧版部署行范围，仅保留给外部旧代码读取；部署与寻路不再依赖它
+@export var deploy_rows: Vector2i = Vector2i(0, 3)
 
-## 敌方出生点
+## 地形配置
+@export var blocked_cells: Array[Vector2i] = []
+@export var player_base_cells: Array[Vector2i] = []
+@export var enemy_base_cells: Array[Vector2i] = []
+
+## 旧版敌方出生点入口；为空时与 enemy_base_cells 保持一致
 @export var spawn_points: Array[Vector2i] = []
+@export var enemy_spawn_interval: float = 0.6
 
 ## 占据表 {Vector2i: Node}
 var occupancy: Dictionary = {}
@@ -47,6 +60,9 @@ var all_units: Array[Node] = []
 @export var grid_color: Color = Color(0.5, 0.5, 0.5, 0.65)
 @export var deploy_zone_color: Color = Color(0.2, 0.5, 0.2, 0.3)
 @export var spawn_zone_color: Color = Color(0.5, 0.2, 0.2, 0.3)
+@export var blocked_zone_color: Color = Color(0.16, 0.16, 0.2, 0.82)
+@export var player_base_color: Color = Color(0.15, 0.38, 0.85, 0.58)
+@export var enemy_base_color: Color = Color(0.78, 0.16, 0.18, 0.58)
 @export var debug_unit_body_radii: bool = true
 @export var debug_attack_ranges: bool = true
 @export var debug_collision_prediction: bool = true
@@ -65,22 +81,72 @@ var layout_tween: Tween = null
 var layout_animating: bool = false
 var last_prepare_layout: bool = true
 var collision_debug_entries: Dictionary = {}
+var enemy_spawn_queue: Array[Dictionary] = []
+var enemy_spawn_time_remaining: float = 0.0
+var enemy_spawn_cycle_cursor: int = 0
 
 
 ## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
-	# 初始化默认出生点（右侧边缘，仅在可部署/可移动范围内）
+	_initialize_terrain_cells()
 	if spawn_points.is_empty():
-		for y in range(deploy_rows.x, deploy_rows.y + 1):
-			spawn_points.append(Vector2i(grid_width - 1, y))
+		for cell in enemy_base_cells:
+			spawn_points.append(cell)
 	BattleManager.grid = self
 	last_prepare_layout = _is_prepare_layout()
 	_apply_stage_layout(false)
 	queue_redraw()
 
 
+## 初始化地形和左右两侧的默认两格据点。
+func _initialize_terrain_cells() -> void:
+	blocked_cells = _normalized_cells(blocked_cells)
+	player_base_cells = _normalized_cells(player_base_cells)
+	enemy_base_cells = _normalized_cells(enemy_base_cells)
+
+	if player_base_cells.is_empty():
+		player_base_cells = _build_default_base_cells(0)
+	if enemy_base_cells.is_empty():
+		enemy_base_cells = _build_default_base_cells(grid_width - 1)
+
+	_sort_cells_top_to_bottom(player_base_cells)
+	_sort_cells_top_to_bottom(enemy_base_cells)
+
+
+## 构建指定列的中间两格据点。
+func _build_default_base_cells(column: int) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	if grid_width <= 0 or grid_height <= 0:
+		return result
+	var count := mini(2, grid_height)
+	var start_y := maxi(0, int(floor(float(grid_height - count) * 0.5)))
+	var clamped_column := clampi(column, 0, grid_width - 1)
+	for offset in range(count):
+		result.append(Vector2i(clamped_column, start_y + offset))
+	return result
+
+
+## 去除越界或重复的地形坐标。
+func _normalized_cells(cells: Array[Vector2i]) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for cell in cells:
+		if is_in_bounds(cell) and cell not in result:
+			result.append(cell)
+	return result
+
+
+## 据点始终保持从上到下、同一行从左到右的稳定顺序。
+func _sort_cells_top_to_bottom(cells: Array[Vector2i]) -> void:
+	cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		if a.y == b.y:
+			return a.x < b.x
+		return a.y < b.y
+	)
+
+
 ## 每帧更新运行状态。
 func _process(delta: float) -> void:
+	_update_enemy_spawn_queue(delta)
 	var wants_prepare := _is_prepare_layout()
 	if wants_prepare != last_prepare_layout:
 		last_prepare_layout = wants_prepare
@@ -143,7 +209,21 @@ func _sync_unit_positions() -> void:
 ## 绘制调试或界面可视元素。
 func _draw() -> void:
 	if draw_grid:
-		# 网格线 — 画在格子边界上（非格子中心）
+		# 逐格绘制可部署普通地形、阻挡地形和双方据点。
+		for x in range(grid_width):
+			for y in range(grid_height):
+				var cell := Vector2i(x, y)
+				var terrain_color := deploy_zone_color
+				match get_terrain_type(cell):
+					TerrainType.BLOCKED:
+						terrain_color = blocked_zone_color
+					TerrainType.PLAYER_BASE:
+						terrain_color = player_base_color
+					TerrainType.ENEMY_BASE:
+						terrain_color = enemy_base_color
+				draw_rect(_get_cell_rect(cell), terrain_color)
+
+		# 网格线画在地形填充之上。
 		for x in range(grid_width + 1):
 			var line_x := grid_offset.x + x * cell_size
 			draw_line(Vector2(line_x, grid_offset.y), Vector2(line_x, grid_offset.y + grid_height * cell_size), grid_color, 1.0)
@@ -151,22 +231,6 @@ func _draw() -> void:
 		for y in range(grid_height + 1):
 			var line_y := grid_offset.y + y * cell_size
 			draw_line(Vector2(grid_offset.x, line_y), Vector2(grid_offset.x + grid_width * cell_size, line_y), grid_color, 1.0)
-
-		# 部署区域高亮 — 用格子边界坐标
-		var deploy_rect := Rect2(
-			Vector2(grid_offset.x, grid_offset.y + deploy_rows.x * cell_size),
-			Vector2(grid_width * cell_size, (deploy_rows.y - deploy_rows.x + 1) * cell_size)
-		)
-		draw_rect(deploy_rect, deploy_zone_color)
-
-		# 出生区域高亮 — 用格子边界坐标
-		if not spawn_points.is_empty():
-			for sp in spawn_points:
-				var sp_rect := Rect2(
-					Vector2(grid_offset.x + sp.x * cell_size, grid_offset.y + sp.y * cell_size),
-					Vector2(cell_size, cell_size)
-				)
-				draw_rect(sp_rect, spawn_zone_color)
 
 	if debug_collision_prediction:
 		_draw_collision_debug_entries()
@@ -178,6 +242,14 @@ func grid_to_world(grid_pos: Vector2i) -> Vector2:
 	return Vector2(
 		grid_offset.x + grid_pos.x * cell_size + cell_size / 2.0,
 		grid_offset.y + grid_pos.y * cell_size + cell_size / 2.0
+	)
+
+
+## 获取格子的世界坐标矩形。
+func _get_cell_rect(grid_pos: Vector2i) -> Rect2:
+	return Rect2(
+		Vector2(grid_offset.x + grid_pos.x * cell_size, grid_offset.y + grid_pos.y * cell_size),
+		Vector2(cell_size, cell_size)
 	)
 
 
@@ -199,21 +271,33 @@ func is_occupied(grid_pos: Vector2i) -> bool:
 	return occupancy.has(grid_pos) or movement_reservations.has(grid_pos)
 
 
-## 判断格子是否位于部署区域。
+## 获取格子的地形类型；越界位置按阻挡处理。
+func get_terrain_type(grid_pos: Vector2i) -> int:
+	if not is_in_bounds(grid_pos):
+		return TerrainType.BLOCKED
+	if grid_pos in player_base_cells:
+		return TerrainType.PLAYER_BASE
+	if grid_pos in enemy_base_cells:
+		return TerrainType.ENEMY_BASE
+	if grid_pos in blocked_cells:
+		return TerrainType.BLOCKED
+	return TerrainType.NORMAL
+
+
+## 兼容旧部署区域 API；现在仅普通地形允许手动部署。
 func is_deploy_zone(grid_pos: Vector2i) -> bool:
-	return grid_pos.y >= deploy_rows.x and grid_pos.y <= deploy_rows.y
+	return get_terrain_type(grid_pos) == TerrainType.NORMAL
 
 
-## 是否在可移动范围内（与可部署范围一致）
+## 普通地形和双方据点均可移动，阻挡地形不可移动。
 func is_move_zone(grid_pos: Vector2i) -> bool:
-	"""是否在可移动范围内（与可部署范围一致）"""
-	return is_in_bounds(grid_pos) and is_deploy_zone(grid_pos)
+	return is_in_bounds(grid_pos) and get_terrain_type(grid_pos) != TerrainType.BLOCKED
 
 
 ## 是否可以在指定位置部署
 func can_place_at(grid_pos: Vector2i) -> bool:
 	"""是否可以在指定位置部署"""
-	return is_in_bounds(grid_pos) and not is_occupied(grid_pos) and is_deploy_zone(grid_pos)
+	return is_deploy_zone(grid_pos) and not is_occupied(grid_pos)
 
 
 ## 判断是否可以预留移动目标格。
@@ -319,7 +403,7 @@ func place_unit(unit: Node, grid_pos: Vector2i) -> bool:
 		if not can_place_at(grid_pos):
 			return false
 		occupy_cell(grid_pos, unit)
-	elif not is_in_bounds(grid_pos):
+	elif not is_move_zone(grid_pos):
 		return false
 	unit.grid_position = grid_pos
 	unit.global_position = grid_to_world(grid_pos)
@@ -842,6 +926,75 @@ func _unit_debug_name(unit: UnitBase) -> String:
 	return str(unit.name)
 
 
+## 判断英雄是否能在指定格复活；除我方占位外还会检查存活敌人的身体碰撞。
+func can_revive_at(cell: Vector2i, unit: Node = null) -> bool:
+	if not is_move_zone(cell):
+		return false
+	if occupancy.has(cell) and occupancy[cell] != unit:
+		return false
+	if movement_reservations.has(cell) and movement_reservations[cell] != unit:
+		return false
+
+	var revive_ground := grid_to_world(cell)
+	var revive_radius := 0.0
+	if unit is UnitBase:
+		var combat_unit := unit as UnitBase
+		revive_ground += combat_unit.ground_anchor_offset
+		revive_radius = combat_unit.get_collision_radius()
+	return get_units_touching_circle(revive_ground, revive_radius, "enemy", unit).is_empty()
+
+
+## 选择复活格：原地优先，否则选择离死亡点最近的可用我方据点。
+func find_revive_cell(origin: Vector2i, unit: Node = null) -> Vector2i:
+	if can_revive_at(origin, unit):
+		return origin
+
+	var best := INVALID_GRID_POS
+	var best_dist := INF
+	for base_cell in player_base_cells:
+		if not can_revive_at(base_cell, unit):
+			continue
+		var distance := grid_to_world(base_cell).distance_squared_to(grid_to_world(origin))
+		if distance < best_dist:
+			best_dist = distance
+			best = base_cell
+	return best
+
+
+## 获取距离指定世界坐标最近的我方据点中心。
+func get_nearest_player_base_world(world_pos: Vector2) -> Vector2:
+	if player_base_cells.is_empty():
+		return world_pos
+	var best_world := grid_to_world(player_base_cells[0])
+	var best_dist := best_world.distance_squared_to(world_pos)
+	for index in range(1, player_base_cells.size()):
+		var candidate_world := grid_to_world(player_base_cells[index])
+		var distance := candidate_world.distance_squared_to(world_pos)
+		if distance < best_dist:
+			best_dist = distance
+			best_world = candidate_world
+	return best_world
+
+
+## 判断存活敌人的地面位置是否已经进入任意我方据点格。
+func is_enemy_in_player_base(enemy: Node) -> bool:
+	if not is_instance_valid(enemy) or not (enemy is UnitBase):
+		return false
+	var combat_unit := enemy as UnitBase
+	if not combat_unit.is_alive or combat_unit.team != "enemy":
+		return false
+	return _world_to_grid_unclamped(combat_unit.get_ground_position()) in player_base_cells
+
+
+## 世界坐标转未钳制网格坐标，供据点进入判定使用。
+func _world_to_grid_unclamped(world_pos: Vector2) -> Vector2i:
+	var safe_cell_size := maxf(cell_size, 1.0)
+	return Vector2i(
+		int(floor((world_pos.x - grid_offset.x) / safe_cell_size)),
+		int(floor((world_pos.y - grid_offset.y) / safe_cell_size))
+	)
+
+
 ## 根据世界坐标查找最近的合法友方空格
 func find_nearest_open_player_cell(world_pos: Vector2, preferred: Vector2i, unit: Node = null) -> Vector2i:
 	"""根据世界坐标查找最近的合法友方空格"""
@@ -851,7 +1004,7 @@ func find_nearest_open_player_cell(world_pos: Vector2, preferred: Vector2i, unit
 	var best := Vector2i(-1, -1)
 	var best_dist := INF
 	for x in range(grid_width):
-		for y in range(deploy_rows.x, deploy_rows.y + 1):
+		for y in range(grid_height):
 			var cell := Vector2i(x, y)
 			if not _is_cell_available_for_unit(cell, unit):
 				continue
@@ -925,7 +1078,7 @@ func find_path_to_attack_position(from: Vector2i, target: UnitBase, attack_range
 	var best_path: Array = []
 	var best_score: float = INF
 	for x in range(grid_width):
-		for y in range(deploy_rows.x, deploy_rows.y + 1):
+		for y in range(grid_height):
 			var candidate := Vector2i(x, y)
 			var candidate_ground : Vector2 = grid_to_world(candidate) + attacker_ground_offset
 			var candidate_distance := target.get_body_outline_distance_from_ground(candidate_ground) / maxf(cell_size, 1.0)
@@ -993,7 +1146,7 @@ func _is_path_step_available(from: Vector2i, to: Vector2i, unit: Node, goal: Vec
 ## 移动单位到新格子
 func move_unit(unit: Node, new_pos: Vector2i) -> bool:
 	"""移动单位到新格子"""
-	if not is_in_bounds(new_pos):
+	if not is_move_zone(new_pos):
 		return false
 	if occupancy.has(new_pos) and occupancy[new_pos] != unit:
 		return false
@@ -1010,53 +1163,99 @@ func move_unit(unit: Node, new_pos: Vector2i) -> bool:
 	return true
 
 
-## 批量生成敌人
+## 将一波敌人加入顺序出生队列；第一个敌人立即出生，后续按间隔生成。
 func spawn_enemy_wave(enemy_templates: Array, spawns: Array) -> void:
-	"""批量生成敌人"""
-	var sp_list := spawns.duplicate()
-	if sp_list.is_empty():
-		# 使用默认右侧出生点（仅在可部署范围内）
-		for y in range(deploy_rows.x, deploy_rows.y + 1):
-			sp_list.append(Vector2i(grid_width - 1, y))
+	var spawn_cycle := _resolve_enemy_spawn_cycle(spawns)
+	if spawn_cycle.is_empty():
+		return
 
-	var sp_idx := 0
-	for template in enemy_templates:
-		var enemy := EnemyUnit.new()
-		enemy.setup_from_template(template)
-		var spawn_pos: Vector2i
-		if sp_idx < sp_list.size():
-			spawn_pos = sp_list[sp_idx]
-			sp_idx += 1
-		else:
-			spawn_pos = sp_list[sp_idx % sp_list.size()]
-			sp_idx += 1
+	var uses_default_bases := spawns.is_empty()
+	var queue_was_empty := enemy_spawn_queue.is_empty()
+	for index in range(enemy_templates.size()):
+		var template = enemy_templates[index]
+		if not (template is Dictionary):
+			continue
+		enemy_spawn_queue.append({
+			"template": template,
+			"spawn_pos": spawn_cycle[(enemy_spawn_cycle_cursor + index) % spawn_cycle.size()] if uses_default_bases else spawn_cycle[index % spawn_cycle.size()],
+		})
+	if uses_default_bases:
+		enemy_spawn_cycle_cursor = (enemy_spawn_cycle_cursor + enemy_templates.size()) % spawn_cycle.size()
 
-		# 找最近的空位
-		if is_occupied(spawn_pos):
-			var found := false
-			for offset in [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]:
-				var alt: Vector2i = spawn_pos + offset
-				if is_in_bounds(alt) and not is_occupied(alt):
-					spawn_pos = alt
-					found = true
-					break
-			if not found:
-				# 扫描附近空位
-				for dx in range(-2, 3):
-					for dy in range(-2, 3):
-						var alt := spawn_pos + Vector2i(dx, dy)
-						if is_in_bounds(alt) and not is_occupied(alt):
-							spawn_pos = alt
-							found = true
-							break
-					if found:
-						break
+	if queue_was_empty and not enemy_spawn_queue.is_empty():
+		_spawn_next_queued_enemy()
+		enemy_spawn_time_remaining = _get_enemy_spawn_interval() if not enemy_spawn_queue.is_empty() else 0.0
 
-		enemy.grid_position = spawn_pos
-		enemy.global_position = grid_to_world(spawn_pos)
-		all_units.append(enemy)
-		add_child(enemy)
-		BattleManager.register_enemy_unit(enemy)
+
+## 是否还有尚未生成的敌人。
+func has_pending_enemy_spawns() -> bool:
+	return not enemy_spawn_queue.is_empty()
+
+
+## 清空尚未生成的敌人，供重置战斗和结束战斗时调用。
+func clear_enemy_spawn_queue() -> void:
+	enemy_spawn_queue.clear()
+	enemy_spawn_time_remaining = 0.0
+	enemy_spawn_cycle_cursor = 0
+
+
+## 更新敌人顺序出生计时。
+func _update_enemy_spawn_queue(delta: float) -> void:
+	if enemy_spawn_queue.is_empty():
+		return
+	enemy_spawn_time_remaining -= maxf(delta, 0.0)
+	var interval := _get_enemy_spawn_interval()
+	while not enemy_spawn_queue.is_empty() and enemy_spawn_time_remaining <= 0.0:
+		_spawn_next_queued_enemy()
+		if enemy_spawn_queue.is_empty():
+			enemy_spawn_time_remaining = 0.0
+			return
+		enemy_spawn_time_remaining += interval
+
+
+## 从队首生成一个敌人；模板字典不复制、不改写，原样交给 EnemyUnit。
+func _spawn_next_queued_enemy() -> void:
+	if enemy_spawn_queue.is_empty():
+		return
+	var entry: Dictionary = enemy_spawn_queue.pop_front()
+	var template: Dictionary = entry["template"]
+	var spawn_pos: Vector2i = entry["spawn_pos"]
+	var enemy := EnemyUnit.new()
+	enemy.setup_from_template(template)
+	enemy.grid_position = spawn_pos
+	enemy.global_position = grid_to_world(spawn_pos)
+	all_units.append(enemy)
+	add_child(enemy)
+	BattleManager.register_enemy_unit(enemy)
+
+
+## 解析本波出生点；未显式传入时使用从上到下排序的两个敌方据点。
+func _resolve_enemy_spawn_cycle(spawns: Array) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for value in spawns:
+		if value is Vector2i:
+			var cell: Vector2i = value
+			if is_move_zone(cell) and cell not in result:
+				result.append(cell)
+	if result.is_empty():
+		for cell in enemy_base_cells:
+			if is_move_zone(cell) and cell not in result:
+				result.append(cell)
+	return result
+
+
+## 获取配置后的敌人出生间隔。
+func _get_enemy_spawn_interval() -> float:
+	return maxf(0.01, _cfg_float("enemy_spawn_interval", enemy_spawn_interval))
+
+
+func _cfg_float(key: String, default_value: float) -> float:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree and tree.root:
+		var registry := tree.root.get_node_or_null("DataRegistry")
+		if registry and registry.has_method("get_config"):
+			return float(registry.get_config(key, default_value))
+	return default_value
 
 
 ## 处理输入事件。

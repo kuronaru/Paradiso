@@ -14,11 +14,19 @@ var summary_label: Label = null
 var description_label: Label = null
 var effect_label: Label = null
 var confirm_button: Button = null
+var online_selection: bool = false
+var scene_transitioning: bool = false
 
 
 func _ready() -> void:
 	_set_full_rect()
 	_build_ui()
+	var coordinator := _multiplayer_coordinator()
+	online_selection = _is_online_session(coordinator)
+	if coordinator \
+			and coordinator.has_signal("session_ended") \
+			and not coordinator.session_ended.is_connected(_on_multiplayer_session_ended):
+		coordinator.session_ended.connect(_on_multiplayer_session_ended)
 	_load_relics()
 
 
@@ -235,15 +243,52 @@ func _on_relic_selected(index: int) -> void:
 
 
 func _on_confirm_pressed() -> void:
+	if scene_transitioning:
+		return
 	if selected_index < 0 or selected_index >= relics.size():
+		return
+	if online_selection and not _is_online_session(_multiplayer_coordinator()):
+		_change_scene(AFK_HUB_SCENE_PATH)
 		return
 	var relic: Dictionary = relics[selected_index]
 	if GameManager.set_pending_roguelike_relic(str(relic.get("id", ""))):
-		get_tree().change_scene_to_file(MAIN_SCENE_PATH)
+		_change_scene(MAIN_SCENE_PATH)
 
 
 func _on_back_pressed() -> void:
-	get_tree().change_scene_to_file(AFK_HUB_SCENE_PATH)
+	if scene_transitioning:
+		return
+	var coordinator := _multiplayer_coordinator()
+	if _is_online_session(coordinator) and coordinator.has_method("leave_session"):
+		coordinator.call("leave_session")
+	_change_scene(AFK_HUB_SCENE_PATH)
+
+
+func _on_multiplayer_session_ended(_reason: String = "") -> void:
+	if online_selection and not scene_transitioning:
+		_change_scene(AFK_HUB_SCENE_PATH)
+
+
+func _multiplayer_coordinator() -> Node:
+	return get_node_or_null("/root/MultiplayerRunManager")
+
+
+func _is_online_session(coordinator: Node) -> bool:
+	return (
+		coordinator != null
+		and coordinator.has_method("is_session_active")
+		and bool(coordinator.call("is_session_active"))
+	)
+
+
+func _change_scene(scene_path: String) -> void:
+	if scene_transitioning:
+		return
+	scene_transitioning = true
+	var error := get_tree().change_scene_to_file(scene_path)
+	if error != OK:
+		scene_transitioning = false
+		push_error("无法打开场景 %s，错误码 %d" % [scene_path, error])
 
 
 func _make_panel_style(bg_color: Color, border_color: Color) -> StyleBoxFlat:

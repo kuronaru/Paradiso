@@ -26,6 +26,7 @@ BattleManager="*res://scripts/core/battle_manager.gd"
 ResourceManager="*res://scripts/core/resource_manager.gd"
 Log="*res://scripts/core/logger.gd"
 SynergyManager="*res://scripts/synergy/synergy_manager.gd"
+MultiplayerRunManager="*res://scripts/multiplayer/multiplayer_run_manager.gd"
 
 [display]
 

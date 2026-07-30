@@ -298,7 +298,9 @@ func _refresh_option_card(index: int, option, active_gold: int) -> void:
 	option_icons[index].color = ClassDefinitions.get_template_color(ct.class_id)
 	option_name_labels[index].text = ct.job_name
 	option_synergy_labels[index].text = _get_synergy_line(ct)
-	option_price_labels[index].text = "%d 金币  酒馆Lv.%d" % [option.cost, option.shop_level]
+	var tier_names := ["低阶", "中阶", "高阶"]
+	var tier_name: String = tier_names[clampi(option.level, 1, 3) - 1]
+	option_price_labels[index].text = "%s · %d 金币  酒馆Lv.%d" % [tier_name, option.cost, option.shop_level]
 	option_buttons[index].tooltip_text = "手牌区已满（%d/%d）" % [GameManager.party.size(), GameManager.get_roguelike_max_hand_cards()] if hand_full else option.tavern_passive
 	option_buttons[index].disabled = (
 		active_gold < option.cost

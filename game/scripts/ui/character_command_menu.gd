@@ -152,7 +152,8 @@ func _on_unit_selected(unit: HeroUnit) -> void:
 		menu_panel.get_global_rect(),
 		was_paused_before_open
 	])
-	get_tree().paused = true
+	if not _is_online_session():
+		get_tree().paused = true
 	visible = true
 	_update_unit_display()
 
@@ -193,8 +194,13 @@ func _hide_menu(restore_pause: bool) -> void:
 	"""隐藏角色菜单，并按需恢复打开前的暂停状态"""
 	visible = false
 	selected_unit = null
-	if restore_pause:
+	if restore_pause and not _is_online_session():
 		get_tree().paused = was_paused_before_open
+
+
+func _is_online_session() -> bool:
+	var coordinator := get_tree().root.get_node_or_null("MultiplayerRunManager")
+	return coordinator and coordinator.has_method("is_session_active") and coordinator.is_session_active()
 
 
 ## 取消角色选中并关闭菜单

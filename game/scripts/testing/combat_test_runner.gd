@@ -24,7 +24,7 @@ var enemy_specs: Array = [
 	{
 		"name": "测试敌人",
 		"type": EnemyUnit.EnemyType.MELEE,
-		"grid_pos": Vector2i(14, 3),
+		"grid_pos": Vector2i(6, 1),
 		"hp": 120,
 		"atk": 12,
 		"def": 4,
@@ -352,7 +352,7 @@ func _next_open_hero_pos() -> Vector2i:
 
 	var rows: Array[int] = []
 	var center_row := _center_deploy_row()
-	for y in range(grid.deploy_rows.x, grid.deploy_rows.y + 1):
+	for y in range(grid.grid_height):
 		rows.append(y)
 	rows.sort_custom(func(a: int, b: int) -> bool:
 		return abs(a - center_row) < abs(b - center_row)
@@ -379,11 +379,11 @@ func _default_hero_pos() -> Vector2i:
 func _default_enemy_pos() -> Vector2i:
 	"""默认敌人测试位置：地图右侧中央"""
 	if not grid:
-		return Vector2i(14, 3)
-	return Vector2i(grid.grid_width - 5, _center_deploy_row())
+		return Vector2i(6, 1)
+	return Vector2i(maxi(1, grid.grid_width - 3), _center_deploy_row())
 
 
 ## 获取可部署区域的中央行
 func _center_deploy_row() -> int:
 	"""获取可部署区域的中央行"""
-	return int(round((grid.deploy_rows.x + grid.deploy_rows.y) * 0.5))
+	return int(floor(float(grid.grid_height - 1) * 0.5))

@@ -31,6 +31,11 @@ func _ready() -> void:
 	map_generator = MapGenerator.new()
 	recruit_system = RecruitSystem.new()
 	add_child(recruit_system)
+	if not GameManager.run_player_eliminated.is_connected(_on_run_player_eliminated):
+		GameManager.run_player_eliminated.connect(_on_run_player_eliminated)
+	if not BattleManager.joint_defense_cleared.is_connected(_on_joint_defense_cleared):
+		BattleManager.joint_defense_cleared.connect(_on_joint_defense_cleared)
+	_connect_multiplayer_coordinator()
 
 
 ## 开始新的肉鸽流程
@@ -48,10 +53,11 @@ func _enter_recruit_phase() -> void:
 	"""进入酒馆招募阶段"""
 	phase = RunPhase.RECRUIT
 	GameManager.current_mode = GameManager.GameMode.RECRUIT
+	var income := GameManager.grant_current_round_tavern_income()
 	var options := recruit_system.generate_recruit_options(GameManager.current_run_round, GameManager.party.size())
 	_setup_round_preparation()
 	recruit_phase_started.emit()
-	Log.i(M, "进入招募阶段，%d 个选项" % options.size())
+	Log.i(M, "进入招募阶段，固定收入 %d，%d 个选项" % [income, options.size()])
 
 
 ## 购买招募选项
@@ -216,6 +222,19 @@ func _get_deployment_system() -> DeploymentSystem:
 ## 战斗胜利
 func _on_battle_won() -> void:
 	"""战斗胜利"""
+	var coordinator := _multiplayer_coordinator()
+	if coordinator and coordinator.has_method("is_run_active") and coordinator.is_run_active():
+		phase = RunPhase.REWARD
+		coordinator.submit_local_battle_result(BattleManager.get_battle_result())
+		Log.i(M, "本地战斗完成，等待其他玩家与联合战斗结算")
+		return
+	_complete_round_victory()
+
+
+## 完成本回合的统一结算；联机模式只由房主广播的回合完成事件触发。
+func _complete_round_victory() -> void:
+	if phase == RunPhase.ENDED or not GameManager.is_run_player_alive():
+		return
 	var reward := _calculate_reward()
 	if SynergyManager and SynergyManager.has_method("apply_victory_gold_bonus"):
 		reward = SynergyManager.apply_victory_gold_bonus(reward)
@@ -236,15 +255,93 @@ func _on_battle_won() -> void:
 ## 战斗失败
 func _on_battle_lost() -> void:
 	"""战斗失败"""
-	GameManager.earn_run_gold(_cfg_int("battle_loss_gold", 2))
-	Log.i(M, "战斗失败! 冒险结束")
+	var coordinator := _multiplayer_coordinator()
+	if coordinator and coordinator.has_method("is_run_active") and coordinator.is_run_active():
+		coordinator.mark_local_player_eliminated()
+	GameManager.earn_run_gold(_cfg_int("battle_loss_gold", 0))
+	Log.i(M, "玩家生命归零，冒险结束")
 	_end_run(false)
 
 
 ## 计算奖励金币
 func _calculate_reward() -> int:
 	"""计算奖励金币"""
-	return _cfg_int("battle_reward_gold", 4)
+	return _cfg_int("battle_reward_gold", 0)
+
+
+## 房主为本机分配联合防守段。
+func _on_joint_defense_assigned(stage_index: int, payloads: Array, keep_input_open: bool) -> void:
+	if phase == RunPhase.ENDED:
+		return
+	phase = RunPhase.BATTLE
+	BattleManager.begin_joint_defense(stage_index, payloads, keep_input_open)
+
+
+## 联合战斗中从上一名防守者实时转入敌人。
+func _on_joint_enemy_received(payload: Dictionary) -> void:
+	if phase != RunPhase.ENDED:
+		BattleManager.receive_joint_enemy_payload(payload)
+
+
+## 上游防守者已结束，不会再有新敌人转入。
+func _on_joint_input_closed() -> void:
+	BattleManager.close_joint_input()
+
+
+## 本机承担的联合防守段完成。
+func _on_joint_defense_cleared(stage_index: int) -> void:
+	var coordinator := _multiplayer_coordinator()
+	if coordinator and coordinator.has_method("report_local_joint_stage_cleared"):
+		coordinator.report_local_joint_stage_cleared(stage_index)
+
+
+## 全房间联合结算结束，同步推进到下一回合。
+func _on_cooperative_round_resolved(round_number: int) -> void:
+	if round_number != GameManager.current_run_round or phase == RunPhase.ENDED:
+		return
+	_complete_round_victory()
+
+
+## 来源玩家可能在联合最终漏怪伤害后于等待阶段被淘汰。
+func _on_run_player_eliminated() -> void:
+	if phase == RunPhase.ENDED:
+		return
+	var coordinator := _multiplayer_coordinator()
+	if coordinator and coordinator.has_method("is_run_active") and coordinator.is_run_active():
+		coordinator.mark_local_player_eliminated()
+	if BattleManager.state == BattleManager.BattleState.IN_PROGRESS:
+		return
+	_end_run(false)
+
+
+func _connect_multiplayer_coordinator() -> void:
+	var coordinator := _multiplayer_coordinator()
+	if not coordinator:
+		return
+	if coordinator.has_signal("joint_defense_assigned") and not coordinator.joint_defense_assigned.is_connected(_on_joint_defense_assigned):
+		coordinator.joint_defense_assigned.connect(_on_joint_defense_assigned)
+	if coordinator.has_signal("joint_enemy_received") and not coordinator.joint_enemy_received.is_connected(_on_joint_enemy_received):
+		coordinator.joint_enemy_received.connect(_on_joint_enemy_received)
+	if coordinator.has_signal("joint_input_closed") and not coordinator.joint_input_closed.is_connected(_on_joint_input_closed):
+		coordinator.joint_input_closed.connect(_on_joint_input_closed)
+	if coordinator.has_signal("cooperative_round_resolved") and not coordinator.cooperative_round_resolved.is_connected(_on_cooperative_round_resolved):
+		coordinator.cooperative_round_resolved.connect(_on_cooperative_round_resolved)
+	if coordinator.has_signal("session_ended") and not coordinator.session_ended.is_connected(_on_multiplayer_session_ended):
+		coordinator.session_ended.connect(_on_multiplayer_session_ended)
+
+
+func _on_multiplayer_session_ended(reason: String) -> void:
+	if phase == RunPhase.ENDED or not GameManager.is_roguelike_run:
+		return
+	Log.w(M, "联机会话结束: %s" % reason)
+	_end_run(false)
+
+
+func _multiplayer_coordinator() -> Node:
+	var tree := get_tree()
+	if not tree or not tree.root:
+		return null
+	return tree.root.get_node_or_null("MultiplayerRunManager")
 
 
 ## 处理restandadvance逻辑。
