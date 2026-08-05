@@ -30,6 +30,12 @@
 	"hero_revive_delay": 5.0,
 	"multiplayer_default_port": 24567,
 	"multiplayer_max_players": 4,
+	"public_room_service_url": "http://127.0.0.1:8787",
+	"public_room_request_timeout": 5.0,
+	"public_room_poll_interval": 1.0,
+	"public_direct_connect_timeout": 4.0,
+	"public_upnp_enabled": true,
+	"public_direct_advertise_address": "",
 	"synergy_layer_per_star": 20,
 	"synergy_max_layer": 999,
 	"synergy_default_modifiers": {

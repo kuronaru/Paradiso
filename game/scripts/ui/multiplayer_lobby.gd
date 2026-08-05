@@ -17,15 +17,23 @@ const COLOR_WARNING := Color(1.0, 0.63, 0.30, 1.0)
 const COLOR_ERROR := Color(1.0, 0.38, 0.38, 1.0)
 
 var multiplayer_manager: Node = null
+var public_room_client: Node = null
 var players_snapshot: Array = []
 var connection_status := "offline"
 var scene_transitioning := false
+var public_request_pending := false
+var last_public_generation := -1
+var failed_direct_generation := -1
 
 var nickname_input: LineEdit = null
 var address_input: LineEdit = null
 var port_input: LineEdit = null
+var room_code_input: LineEdit = null
 var host_button: Button = null
 var join_button: Button = null
+var public_host_button: Button = null
+var public_join_button: Button = null
+var public_room_label: Label = null
 var ready_button: Button = null
 var start_button: Button = null
 var leave_button: Button = null
@@ -40,7 +48,9 @@ func _ready() -> void:
 	_set_full_rect()
 	_build_ui()
 	multiplayer_manager = get_node_or_null("/root/MultiplayerRunManager")
+	public_room_client = get_node_or_null("/root/PublicRoomClient")
 	_connect_manager_signals()
+	_connect_public_room_signals()
 	_refresh_from_manager()
 
 
@@ -99,7 +109,7 @@ func _build_ui() -> void:
 	heading_stack.add_child(title)
 
 	var subtitle := Label.new()
-	subtitle.text = "通过局域网或 IP 地址直连，支持 2～4 名玩家协同迎敌"
+	subtitle.text = "支持房间码公网联机与 LAN/IP 直连，2～4 名玩家协同迎敌"
 	subtitle.add_theme_font_size_override("font_size", 14)
 	subtitle.add_theme_color_override("font_color", Color(0.70, 0.76, 0.84, 1.0))
 	heading_stack.add_child(subtitle)
@@ -177,6 +187,52 @@ func _build_ui() -> void:
 	join_button.tooltip_text = "通过主机 IP 地址和端口直连"
 	join_button.pressed.connect(_on_join_pressed)
 	connection_row.add_child(join_button)
+
+	var public_panel := PanelContainer.new()
+	public_panel.add_theme_stylebox_override(
+		"panel",
+		_make_panel_style(Color(0.045, 0.058, 0.076, 0.98), Color(0.18, 0.32, 0.46, 1.0), 10)
+	)
+	page.add_child(public_panel)
+
+	var public_margin := MarginContainer.new()
+	public_margin.add_theme_constant_override("margin_left", 18)
+	public_margin.add_theme_constant_override("margin_top", 12)
+	public_margin.add_theme_constant_override("margin_right", 18)
+	public_margin.add_theme_constant_override("margin_bottom", 12)
+	public_panel.add_child(public_margin)
+
+	var public_row := HBoxContainer.new()
+	public_row.add_theme_constant_override("separation", 12)
+	public_margin.add_child(public_row)
+
+	var public_title := Label.new()
+	public_title.text = "公网房间"
+	public_title.custom_minimum_size.x = 86.0
+	public_title.add_theme_font_size_override("font_size", 16)
+	public_title.add_theme_color_override("font_color", COLOR_GOLD)
+	public_row.add_child(public_title)
+
+	room_code_input = _make_labeled_input(public_row, "房间码", "例如 AB3D7K", 160.0)
+	room_code_input.max_length = 6
+
+	public_host_button = _make_action_button("创建公网房间", Color(0.20, 0.38, 0.62, 1.0))
+	public_host_button.tooltip_text = "优先尝试公网直连，失败时整房自动切换到中继"
+	public_host_button.pressed.connect(_on_public_host_pressed)
+	public_row.add_child(public_host_button)
+
+	public_join_button = _make_action_button("通过房间码加入", Color(0.34, 0.44, 0.28, 1.0))
+	public_join_button.pressed.connect(_on_public_join_pressed)
+	public_row.add_child(public_join_button)
+
+	public_room_label = Label.new()
+	public_room_label.text = "直连不可用时自动使用服务器中继"
+	public_room_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	public_room_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	public_room_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	public_room_label.add_theme_font_size_override("font_size", 13)
+	public_room_label.add_theme_color_override("font_color", COLOR_MUTED)
+	public_row.add_child(public_room_label)
 
 	var body := HBoxContainer.new()
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -349,11 +405,31 @@ func _connect_manager_signals() -> void:
 	_connect_manager_signal("connection_status_changed", Callable(self, "_on_connection_status_changed"))
 	_connect_manager_signal("run_start_requested", Callable(self, "_on_run_start_requested"))
 	_connect_manager_signal("session_ended", Callable(self, "_on_session_ended"))
+	_connect_manager_signal("public_endpoint_ready", Callable(self, "_on_public_endpoint_ready"))
+	_connect_manager_signal("direct_connection_timed_out", Callable(self, "_on_direct_connection_timed_out"))
+	_connect_manager_signal("transport_changed", Callable(self, "_on_transport_changed"))
 
 
 func _connect_manager_signal(signal_name: StringName, callback: Callable) -> void:
 	if multiplayer_manager.has_signal(signal_name) and not multiplayer_manager.is_connected(signal_name, callback):
 		multiplayer_manager.connect(signal_name, callback)
+
+
+func _connect_public_room_signals() -> void:
+	if not public_room_client:
+		return
+	for signal_and_callback in [
+		["room_created", Callable(self, "_on_public_room_created")],
+		["room_joined", Callable(self, "_on_public_room_joined")],
+		["room_updated", Callable(self, "_on_public_room_updated")],
+		["relay_requested", Callable(self, "_on_public_relay_requested")],
+		["request_failed", Callable(self, "_on_public_request_failed")],
+	]:
+		var signal_name: StringName = signal_and_callback[0]
+		var callback: Callable = signal_and_callback[1]
+		if public_room_client.has_signal(signal_name) \
+				and not public_room_client.is_connected(signal_name, callback):
+			public_room_client.connect(signal_name, callback)
 
 
 func _refresh_from_manager() -> void:
@@ -407,6 +483,205 @@ func _on_join_pressed() -> void:
 	_refresh_from_manager()
 
 
+func _on_public_host_pressed() -> void:
+	if not multiplayer_manager or not public_room_client:
+		return
+	var nickname := _validated_nickname()
+	var port := _validated_port()
+	if nickname.is_empty() or port <= 0:
+		return
+	public_request_pending = true
+	last_public_generation = -1
+	failed_direct_generation = -1
+	_set_connection_message("正在检测公网直连能力……", COLOR_WARNING)
+	var result := int(multiplayer_manager.call("host_public_session", port, nickname, true))
+	if result != OK:
+		public_request_pending = false
+		connection_status = "error"
+		_refresh_ui("无法启动公网房间，错误码 %d。" % result)
+		return
+	_refresh_ui()
+
+
+func _on_public_join_pressed() -> void:
+	if not public_room_client:
+		return
+	var nickname := _validated_nickname()
+	var room_code := room_code_input.text.strip_edges().to_upper()
+	if nickname.is_empty():
+		return
+	if room_code.length() != 6:
+		_refresh_ui("请输入 6 位房间码。")
+		room_code_input.grab_focus()
+		return
+	room_code_input.text = room_code
+	public_request_pending = true
+	last_public_generation = -1
+	failed_direct_generation = -1
+	_set_connection_message("正在查询公网房间……", COLOR_WARNING)
+	public_room_client.call("join_public_room", room_code, nickname)
+	_refresh_ui()
+
+
+func _on_public_endpoint_ready(
+		success: bool,
+		external_address: String,
+		port: int,
+		_error_code: int
+	) -> void:
+	if not public_room_client or not public_request_pending:
+		return
+	public_room_client.call(
+		"create_public_room",
+		_validated_nickname(),
+		external_address,
+		port,
+		success,
+		MAX_PLAYERS
+	)
+	_set_connection_message(
+		"正在登记公网直连端点……" if success else "直连不可用，正在申请服务器中继……",
+		COLOR_WARNING
+	)
+
+
+func _on_public_room_created(room: Dictionary) -> void:
+	public_request_pending = false
+	_show_public_room(room)
+	_apply_public_room_transport(room)
+
+
+func _on_public_room_joined(room: Dictionary) -> void:
+	public_request_pending = false
+	_show_public_room(room)
+	_apply_public_room_transport(room)
+
+
+func _on_public_room_updated(room: Dictionary) -> void:
+	_show_public_room(room)
+	_apply_public_room_transport(room)
+
+
+func _on_public_relay_requested(room: Dictionary) -> void:
+	_show_public_room(room)
+	_apply_public_room_transport(room)
+
+
+func _on_public_request_failed(operation: String, message: String, status_code: int) -> void:
+	public_request_pending = false
+	if operation == "create" and multiplayer_manager \
+			and multiplayer_manager.has_method("cancel_pending_session"):
+		multiplayer_manager.call("cancel_pending_session")
+	var suffix := "（HTTP %d）" % status_code if status_code > 0 else ""
+	if operation in ["poll", "heartbeat"]:
+		_set_connection_message("房间服务暂时不可用，将自动重试。%s%s" % [message, suffix], COLOR_WARNING)
+		return
+	if operation == "relay":
+		_set_connection_message("申请中继失败，将自动重试。%s%s" % [message, suffix], COLOR_WARNING)
+		_retry_relay_request()
+		return
+	connection_status = "error"
+	_refresh_ui("%s%s" % [message, suffix])
+
+
+func _retry_relay_request() -> void:
+	await get_tree().create_timer(1.0).timeout
+	if scene_transitioning or not public_room_client \
+			or not bool(public_room_client.call("has_room")):
+		return
+	public_room_client.call("request_relay")
+
+
+func _on_direct_connection_timed_out(generation: int) -> void:
+	if not public_room_client or not bool(public_room_client.call("has_room")):
+		return
+	failed_direct_generation = generation
+	_set_connection_message("公网直连失败，正在请求整房切换到中继……", COLOR_WARNING)
+	public_room_client.call("request_relay")
+
+
+func _on_transport_changed(_mode: int, _generation: int) -> void:
+	_refresh_ui()
+
+
+func _show_public_room(room: Dictionary) -> void:
+	var code := str(room.get("room_code", ""))
+	var status := str(room.get("status", ""))
+	if room_code_input and not code.is_empty():
+		room_code_input.text = code
+	if public_room_label:
+		public_room_label.text = "房间码 %s · %s" % [code, _localized_transport(status)]
+
+
+func _apply_public_room_transport(room: Dictionary) -> void:
+	if not multiplayer_manager:
+		return
+	var status := str(room.get("status", "")).to_upper()
+	var generation := int(room.get("transport_generation", 0))
+	if status not in ["DIRECT", "RELAY"] or generation < last_public_generation:
+		return
+	if status == "DIRECT" and generation == failed_direct_generation:
+		return
+	var transport = multiplayer_manager.call("get_transport_snapshot")
+	var current_generation := int(transport.get("generation", 0)) if transport is Dictionary else 0
+	if generation == last_public_generation and current_generation == generation:
+		return
+	last_public_generation = generation
+	var nickname := nickname_input.text.strip_edges()
+	if status == "DIRECT":
+		if _manager_is_active():
+			if multiplayer_manager.has_method("adopt_transport_generation"):
+				multiplayer_manager.call("adopt_transport_generation", generation)
+			_refresh_from_manager()
+			return
+		var result := int(multiplayer_manager.call(
+			"join_public_session",
+			str(room.get("direct_address", "")),
+			int(room.get("direct_port", 0)),
+			nickname,
+			generation
+		))
+		if result != OK:
+			_on_direct_connection_timed_out(generation)
+			return
+		_set_connection_message("正在尝试公网直连……", COLOR_WARNING)
+	elif status == "RELAY":
+		failed_direct_generation = -1
+		if bool(multiplayer_manager.call("is_relay_transport")) \
+				and current_generation == generation:
+			return
+		var owner_token := ""
+		if public_room_client and bool(public_room_client.call("is_room_host")):
+			owner_token = str(public_room_client.call("get_host_token"))
+		var relay_result := int(multiplayer_manager.call(
+			"switch_to_relay_session",
+			str(room.get("relay_address", "")),
+			int(room.get("relay_port", 0)),
+			nickname,
+			generation,
+			owner_token
+		))
+		if relay_result != OK:
+			connection_status = "error"
+			_refresh_ui("连接中继失败，错误码 %d。" % relay_result)
+			return
+		_set_connection_message("正在连接服务器中继……", COLOR_WARNING)
+
+
+func _localized_transport(status: String) -> String:
+	match status.to_upper():
+		"DIRECT":
+			return "公网直连"
+		"RELAY_STARTING":
+			return "中继启动中"
+		"RELAY":
+			return "服务器中继"
+		"RUNNING":
+			return "游戏进行中"
+		_:
+			return "正在准备"
+
+
 func _on_ready_pressed() -> void:
 	if not multiplayer_manager or not _manager_is_active() or not _has_local_player():
 		return
@@ -428,6 +703,11 @@ func _on_leave_pressed() -> void:
 	if scene_transitioning:
 		return
 	scene_transitioning = true
+	if public_room_client and bool(public_room_client.call("has_room")):
+		if bool(public_room_client.call("is_room_host")):
+			public_room_client.call("close_room")
+		else:
+			public_room_client.call("reset_room")
 	if multiplayer_manager and multiplayer_manager.has_method("leave_session"):
 		multiplayer_manager.call("leave_session")
 	_change_scene(AFK_HUB_SCENE_PATH)
@@ -447,6 +727,8 @@ func _on_connection_status_changed(status: String = "") -> void:
 func _on_run_start_requested() -> void:
 	if scene_transitioning:
 		return
+	if public_room_client and bool(public_room_client.call("is_room_host")):
+		public_room_client.call("heartbeat", "RUNNING")
 	scene_transitioning = true
 	_change_scene(RELIC_SELECT_SCENE_PATH)
 
@@ -507,7 +789,11 @@ func _local_player_id() -> int:
 
 
 func _is_local_host() -> bool:
-	return _manager_is_active() and _local_player_id() == 1
+	return (
+		_manager_is_active()
+		and multiplayer_manager.has_method("is_local_room_host")
+		and bool(multiplayer_manager.call("is_local_room_host"))
+	)
 
 
 func _is_local_ready() -> bool:
@@ -547,8 +833,21 @@ func _refresh_ui(message_override: String = "") -> void:
 	nickname_input.editable = not active
 	address_input.editable = not active
 	port_input.editable = not active
+	room_code_input.editable = not active and not public_request_pending
 	host_button.disabled = multiplayer_manager == null or active or connection_status in ["connecting", "hosting"]
 	join_button.disabled = multiplayer_manager == null or active or connection_status in ["connecting", "hosting"]
+	public_host_button.disabled = (
+		multiplayer_manager == null
+		or public_room_client == null
+		or active
+		or public_request_pending
+	)
+	public_join_button.disabled = (
+		multiplayer_manager == null
+		or public_room_client == null
+		or active
+		or public_request_pending
+	)
 	ready_button.disabled = not active or not _has_local_player() or connection_status in ["connecting", "running"]
 	ready_button.text = "取消准备" if local_ready else "准备"
 
@@ -577,7 +876,14 @@ func _refresh_status(message_override: String = "") -> void:
 		_set_connection_message("● %s" % status_text, color)
 
 	if _is_local_host():
-		role_label.text = "你是房主 · 端口 %d · 最多 4 人" % _validated_port_without_message()
+		var public_code := ""
+		if public_room_client:
+			public_code = str(public_room_client.call("get_room_code"))
+		role_label.text = (
+			"你是房主 · 房间码 %s · 最多 4 人" % public_code
+			if not public_code.is_empty()
+			else "你是房主 · 端口 %d · 最多 4 人" % _validated_port_without_message()
+		)
 	elif _manager_is_active():
 		role_label.text = "你是房间成员 · 等待所有玩家准备"
 	else:
@@ -593,8 +899,12 @@ func _localized_status(status: String) -> String:
 	match status:
 		"hosting":
 			return "房间已创建，等待玩家加入"
+		"relay_hosting":
+			return "中继房间已启动"
 		"connecting":
-			return "正在连接房主"
+			return "正在连接房间"
+		"direct_failed":
+			return "直连失败，正在切换中继"
 		"connected":
 			return "已连接"
 		"lobby":
@@ -609,7 +919,7 @@ func _localized_status(status: String) -> String:
 
 func _status_color(status: String) -> Color:
 	match status:
-		"hosting", "connected", "lobby":
+		"hosting", "relay_hosting", "connected", "lobby":
 			return COLOR_READY
 		"connecting", "running":
 			return COLOR_WARNING
@@ -700,7 +1010,7 @@ func _build_player_row(player: Dictionary) -> Control:
 
 	var display_name := str(player.get("display_name", "玩家"))
 	var tags: Array[String] = []
-	if int(player.get("peer_id", 0)) == 1:
+	if bool(player.get("room_host", false)):
 		tags.append("房主")
 	if local:
 		tags.append("我")

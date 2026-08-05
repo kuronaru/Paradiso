@@ -27,6 +27,7 @@ func _run() -> void:
 	_test_payload_sanitizing()
 	_test_damage_idempotency()
 	_test_second_run_resets_damage_idempotency()
+	_test_public_transport_contract()
 
 	coordinator._reset_runtime_state()
 	game_manager.reset_run_life()
@@ -36,9 +37,16 @@ func _run() -> void:
 func _test_public_contract() -> void:
 	for method_name in [
 		"host_session",
+		"host_public_session",
+		"host_dedicated_session",
 		"join_session",
+		"join_public_session",
+		"join_relay_session",
+		"switch_to_relay_session",
 		"leave_session",
 		"is_run_active",
+		"is_local_room_host",
+		"get_transport_snapshot",
 		"set_local_ready",
 		"start_session_run",
 		"submit_local_battle_result",
@@ -53,8 +61,20 @@ func _test_public_contract() -> void:
 		"joint_enemy_received",
 		"joint_input_closed",
 		"cooperative_round_resolved",
+		"transport_changed",
+		"public_endpoint_ready",
+		"direct_connection_timed_out",
 	]:
 		t.assert_true(coordinator.has_signal(signal_name), "coordinator exposes %s" % signal_name)
+
+
+func _test_public_transport_contract() -> void:
+	var host_state: Dictionary = coordinator._make_player_state(7, 1, "Owner", true)
+	var member_state: Dictionary = coordinator._make_player_state(9, 2, "Member")
+	t.assert_true(bool(host_state.get("room_host", false)), "relay owner state keeps room-host authority")
+	t.assert_false(bool(member_state.get("room_host", true)), "ordinary relay member is not room host")
+	var sanitized: Dictionary = coordinator._sanitize_player_state(host_state)
+	t.assert_true(bool(sanitized.get("room_host", false)), "room-host authority survives snapshots")
 
 
 func _test_defender_selection() -> void:

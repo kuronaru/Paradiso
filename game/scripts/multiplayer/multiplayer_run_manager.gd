@@ -10,6 +10,9 @@ signal joint_enemy_received(payload)
 signal joint_input_closed
 signal cooperative_round_resolved(round_number)
 signal session_ended(reason)
+signal transport_changed(mode, generation)
+signal public_endpoint_ready(success, external_address, port, error_code)
+signal direct_connection_timed_out(generation)
 
 const SERVER_PEER_ID := 1
 const MIN_PLAYERS := 2
@@ -23,7 +26,7 @@ const MAX_NESTED_COLLECTION_SIZE := 32
 const MAX_COMBAT_STAT := 10_000_000
 const MAX_BASE_DAMAGE := 100_000
 const MAX_TRANSFER_COUNT := 2
-const PROTOCOL_VERSION := 1
+const PROTOCOL_VERSION := 2
 
 enum SessionPhase {
 	OFFLINE,
@@ -35,14 +38,28 @@ enum SessionPhase {
 	ENDED,
 }
 
+enum TransportMode {
+	OFFLINE,
+	LAN_DIRECT,
+	PUBLIC_DIRECT,
+	RELAY,
+}
+
 var _enet_peer: ENetMultiplayerPeer = null
 var _phase: SessionPhase = SessionPhase.OFFLINE
 var _session_active := false
 var _run_active := false
 var _manual_leave := false
+var _dedicated_server := false
 var _local_display_name := "Player"
 var _session_uid := ""
 var _next_seat := 2
+var _transport_mode: TransportMode = TransportMode.OFFLINE
+var _transport_generation := 0
+var _awaiting_connection := false
+var _connect_time_remaining := 0.0
+var _dedicated_owner_token := ""
+var _relay_owner_token := ""
 
 # {peer_id: {peer_id, seat, display_name, ready, connected, eliminated, life, max_life}}
 var _players: Dictionary = {}
@@ -69,17 +86,67 @@ var _applied_life_damage_events: Dictionary = {}
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_connect_multiplayer_signals()
+	var helper := _public_network_helper()
+	if helper and helper.has_signal("mapping_completed") \
+			and not helper.mapping_completed.is_connected(_on_public_mapping_completed):
+		helper.mapping_completed.connect(_on_public_mapping_completed)
+
+
+func _process(delta: float) -> void:
+	if not _awaiting_connection:
+		return
+	if _connect_time_remaining <= 0.0:
+		return
+	_connect_time_remaining -= maxf(delta, 0.0)
+	if _connect_time_remaining > 0.0:
+		return
+	_handle_public_connection_failure()
 
 
 ## 创建 2～4 人 ENet 房间。房主占用玩家席位 0，最多接受 3 个客户端。
 func host_session(port: int, display_name: String) -> Error:
+	return _host_enet_session(port, display_name, TransportMode.LAN_DIRECT, false, "")
+
+
+## 创建公网直连候选；ENet 启动后异步尝试 UPnP UDP 映射。
+func host_public_session(port: int, display_name: String, enable_upnp: bool = true) -> Error:
+	var error := _host_enet_session(port, display_name, TransportMode.PUBLIC_DIRECT, false, "")
+	if error != OK:
+		return error
+	var advertised_address := _cfg_string("public_direct_advertise_address", "")
+	if not advertised_address.is_empty():
+		call_deferred("_emit_public_endpoint_result", true, advertised_address, port, OK)
+		return OK
+	if not enable_upnp or not _cfg_bool("public_upnp_enabled", true):
+		call_deferred("_emit_public_endpoint_result", false, "", port, ERR_UNAVAILABLE)
+		return OK
+	var helper := _public_network_helper()
+	if not helper or not helper.has_method("request_port_mapping") or not helper.request_port_mapping(port):
+		call_deferred("_emit_public_endpoint_result", false, "", port, ERR_BUSY)
+	return OK
+
+
+## 创建不占玩家席位的专用中继服务端。
+func host_dedicated_session(port: int, room_code: String, owner_token: String) -> Error:
+	return _host_enet_session(port, "Relay", TransportMode.RELAY, true, owner_token, room_code)
+
+
+func _host_enet_session(
+		port: int,
+		display_name: String,
+		transport_mode: TransportMode,
+		dedicated: bool,
+		owner_token: String,
+		session_label: String = ""
+	) -> Error:
 	if _session_active:
 		return ERR_ALREADY_IN_USE
 	if port <= 0 or port > 65535:
 		return ERR_INVALID_PARAMETER
 
 	var peer := ENetMultiplayerPeer.new()
-	var error := peer.create_server(port, MAX_PLAYERS - 1)
+	var maximum_clients := MAX_PLAYERS if dedicated else MAX_PLAYERS - 1
+	var error := peer.create_server(port, maximum_clients)
 	if error != OK:
 		connection_status_changed.emit("error")
 		return error
@@ -87,23 +154,98 @@ func host_session(port: int, display_name: String) -> Error:
 	_reset_runtime_state()
 	_enet_peer = peer
 	_local_display_name = _sanitize_display_name(display_name)
-	_session_uid = "%d-%d" % [int(Time.get_unix_time_from_system()), Time.get_ticks_usec()]
+	_session_uid = session_label if not session_label.is_empty() else "%d-%d" % [
+		int(Time.get_unix_time_from_system()),
+		Time.get_ticks_usec(),
+	]
 	_session_active = true
+	_dedicated_server = dedicated
+	_dedicated_owner_token = owner_token
+	_transport_mode = transport_mode
 	_phase = SessionPhase.LOBBY
 	multiplayer.multiplayer_peer = peer
 
-	_players[SERVER_PEER_ID] = _make_player_state(
-		SERVER_PEER_ID,
-		1,
-		_local_display_name
-	)
-	connection_status_changed.emit("hosting")
+	if not dedicated:
+		_players[SERVER_PEER_ID] = _make_player_state(
+			SERVER_PEER_ID,
+			1,
+			_local_display_name,
+			true
+		)
+	connection_status_changed.emit("relay_hosting" if dedicated else "hosting")
+	transport_changed.emit(int(_transport_mode), _transport_generation)
 	_emit_lobby_updated()
 	return OK
 
 
 ## 通过地址和 UDP 端口加入房间。
 func join_session(address: String, port: int, display_name: String) -> Error:
+	return _join_enet_session(address, port, display_name, TransportMode.LAN_DIRECT, 0, 0.0, "")
+
+
+func join_public_session(
+		address: String,
+		port: int,
+		display_name: String,
+		generation: int,
+		timeout_seconds: float = -1.0
+	) -> Error:
+	var timeout := timeout_seconds
+	if timeout <= 0.0:
+		timeout = _cfg_float("public_direct_connect_timeout", 4.0)
+	return _join_enet_session(
+		address,
+		port,
+		display_name,
+		TransportMode.PUBLIC_DIRECT,
+		generation,
+		timeout,
+		""
+	)
+
+
+func join_relay_session(
+		address: String,
+		port: int,
+		display_name: String,
+		generation: int,
+		owner_token: String = ""
+	) -> Error:
+	return _join_enet_session(
+		address,
+		port,
+		display_name,
+		TransportMode.RELAY,
+		generation,
+		_cfg_float("public_direct_connect_timeout", 4.0),
+		owner_token
+	)
+
+
+func switch_to_relay_session(
+		address: String,
+		port: int,
+		display_name: String,
+		generation: int,
+		owner_token: String = ""
+	) -> Error:
+	if _run_active:
+		return ERR_BUSY
+	_release_public_mapping()
+	_close_peer()
+	_reset_runtime_state()
+	return join_relay_session(address, port, display_name, generation, owner_token)
+
+
+func _join_enet_session(
+		address: String,
+		port: int,
+		display_name: String,
+		transport_mode: TransportMode,
+		generation: int,
+		timeout_seconds: float,
+		owner_token: String
+	) -> Error:
 	if _session_active:
 		return ERR_ALREADY_IN_USE
 	if port <= 0 or port > 65535:
@@ -123,9 +265,15 @@ func join_session(address: String, port: int, display_name: String) -> Error:
 	_enet_peer = peer
 	_local_display_name = _sanitize_display_name(display_name)
 	_session_active = true
+	_transport_mode = transport_mode
+	_transport_generation = maxi(0, generation)
+	_relay_owner_token = owner_token
+	_awaiting_connection = true
+	_connect_time_remaining = maxf(0.1, timeout_seconds) if timeout_seconds > 0.0 else 0.0
 	_phase = SessionPhase.LOBBY
 	multiplayer.multiplayer_peer = peer
 	connection_status_changed.emit("connecting")
+	transport_changed.emit(int(_transport_mode), _transport_generation)
 	return OK
 
 
@@ -135,6 +283,7 @@ func leave_session() -> void:
 		return
 
 	_manual_leave = true
+	_release_public_mapping()
 	if multiplayer.is_server() and _session_active:
 		_rpc_session_ended.rpc("host_left")
 	var local_reason := "host_left" if multiplayer.is_server() else "left"
@@ -142,6 +291,18 @@ func leave_session() -> void:
 	_reset_runtime_state()
 	connection_status_changed.emit("offline")
 	session_ended.emit(local_reason)
+	_manual_leave = false
+
+
+## 取消尚未开局的连接尝试，不发送离房场景跳转事件。
+func cancel_pending_session() -> void:
+	if _run_active:
+		return
+	_manual_leave = true
+	_release_public_mapping()
+	_close_peer()
+	_reset_runtime_state()
+	connection_status_changed.emit("offline")
 	_manual_leave = false
 
 
@@ -153,11 +314,52 @@ func is_run_active() -> bool:
 	return _session_active and _run_active
 
 
+func is_dedicated_server() -> bool:
+	return _session_active and _dedicated_server
+
+
+func get_transport_mode() -> int:
+	return int(_transport_mode)
+
+
+func get_transport_generation() -> int:
+	return _transport_generation
+
+
+func adopt_transport_generation(generation: int) -> void:
+	if not _session_active or _run_active or generation < _transport_generation:
+		return
+	_transport_generation = generation
+	transport_changed.emit(int(_transport_mode), _transport_generation)
+
+
+func is_relay_transport() -> bool:
+	return _session_active and _transport_mode == TransportMode.RELAY
+
+
+func get_transport_snapshot() -> Dictionary:
+	return {
+		"mode": int(_transport_mode),
+		"generation": _transport_generation,
+		"dedicated_server": _dedicated_server,
+		"awaiting_connection": _awaiting_connection,
+	}
+
+
 func get_local_player_id() -> int:
 	if not _session_active:
 		return SERVER_PEER_ID
 	var peer_id := multiplayer.get_unique_id()
 	return peer_id if peer_id > 0 else 0
+
+
+func is_local_room_host() -> bool:
+	if not _session_active or _dedicated_server:
+		return false
+	var local_id := get_local_player_id()
+	if not _players.has(local_id):
+		return false
+	return bool((_players[local_id] as Dictionary).get("room_host", false))
 
 
 func get_players_snapshot() -> Array:
@@ -179,9 +381,12 @@ func set_local_ready(ready: bool) -> void:
 
 ## 只有房主、2～4 人且所有已连接玩家都准备后才能开局。
 func can_start_run() -> bool:
-	if not _session_active or not multiplayer.is_server() or _run_active:
+	if not _session_active or _run_active or not is_local_room_host():
 		return false
-	var snapshot := _build_players_snapshot()
+	return _can_snapshot_start(_build_players_snapshot())
+
+
+func _can_snapshot_start(snapshot: Array) -> bool:
 	if snapshot.size() < MIN_PLAYERS or snapshot.size() > MAX_PLAYERS:
 		return false
 	for player_value in snapshot:
@@ -195,7 +400,17 @@ func can_start_run() -> bool:
 func start_session_run() -> bool:
 	if not can_start_run():
 		return false
+	if not multiplayer.is_server():
+		_rpc_request_start_run.rpc_id(SERVER_PEER_ID)
+		return true
+	return _server_start_session_run()
 
+
+func _server_start_session_run() -> bool:
+	if not _session_active or not multiplayer.is_server() or _run_active:
+		return false
+	if not _can_snapshot_start(_build_players_snapshot()):
+		return false
 	_run_active = true
 	_phase = SessionPhase.LOCAL_BATTLE
 	var maximum_life := _configured_max_life()
@@ -282,15 +497,21 @@ func _connect_multiplayer_signals() -> void:
 func _on_connected_to_server() -> void:
 	if not _session_active:
 		return
+	_awaiting_connection = false
+	_connect_time_remaining = 0.0
 	connection_status_changed.emit("connected")
 	_rpc_register_player.rpc_id(SERVER_PEER_ID, {
 		"display_name": _local_display_name,
 		"protocol_version": PROTOCOL_VERSION,
+		"owner_token": _relay_owner_token,
 	})
 
 
 func _on_connection_failed() -> void:
 	if _manual_leave:
+		return
+	if _transport_mode == TransportMode.PUBLIC_DIRECT:
+		_handle_public_connection_failure()
 		return
 	_close_peer()
 	_reset_runtime_state()
@@ -300,6 +521,9 @@ func _on_connection_failed() -> void:
 
 func _on_server_disconnected() -> void:
 	if _manual_leave:
+		return
+	if _transport_mode == TransportMode.PUBLIC_DIRECT and not _run_active:
+		_handle_public_connection_failure()
 		return
 	_close_peer()
 	_reset_runtime_state()
@@ -354,10 +578,15 @@ func _rpc_register_player(info: Dictionary) -> void:
 		if seat < 0:
 			_disconnect_remote_peer(sender_id)
 			return
+		var room_host := false
+		if _dedicated_server and not _dedicated_owner_token.is_empty() \
+				and str(info.get("owner_token", "")) == _dedicated_owner_token:
+			room_host = not _has_registered_room_host()
 		_players[sender_id] = _make_player_state(
 			sender_id,
 			seat,
-			_sanitize_display_name(str(info.get("display_name", "Player")))
+			_sanitize_display_name(str(info.get("display_name", "Player"))),
+			room_host
 		)
 	_broadcast_lobby_snapshot()
 
@@ -367,6 +596,18 @@ func _rpc_set_ready(ready: bool) -> void:
 	if not multiplayer.is_server() or _run_active:
 		return
 	_server_set_ready(multiplayer.get_remote_sender_id(), ready)
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func _rpc_request_start_run() -> void:
+	if not multiplayer.is_server() or _run_active:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if not _players.has(sender_id):
+		return
+	if not bool((_players[sender_id] as Dictionary).get("room_host", false)):
+		return
+	_server_start_session_run()
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)
@@ -886,12 +1127,18 @@ func _sort_player_states(a: Dictionary, b: Dictionary) -> bool:
 	return seat_a < seat_b
 
 
-func _make_player_state(peer_id: int, seat: int, display_name: String) -> Dictionary:
+func _make_player_state(
+		peer_id: int,
+		seat: int,
+		display_name: String,
+		room_host: bool = false
+	) -> Dictionary:
 	var maximum_life := _configured_max_life()
 	return {
 		"peer_id": peer_id,
 		"seat": seat,
 		"display_name": _sanitize_display_name(display_name),
+		"room_host": room_host,
 		"ready": false,
 		"connected": true,
 		"eliminated": false,
@@ -906,6 +1153,7 @@ func _sanitize_player_state(value: Dictionary) -> Dictionary:
 		"peer_id": maxi(0, int(value.get("peer_id", 0))),
 		"seat": clampi(int(value.get("seat", MAX_PLAYERS)), 1, MAX_PLAYERS),
 		"display_name": _sanitize_display_name(str(value.get("display_name", "Player"))),
+		"room_host": bool(value.get("room_host", false)),
 		"ready": bool(value.get("ready", false)),
 		"connected": bool(value.get("connected", true)),
 		"eliminated": bool(value.get("eliminated", false)),
@@ -1042,6 +1290,13 @@ func _allocate_seat() -> int:
 	return -1
 
 
+func _has_registered_room_host() -> bool:
+	for player_value in _players.values():
+		if player_value is Dictionary and bool(player_value.get("room_host", false)):
+			return true
+	return false
+
+
 func _living_connected_player_ids() -> Array[int]:
 	var states: Array[Dictionary] = []
 	for player_value in _players.values():
@@ -1129,7 +1384,87 @@ func _game_manager() -> Node:
 	return tree.root.get_node_or_null("GameManager")
 
 
+func _public_network_helper() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	if not tree or not tree.root:
+		return null
+	return tree.root.get_node_or_null("PublicNetworkHelper")
+
+
+func _cfg_value(key: String, default_value):
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree and tree.root:
+		var registry := tree.root.get_node_or_null("DataRegistry")
+		if registry and registry.has_method("get_config"):
+			return registry.get_config(key, default_value)
+	return default_value
+
+
+func _cfg_string(key: String, default_value: String) -> String:
+	return str(_cfg_value(key, default_value)).strip_edges()
+
+
+func _cfg_bool(key: String, default_value: bool) -> bool:
+	return bool(_cfg_value(key, default_value))
+
+
+func _cfg_float(key: String, default_value: float) -> float:
+	return float(_cfg_value(key, default_value))
+
+
+func _emit_public_endpoint_result(
+		success: bool,
+		external_address: String,
+		port: int,
+		error_code: int
+	) -> void:
+	public_endpoint_ready.emit(success, external_address, port, error_code)
+
+
+func _on_public_mapping_completed(
+		success: bool,
+		external_address: String,
+		port: int,
+		error_code: int
+	) -> void:
+	if not _session_active or _transport_mode != TransportMode.PUBLIC_DIRECT \
+			or not multiplayer.is_server():
+		if success:
+			_release_public_mapping()
+		return
+	_emit_public_endpoint_result(success, external_address, port, error_code)
+
+
+func _release_public_mapping() -> void:
+	var helper := _public_network_helper()
+	if not helper or not helper.has_method("get_mapped_port") \
+			or not helper.has_method("request_mapping_removal"):
+		return
+	var mapped_port := int(helper.call("get_mapped_port"))
+	if mapped_port > 0:
+		helper.call("request_mapping_removal", mapped_port)
+
+
+func _handle_public_connection_failure() -> void:
+	if not _session_active:
+		return
+	var failed_mode := _transport_mode
+	var failed_generation := _transport_generation
+	_awaiting_connection = false
+	_connect_time_remaining = 0.0
+	_close_peer()
+	_reset_runtime_state()
+	if failed_mode == TransportMode.PUBLIC_DIRECT:
+		connection_status_changed.emit("direct_failed")
+		direct_connection_timed_out.emit(failed_generation)
+	else:
+		connection_status_changed.emit("error")
+		session_ended.emit("connection_failed")
+
+
 func _close_peer() -> void:
+	_awaiting_connection = false
+	_connect_time_remaining = 0.0
 	if _enet_peer:
 		_enet_peer.close()
 	_enet_peer = null
@@ -1140,8 +1475,15 @@ func _reset_runtime_state() -> void:
 	_phase = SessionPhase.OFFLINE
 	_session_active = false
 	_run_active = false
+	_dedicated_server = false
 	_session_uid = ""
 	_next_seat = 2
+	_transport_mode = TransportMode.OFFLINE
+	_transport_generation = 0
+	_awaiting_connection = false
+	_connect_time_remaining = 0.0
+	_dedicated_owner_token = ""
+	_relay_owner_token = ""
 	_players.clear()
 	_round_number = 0
 	_round_expected.clear()
