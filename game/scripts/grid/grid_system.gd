@@ -525,6 +525,8 @@ func push_enemies_overlapping_hero_target(hero: UnitBase, target_grid: Vector2i)
 		var enemy := other as UnitBase
 		if not enemy.is_alive or enemy.get_team() == hero.get_team():
 			continue
+		if not hero.can_ground_collide_with(enemy):
+			continue
 
 		var radius_sum := hero.get_collision_radius() + enemy.get_collision_radius()
 		if hero_ground.distance_squared_to(enemy.get_ground_position()) >= radius_sum * radius_sum:
@@ -565,6 +567,8 @@ func _clear_enemy_ground_from_player_collisions(enemy: UnitBase, hero: UnitBase,
 
 			var player_unit := other as UnitBase
 			if not player_unit.is_alive or player_unit.get_team() != hero.get_team():
+				continue
+			if not enemy.can_ground_collide_with(player_unit):
 				continue
 
 			var player_ground := hero_ground if player_unit == hero else player_unit.get_ground_position()
@@ -662,6 +666,8 @@ func predict_unit_collision_on_segment(unit: UnitBase, from_ground: Vector2, to_
 			continue
 		var other_unit := other as UnitBase
 		if not other_unit.is_alive:
+			continue
+		if not unit.can_ground_collide_with(other_unit):
 			continue
 		if team != "" and other_unit.get_team() != team:
 			continue

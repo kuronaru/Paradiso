@@ -9,10 +9,15 @@ const COLOR_LAW := Color(0.96, 0.90, 0.62, 1.0)
 const COLOR_LAW_SHARE := Color(0.92, 0.86, 0.58, 1.0)
 const COLOR_DODGE := Color(0.68, 0.88, 1.0, 1.0)
 const COLOR_COOLDOWN := Color(0.50, 0.82, 1.0, 1.0)
+const COLOR_HEAL := Color(0.30, 1.0, 0.52, 1.0)
+const COLOR_EVIL := Color(0.86, 0.18, 0.42, 1.0)
+const COLOR_TELEPORT := Color(0.82, 0.42, 1.0, 1.0)
 
 var synergy_tag: String = ""
 var effect: Dictionary = {}
 var mechanics_enabled: bool = false
+var _aura_timer: float = 0.0
+var _chaotic_idle_elapsed: float = 0.0
 
 
 func setup(p_hero: UnitBase, config: Dictionary = {}) -> void:
@@ -38,9 +43,16 @@ func get_modifiers() -> Dictionary:
 
 
 func on_tick(context: Dictionary) -> void:
-	if not mechanics_enabled or synergy_tag != "tro_poem" or not is_active():
+	if not mechanics_enabled or not is_active():
 		return
-	_update_tro_poem_aura(float(context.get("delta", 0.0)))
+	var delta := float(context.get("delta", 0.0))
+	match synergy_tag:
+		"tro_poem":
+			_update_tro_poem_aura(delta)
+		"STR":
+			_update_strength_aura(delta)
+		"CHAOTIC":
+			_update_chaotic_reposition(delta)
 
 
 func before_deal_damage(context: Dictionary) -> void:
@@ -54,6 +66,12 @@ func before_deal_damage(context: Dictionary) -> void:
 			_apply_naka_pre_damage(context, target)
 		"moon_cult":
 			_apply_moon_pre_damage(context, target)
+		"FLYING":
+			if not target.airborne:
+				context["damage"] = maxi(1, int(round(float(context.get("damage", 0)) * float(effect.get("ground_damage_multiplier", 1.5)))))
+		"SUPPORT":
+			var multiplier := float(effect.get("advanced_member_damage_multiplier", 1.4)) if hero is HeroUnit and (hero as HeroUnit).star_level >= 2 else float(effect.get("member_damage_multiplier", 1.2))
+			context["damage"] = maxi(1, int(round(float(context.get("damage", 0)) * multiplier)))
 
 
 func after_deal_damage(context: Dictionary) -> void:
@@ -72,12 +90,26 @@ func after_deal_damage(context: Dictionary) -> void:
 			_apply_naka_on_hit(target)
 		"moon_cult":
 			target.apply_moon_forbidden_mark(hero, effect)
+		"DEX":
+			_try_dex_extra_attacks(context, target)
 
 
 func before_receive_attack(context: Dictionary) -> void:
-	if not mechanics_enabled or synergy_tag != "kroen_trench" or not is_active():
+	if not mechanics_enabled or not is_active():
 		return
 	var attacker := context.get("attacker", null) as UnitBase
+	if synergy_tag == "FLYING":
+		if not _is_hostile_attack(attacker) or attacker.airborne:
+			return
+		if attacker.is_ground_melee_attacker():
+			context["canceled"] = true
+			context["cancel_reason"] = "airborne"
+			hero._show_floating_text("空中闪避", COLOR_DODGE)
+		else:
+			context["amount"] = maxi(1, int(round(float(context.get("amount", 0)) * float(effect.get("ground_ranged_damage_multiplier", 0.6)))))
+		return
+	if synergy_tag != "kroen_trench":
+		return
 	if not _is_hostile_attack(attacker) or _tier() < 3:
 		return
 	var chance := float(effect.get("trench_dodge_chance", 0.0))
@@ -116,7 +148,12 @@ func before_apply_attack_damage(context: Dictionary) -> void:
 
 
 func after_receive_attack(context: Dictionary) -> void:
-	if not mechanics_enabled or synergy_tag != "remolino_law" or not _has_hero():
+	if not mechanics_enabled or not _has_hero():
+		return
+	if synergy_tag == "CON":
+		_trigger_constitution_heal(context)
+		return
+	if synergy_tag != "remolino_law":
 		return
 	var attacker := context.get("attacker", null) as UnitBase
 	if not _is_hostile_attack(attacker) or _tier() < 6:
@@ -132,7 +169,24 @@ func after_receive_attack(context: Dictionary) -> void:
 
 
 func after_skill_used(_context: Dictionary) -> void:
-	if not mechanics_enabled or synergy_tag != "tro_poem" or not is_active() or _tier() < 6:
+	if not mechanics_enabled or not is_active():
+		return
+	if synergy_tag == "CHAOTIC":
+		_chaotic_idle_elapsed = 0.0
+		return
+	if synergy_tag == "INT":
+		var base_refund := float(effect.get("cooldown_refund_base", 0.0))
+		var layers_per_step := maxi(1, int(effect.get("cooldown_refund_layers_per_step", 200)))
+		var steps := int(effect.get("layer", 0)) / layers_per_step
+		var seconds := minf(
+			float(effect.get("cooldown_refund_max", 5.0)),
+			base_refund + float(steps) * float(effect.get("cooldown_refund_per_step", 1.0))
+		)
+		hero.reduce_skill_cooldowns(seconds)
+		if seconds > 0.0:
+			hero._show_floating_text("-%s秒CD" % snappedf(seconds, 0.1), COLOR_COOLDOWN)
+		return
+	if synergy_tag != "tro_poem" or _tier() < 6:
 		return
 	var chance := clampf(float(effect.get("poem_cooldown_chance", 0.0)), 0.0, 1.0)
 	if chance <= 0.0 or randf() > chance:
@@ -150,6 +204,124 @@ func after_skill_used(_context: Dictionary) -> void:
 		if ally.is_alive:
 			ally.reduce_skill_cooldowns(seconds)
 			ally._show_floating_text("-CD", COLOR_COOLDOWN)
+
+
+func after_basic_attack(_context: Dictionary) -> void:
+	if mechanics_enabled and synergy_tag == "CHAOTIC":
+		_chaotic_idle_elapsed = 0.0
+
+
+func before_death(_context: Dictionary) -> void:
+	if not mechanics_enabled or synergy_tag != "EVIL" or not _has_hero():
+		return
+	var chance := clampf(float(effect.get("death_burst_chance", 0.0)), 0.0, 1.0)
+	if chance <= 0.0 or randf() >= chance:
+		return
+	var grid: GridSystem = BattleManager.grid
+	if not grid:
+		return
+	var damage := maxi(1, int(round(float(hero.attack) * float(effect.get("death_burst_attack_ratio", 10.0)))))
+	for candidate in grid.get_units_in_range(hero.grid_position, float(effect.get("death_burst_radius", 1.5)), "enemy" if hero.team == "player" else "player"):
+		if candidate is UnitBase and (candidate as UnitBase).is_alive:
+			(candidate as UnitBase).take_status_damage(damage, COLOR_EVIL)
+	hero._show_floating_text("邪爆", COLOR_EVIL)
+
+
+func _try_dex_extra_attacks(context: Dictionary, target: UnitBase) -> void:
+	if bool(context.get("is_skill", false)) or bool(context.get("is_extra_attack", false)):
+		return
+	var chance := maxf(0.0, float(effect.get("extra_attack_chance", 0.0)))
+	var attacks := int(floor(chance))
+	if randf() < chance - float(attacks):
+		attacks += 1
+	for _index in range(attacks):
+		if not is_instance_valid(target) or not target.is_alive:
+			break
+		hero._deal_damage_to_target(target, float(hero.attack), false, true)
+
+
+func _trigger_constitution_heal(context: Dictionary) -> void:
+	if int(context.get("damage_dealt", 0)) <= 0:
+		return
+	var ratio := maxf(0.0, float(effect.get("heal_max_hp_ratio", 0.0)))
+	if ratio <= 0.0:
+		return
+	var grid: GridSystem = BattleManager.grid
+	if not grid:
+		return
+	var amount := maxi(1, int(round(float(hero.max_hp) * ratio)))
+	for candidate in grid.get_units_in_range(hero.grid_position, float(effect.get("heal_radius", 2.0)), hero.team):
+		if candidate is UnitBase and (candidate as UnitBase).is_alive:
+			(candidate as UnitBase).heal(amount)
+	hero._show_floating_text("体质恢复", COLOR_HEAL)
+
+
+func _update_strength_aura(delta: float) -> void:
+	_aura_timer -= delta
+	if _aura_timer > 0.0:
+		return
+	_aura_timer = maxf(0.1, float(effect.get("aura_interval", 0.25)))
+	var grid: GridSystem = BattleManager.grid
+	if not grid:
+		return
+	var neighbor_count := 0
+	for candidate in grid.get_units_in_range(hero.grid_position, float(effect.get("neighbor_radius", 1.0)), hero.team):
+		if candidate is HeroUnit and (candidate as HeroUnit).is_alive:
+			var candidate_template := (candidate as HeroUnit).class_template
+			if candidate_template and "STR" in candidate_template.stat_tags:
+				neighbor_count += 1
+	var multiplier := 1.0 + float(neighbor_count) * float(effect.get("attack_speed_per_neighbor", 0.0))
+	if is_equal_approx(float(hero.combat_statuses.get("strength_attack_speed_multiplier", 1.0)), multiplier):
+		return
+	hero.combat_statuses["strength_attack_speed_multiplier"] = multiplier
+	hero._recalculate_stats(true)
+
+
+func _update_chaotic_reposition(delta: float) -> void:
+	_chaotic_idle_elapsed += delta
+	if _chaotic_idle_elapsed < float(effect.get("idle_seconds", 10.0)):
+		return
+	var grid: GridSystem = BattleManager.grid
+	if not grid:
+		return
+	var enemy_team := "enemy" if hero.team == "player" else "player"
+	if not grid.get_units_in_range(hero.grid_position, hero.attack_range, enemy_team).is_empty():
+		return
+	var best_cell := GridSystem.INVALID_GRID_POS
+	var best_distance := INF
+	for x in range(grid.grid_width):
+		for y in range(grid.grid_height):
+			var cell := Vector2i(x, y)
+			if cell != hero.grid_position and not grid.can_place_at(cell):
+				continue
+			var can_attack := false
+			for enemy_value in BattleManager.enemy_units:
+				if not (enemy_value is UnitBase) or not (enemy_value as UnitBase).is_alive:
+					continue
+				if grid.get_distance(cell, (enemy_value as UnitBase).grid_position) <= hero.attack_range:
+					can_attack = true
+					break
+			if not can_attack:
+				continue
+			var distance := grid.get_distance(hero.grid_position, cell)
+			if distance < best_distance:
+				best_distance = distance
+				best_cell = cell
+	if best_cell == GridSystem.INVALID_GRID_POS or best_cell == hero.grid_position:
+		return
+	if not grid.move_unit(hero, best_cell):
+		return
+	hero.global_position = grid.grid_to_world(best_cell)
+	if hero.ai_controller and hero.ai_controller.has_method("reset_ai_state"):
+		hero.ai_controller.reset_ai_state()
+	hero.combat_statuses["chaotic_reposition_boost"] = {
+		"remaining": float(effect.get("boost_duration", 3.0)),
+		"attack_multiplier": float(effect.get("boost_attack_multiplier", 1.0)),
+		"defense_multiplier": float(effect.get("boost_defense_multiplier", 1.0)),
+	}
+	hero._recalculate_stats(true)
+	hero._show_floating_text("混沌转移", COLOR_TELEPORT)
+	_chaotic_idle_elapsed = 0.0
 
 
 func _apply_naka_pre_damage(context: Dictionary, target: UnitBase) -> void:

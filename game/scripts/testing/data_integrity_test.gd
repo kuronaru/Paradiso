@@ -88,6 +88,8 @@ func _test_classes(registry: Node) -> void:
 			t.assert_true(synergy_ids.has("stat_%s" % tag.to_lower()), "class stat synergy exists: %s -> %s" % [class_id, tag])
 		for tag in _string_array(data.get("alignment_tags", [])):
 			t.assert_true(synergy_ids.has("alignment_%s" % tag.to_lower()), "class alignment synergy exists: %s -> %s" % [class_id, tag])
+		for tag in _string_array(data.get("trait_tags", [])):
+			t.assert_true(synergy_ids.has("trait_%s" % tag.to_lower()), "class trait synergy exists: %s -> %s" % [class_id, tag])
 		for skill_id in _string_array(data.get("skill_ids", [])):
 			t.assert_true(registry.get_all_skill_ids().has(skill_id), "class skill exists: %s -> %s" % [class_id, skill_id])
 

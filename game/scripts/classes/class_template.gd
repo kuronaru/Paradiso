@@ -22,6 +22,9 @@ extends Resource
 ## 阵营小羁绊标签
 @export var alignment_tags: Array[String] = []
 
+## 特性小羁绊标签（FLYING / SUPPORT / SHAPESHIFTER；ADVANCED 由星级动态判定）
+@export var trait_tags: Array[String] = []
+
 ## 部署消耗 DP
 @export var deploy_cost: int = 10
 

@@ -360,6 +360,9 @@ func _is_multiplier_stat(stat: String) -> bool:
 		"heal_multiplier",
 		"incoming_heal_multiplier",
 		"crit_damage_multiplier",
+		"damage_taken_multiplier",
+		"revive_time_multiplier",
+		"shield_multiplier",
 	]
 
 
@@ -407,6 +410,12 @@ func _stat_display_name(stat: String) -> String:
 			return "治疗/护盾"
 		"incoming_heal_multiplier":
 			return "承疗"
+		"damage_taken_multiplier":
+			return "受到伤害"
+		"revive_time_multiplier":
+			return "复活时间"
+		"shield_multiplier":
+			return "护盾"
 		"crit_damage_multiplier":
 			return "暴击伤害"
 		"armor_pierce":

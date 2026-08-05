@@ -70,6 +70,7 @@ var skill_cooldowns: Dictionary = {}  # {skill_id: remaining_time}
 var combat_statuses: Dictionary = {}
 var status_move_speed_multiplier: float = 1.0
 var law_damage_share_guard: bool = false
+var airborne: bool = false
 
 ## 团队标识
 @export var team: String = "player"   # "player" | "enemy"
@@ -177,6 +178,7 @@ func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 	combat_statuses.clear()
 	status_move_speed_multiplier = 1.0
 	law_damage_share_guard = false
+	airborne = false
 	# 初始化技能冷却
 	for sid in class_data.skill_ids:
 		skill_cooldowns[sid] = 0.0
@@ -236,6 +238,9 @@ func _default_synergy_modifiers() -> Dictionary:
 		"skill_cooldown_reduction": 0.0,
 		"life_steal_percent": 0.0,
 		"search_range_bonus": 0.0,
+		"damage_taken_multiplier": 1.0,
+		"revive_time_multiplier": 1.0,
+		"shield_multiplier": 1.0,
 	}
 
 
@@ -323,6 +328,9 @@ func _merge_passive_modifier(target: Dictionary, stat: String, value: float) -> 
 		"heal_multiplier",
 		"incoming_heal_multiplier",
 		"crit_damage_multiplier",
+		"damage_taken_multiplier",
+		"revive_time_multiplier",
+		"shield_multiplier",
 	]
 	if stat in multiply_stats:
 		target[stat] = float(target.get(stat, 1.0)) * value
@@ -344,10 +352,15 @@ func _recalculate_stats(preserve_hp_ratio: bool) -> void:
 	max_hp = maxi(1, int(round(float(base_max_hp) * float(synergy_modifiers.get("max_hp_multiplier", 1.0)))))
 	attack = maxi(1, int(round(float(base_attack) * float(synergy_modifiers.get("attack_multiplier", 1.0)))))
 	defense = maxi(0, int(round(float(base_defense) * float(synergy_modifiers.get("defense_multiplier", 1.0)))))
+	if combat_statuses.has("chaotic_reposition_boost"):
+		var chaotic_boost: Dictionary = combat_statuses.get("chaotic_reposition_boost", {})
+		attack = maxi(1, int(round(float(attack) * float(chaotic_boost.get("attack_multiplier", 1.0)))))
+		defense = maxi(0, int(round(float(defense) * float(chaotic_boost.get("defense_multiplier", 1.0)))))
 	max_hp += _get_status_flat_bonus("max_hp_bonus")
 	attack += _get_status_flat_bonus("attack_bonus")
 	defense += _get_status_flat_bonus("defense_bonus")
 	attack_speed = max(0.05, base_attack_speed * float(synergy_modifiers.get("attack_speed_multiplier", 1.0)))
+	attack_speed *= float(combat_statuses.get("strength_attack_speed_multiplier", 1.0))
 	move_speed = max(0.0, base_move_speed * float(synergy_modifiers.get("move_speed_multiplier", 1.0)))
 	attack_range = base_attack_range
 	search_range = base_search_range + float(synergy_modifiers.get("search_range_bonus", 0.0))
@@ -777,6 +790,8 @@ func get_ground_position() -> Vector2:
 func is_touching_unit(other: UnitBase) -> bool:
 	if not other:
 		return false
+	if not can_ground_collide_with(other):
+		return false
 	var radius_sum := get_collision_radius() + other.get_collision_radius()
 	return get_ground_position().distance_squared_to(other.get_ground_position()) <= radius_sum * radius_sum
 
@@ -841,6 +856,7 @@ func receive_attack_damage(amount: int, armor_pierce: float = 0.0, attacker: Uni
 	var incoming_armor_pierce := float(receive_context.get("armor_pierce", armor_pierce))
 	var effective_defense := int(round(float(defense) * (1.0 - clampf(incoming_armor_pierce, 0.0, 0.95))))
 	var actual: int = max(1, incoming_amount - effective_defense)
+	actual = maxi(1, int(round(float(actual) * float(synergy_modifiers.get("damage_taken_multiplier", 1.0)))))
 	var damage_context := {
 		"attacker": attacker,
 		"damage": actual,
@@ -886,7 +902,9 @@ func heal(amount: int) -> int:
 
 ## 清除主羁绊运行时状态。
 func clear_combat_statuses() -> void:
-	var had_status_bonuses := combat_statuses.has("tro_poem_sources")
+	var had_status_bonuses := combat_statuses.has("tro_poem_sources") \
+		or combat_statuses.has("chaotic_reposition_boost") \
+		or combat_statuses.has("strength_attack_speed_multiplier")
 	combat_statuses.clear()
 	law_damage_share_guard = false
 	var had_slow := not is_equal_approx(status_move_speed_multiplier, 1.0)
@@ -1028,6 +1046,7 @@ func _update_combat_statuses(delta: float) -> void:
 	_update_moon_forbidden_mark(delta)
 	_update_kroen_counter(delta)
 	_update_tro_poem_sources(delta)
+	_update_minor_synergy_statuses(delta)
 
 
 ## 更新安马里特瘴毒。
@@ -1145,6 +1164,18 @@ func _update_tro_poem_sources(delta: float) -> void:
 		combat_statuses["tro_poem_sources"] = sources
 	if changed:
 		_recalculate_stats(true)
+
+
+func _update_minor_synergy_statuses(delta: float) -> void:
+	if not combat_statuses.has("chaotic_reposition_boost"):
+		return
+	var boost: Dictionary = combat_statuses.get("chaotic_reposition_boost", {})
+	boost["remaining"] = float(boost.get("remaining", 0.0)) - delta
+	if float(boost["remaining"]) <= 0.0:
+		combat_statuses.erase("chaotic_reposition_boost")
+		_recalculate_stats(true)
+	else:
+		combat_statuses["chaotic_reposition_boost"] = boost
 
 
 ## 应用拉费里达减速状态。
@@ -1305,6 +1336,7 @@ func _show_floating_text(text: String, text_color: Color) -> void:
 func _die() -> void:
 	if not is_alive:
 		return
+	_notify_passives("before_death", {})
 	_trigger_moon_forbidden_death_burst()
 	is_alive = false
 	died.emit(self)
@@ -1434,6 +1466,7 @@ func perform_attack() -> void:
 	else:
 		if target_snapshot.has_method("take_damage"):
 			_launch_basic_attack_projectile(target_snapshot, false, attack_snapshot)
+	_notify_passives("after_basic_attack", {"target": target_snapshot})
 
 
 ## 发射一次普通攻击投射物，命中后再结算伤害或治疗。
@@ -1489,7 +1522,7 @@ func _get_projectile_parent() -> Node:
 
 
 ## 对目标造成一次攻击/技能伤害并触发主羁绊命中效果。
-func _deal_damage_to_target(target_unit: Node, base_amount: float, is_skill: bool) -> int:
+func _deal_damage_to_target(target_unit: Node, base_amount: float, is_skill: bool, is_extra_attack: bool = false) -> int:
 	if not target_unit or not is_instance_valid(target_unit) or not target_unit.has_method("take_damage"):
 		return 0
 	var damage := _calculate_damage(base_amount, is_skill)
@@ -1500,6 +1533,7 @@ func _deal_damage_to_target(target_unit: Node, base_amount: float, is_skill: boo
 			"base_amount": base_amount,
 			"damage": damage,
 			"is_skill": is_skill,
+			"is_extra_attack": is_extra_attack,
 		}
 		_notify_passives("before_deal_damage", damage_context)
 		damage = maxi(1, int(damage_context.get("damage", damage)))
@@ -1510,8 +1544,36 @@ func _deal_damage_to_target(target_unit: Node, base_amount: float, is_skill: boo
 			"target": target_combat_unit,
 			"damage_dealt": dealt,
 			"is_skill": is_skill,
+			"is_extra_attack": is_extra_attack,
 		})
 	return dealt
+
+
+func is_airborne_unit() -> bool:
+	return airborne
+
+
+func is_ground_melee_attacker() -> bool:
+	if airborne:
+		return false
+	if class_template:
+		return class_template.attack_mode == ClassTemplate.AttackMode.MELEE_SINGLE
+	return attack_range <= 1.5
+
+
+func can_ground_collide_with(other: UnitBase) -> bool:
+	return is_instance_valid(other) and airborne == other.airborne
+
+
+func can_target_combat_unit(other: UnitBase) -> bool:
+	if not is_instance_valid(other) or not other.is_alive:
+		return false
+	if is_ground_melee_attacker() and other.airborne:
+		return false
+	if class_template:
+		var required_type := ClassTemplate.TargetType.AIR if other.airborne else ClassTemplate.TargetType.GROUND
+		return (class_template.target_type & required_type) != 0
+	return true
 
 
 ## 计算伤害。

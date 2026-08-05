@@ -60,6 +60,7 @@ static func get_template(class_id: String) -> ClassTemplate:
 	template.visual_id = str(data.get("visual_id", "sample_visual"))
 	template.stat_tags = _string_array(data.get("stat_tags", []))
 	template.alignment_tags = _string_array(data.get("alignment_tags", []))
+	template.trait_tags = _string_array(data.get("trait_tags", []))
 	template.deploy_cost = int(data.get("deploy_cost", 10))
 	template.attack_mode = _attack_mode(str(data.get("attack_mode", "melee_single")))
 	template.target_type = _target_type(str(data.get("target_type", "ground")))

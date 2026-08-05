@@ -9,6 +9,7 @@ const DATA_PATHS := {
 	"enemies": "res://data/enemies.json",
 	"enemy_scaling": "res://data/enemy_scaling.json",
 	"synergies": "res://data/synergies.json",
+	"minor_synergies": "res://data/minor_synergies.json",
 	"waves": "res://data/waves.json",
 }
 
@@ -35,6 +36,9 @@ func load_all() -> void:
 	_enemies = _load_table(DATA_PATHS["enemies"], "enemy_id")
 	_enemy_scaling = _load_table(DATA_PATHS["enemy_scaling"], "scaling_id")
 	_synergies = _load_table(DATA_PATHS["synergies"], "synergy_id")
+	var minor_synergies := _load_table(DATA_PATHS["minor_synergies"], "synergy_id")
+	for synergy_id in minor_synergies.keys():
+		_synergies[synergy_id] = minor_synergies[synergy_id]
 	_waves = _load_table(DATA_PATHS["waves"], "wave_id")
 	_loaded = true
 

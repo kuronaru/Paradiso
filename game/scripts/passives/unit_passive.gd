@@ -49,5 +49,13 @@ func after_receive_attack(_context: Dictionary) -> void:
 	pass
 
 
+func after_basic_attack(_context: Dictionary) -> void:
+	pass
+
+
+func before_death(_context: Dictionary) -> void:
+	pass
+
+
 func after_skill_used(_context: Dictionary) -> void:
 	pass

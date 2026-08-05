@@ -59,32 +59,74 @@ func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 ## 同步当前已激活羁绊提供给该英雄的被动。
 func sync_synergy_passives(active_synergy_effects: Dictionary) -> void:
 	synergy_passives.clear()
+	airborne = false
 	if not class_template:
 		_rebuild_passive_list()
 		return
-	var hero_main_tag := str(class_template.class_group)
 	for synergy_id in active_synergy_effects.keys():
 		var effect_data = active_synergy_effects.get(synergy_id, {})
 		if not (effect_data is Dictionary):
 			continue
 		var tag := str(effect_data.get("tag", ""))
 		var is_main := bool(effect_data.get("is_main", false))
-		var mechanics_enabled := is_main and tag != "" and tag == hero_main_tag
-		var modifiers = effect_data.get("modifiers", {})
-		var main_effect = effect_data.get("main_effect", {})
-		if not mechanics_enabled and (not (modifiers is Dictionary) or modifiers.is_empty()):
+		var synergy_type := int(effect_data.get("type", 0))
+		var is_member := _matches_synergy(synergy_type, tag, is_main)
+		var mechanics_enabled := is_member and str(effect_data.get("mechanic_id", "")) != ""
+		var modifiers: Dictionary = {}
+		_merge_synergy_modifier_set(modifiers, effect_data.get("global_modifiers", {}))
+		if is_member:
+			_merge_synergy_modifier_set(modifiers, effect_data.get("member_modifiers", {}))
+			if star_level >= 2:
+				_merge_synergy_modifier_set(modifiers, effect_data.get("advanced_member_modifiers", {}))
+		var resolved_effect = effect_data.get("effect", {})
+		if not mechanics_enabled and modifiers.is_empty():
 			continue
 		var passive = SynergyPassiveScript.new()
 		passive.setup(self, {
 			"tag": tag,
-			"effect": main_effect,
+			"effect": resolved_effect,
 			"modifiers": modifiers,
 			"mechanics_enabled": mechanics_enabled,
 			"passive_id": "synergy_%s" % synergy_id,
 			"display_name": str(effect_data.get("display_name", synergy_id)),
 		})
 		synergy_passives.append(passive)
+		if mechanics_enabled and tag == "FLYING":
+			airborne = true
 	_rebuild_passive_list()
+
+
+func _matches_synergy(synergy_type: int, tag: String, is_main: bool) -> bool:
+	if is_main:
+		return class_template.class_group == tag or "SHAPESHIFTER" in class_template.trait_tags
+	match synergy_type:
+		SynergyDefinition.SynergyType.MINOR_STAT:
+			return tag in class_template.stat_tags
+		SynergyDefinition.SynergyType.MINOR_ALIGNMENT:
+			return tag in class_template.alignment_tags
+		SynergyDefinition.SynergyType.MINOR_TRAIT:
+			if tag == "ADVANCED":
+				return star_level >= 2
+			return tag in class_template.trait_tags
+	return false
+
+
+func _merge_synergy_modifier_set(target_modifiers: Dictionary, source_value) -> void:
+	if not (source_value is Dictionary):
+		return
+	var multiply_stats := [
+		"max_hp_multiplier", "attack_multiplier", "defense_multiplier",
+		"attack_speed_multiplier", "move_speed_multiplier", "damage_multiplier",
+		"skill_damage_multiplier", "heal_multiplier", "incoming_heal_multiplier",
+		"crit_damage_multiplier", "damage_taken_multiplier", "revive_time_multiplier",
+		"shield_multiplier",
+	]
+	var source: Dictionary = source_value
+	for stat in source.keys():
+		if str(stat) in multiply_stats:
+			target_modifiers[stat] = float(target_modifiers.get(stat, 1.0)) * float(source[stat])
+		else:
+			target_modifiers[stat] = float(target_modifiers.get(stat, 0.0)) + float(source[stat])
 
 
 func _get_extra_combat_passives() -> Array:
@@ -153,6 +195,7 @@ func _die() -> void:
 	if not is_alive:
 		return
 
+	_notify_passives("before_death", {})
 	is_alive = false
 	is_in_soul_state = true
 	target = null
@@ -165,7 +208,10 @@ func _die() -> void:
 	soul_origin_grid_position = grid.world_to_grid(get_ground_position()) if grid else grid_position
 	grid_position = soul_origin_grid_position
 	_clear_grid_presence()
-	soul_time_remaining = maxf(0.1, _cfg_float("hero_revive_delay", 5.0))
+	soul_time_remaining = maxf(
+		0.1,
+		_cfg_float("hero_revive_delay", 5.0) * float(synergy_modifiers.get("revive_time_multiplier", 1.0))
+	)
 	visible = true
 	modulate = Color(0.55, 0.78, 1.0, 0.42)
 	_set_ground_collision_enabled(false)

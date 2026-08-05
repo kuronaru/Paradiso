@@ -1,0 +1,297 @@
+{
+	"stat_str": {
+		"synergy_id": "stat_str",
+		"enabled": true,
+		"display_name": "力量",
+		"short_name": "力",
+		"type": "minor_stat",
+		"tag": "STR",
+		"thresholds": [2, 3],
+		"order": 7,
+		"modifier_scope": "members",
+		"description": "2人：力量英雄攻击力随层数提升。3人：每名1格内的力量英雄为其提供30%攻击速度。",
+		"scalable_modifiers": [
+			{"min_tier": 2, "stat": "attack_multiplier", "base": 1.15, "per_layer": 0.0038, "max_value": 5.0}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "strength_formation",
+		"main_effect": {
+			"neighbor_radius": 1.0,
+			"attack_speed_per_neighbor": {"min_tier": 3, "value": 0.30, "fallback": 0.0},
+			"aura_interval": 0.25
+		}
+	},
+	"stat_dex": {
+		"synergy_id": "stat_dex",
+		"enabled": true,
+		"display_name": "敏捷",
+		"short_name": "敏",
+		"type": "minor_stat",
+		"tag": "DEX",
+		"thresholds": [2, 3],
+		"order": 8,
+		"modifier_scope": "members",
+		"description": "2人：敏捷英雄攻击速度随层数提升。3人：普攻按层数概率追加攻击，超过100%的部分转为固定次数。",
+		"scalable_modifiers": [
+			{"min_tier": 2, "stat": "attack_speed_multiplier", "base": 1.12, "per_layer": 0.0032, "max_value": 4.30}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "dex_extra_attack",
+		"main_effect": {
+			"extra_attack_chance": {"min_tier": 3, "base": 0.15, "per_layer": 0.0015, "max_value": 1.65, "fallback": 0.0}
+		}
+	},
+	"stat_con": {
+		"synergy_id": "stat_con",
+		"enabled": true,
+		"display_name": "体质",
+		"short_name": "体",
+		"type": "minor_stat",
+		"tag": "CON",
+		"thresholds": [2, 3],
+		"order": 9,
+		"modifier_scope": "members",
+		"description": "2人：体质英雄最大生命随层数提升。3人：受击时按自身最大生命治疗2格内友军。",
+		"scalable_modifiers": [
+			{"min_tier": 2, "stat": "max_hp_multiplier", "base": 1.20, "per_layer": 0.0038, "max_value": 5.0}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "constitution_heal_pulse",
+		"main_effect": {
+			"heal_radius": 2.0,
+			"heal_max_hp_ratio": {"min_tier": 3, "base": 0.02, "per_layer": 0.00006, "max_value": 0.08, "fallback": 0.0}
+		}
+	},
+	"stat_int": {
+		"synergy_id": "stat_int",
+		"enabled": true,
+		"display_name": "智力",
+		"short_name": "智",
+		"type": "minor_stat",
+		"tag": "INT",
+		"thresholds": [2, 3],
+		"order": 10,
+		"modifier_scope": "members",
+		"description": "2人：智力英雄技能伤害随层数提升。3人：技能结束后按层数阶梯立即减少技能冷却。",
+		"scalable_modifiers": [
+			{"min_tier": 2, "stat": "skill_damage_multiplier", "base": 1.20, "per_layer": 0.004, "max_value": 5.20}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "intellect_cooldown_refund",
+		"main_effect": {
+			"cooldown_refund_base": {"min_tier": 3, "value": 1.0, "fallback": 0.0},
+			"cooldown_refund_layers_per_step": 200,
+			"cooldown_refund_per_step": 1.0,
+			"cooldown_refund_max": 5.0
+		}
+	},
+	"stat_wis": {
+		"synergy_id": "stat_wis",
+		"enabled": true,
+		"display_name": "感知",
+		"short_name": "感",
+		"type": "minor_stat",
+		"tag": "WIS",
+		"thresholds": [2],
+		"order": 11,
+		"modifier_scope": "members",
+		"count_scope": "roster",
+		"description": "2人（备战区也计数）：战斗结束按层数概率获得2资金；首次达到100层后，下场战斗每击败20名敌人再获得4资金。",
+		"scalable_modifiers": [],
+		"fixed_modifiers": [],
+		"mechanic_id": "wisdom_battle_income",
+		"main_effect": {
+			"battle_end_gold_chance": {"min_tier": 2, "base": 0.10, "per_layer": 0.0015, "max_value": 1.60, "fallback": 0.0},
+			"battle_end_gold_amount": 2
+		}
+	},
+	"stat_cha": {
+		"synergy_id": "stat_cha",
+		"enabled": true,
+		"display_name": "魅力",
+		"short_name": "魅",
+		"type": "minor_stat",
+		"tag": "CHA",
+		"thresholds": [2],
+		"order": 12,
+		"modifier_scope": "members",
+		"count_scope": "roster",
+		"description": "2人（备战区也计数）：刷新后按层数概率使下次刷新免费；每累计50层获得10资金；首次达到150层后招募价格永久-1。",
+		"scalable_modifiers": [],
+		"fixed_modifiers": [],
+		"mechanic_id": "charisma_tavern",
+		"main_effect": {
+			"next_refresh_free_chance": {"min_tier": 2, "base": 0.08, "per_layer": 0.00092, "max_value": 1.0, "fallback": 0.0}
+		}
+	},
+	"alignment_lawful": {
+		"synergy_id": "alignment_lawful",
+		"enabled": true,
+		"display_name": "守序",
+		"short_name": "序",
+		"type": "minor_alignment",
+		"tag": "LAWFUL",
+		"thresholds": [2],
+		"order": 13,
+		"modifier_scope": "members",
+		"count_scope": "roster",
+		"description": "2人（备战区也计数）：英雄的获得时特质触发2次；达到100层后触发3次。",
+		"scalable_modifiers": [],
+		"fixed_modifiers": [],
+		"mechanic_id": "lawful_acquisition_repeat",
+		"main_effect": {"acquisition_repeat_count": {"min_tier": 2, "value": 2, "fallback": 1}}
+	},
+	"alignment_chaotic": {
+		"synergy_id": "alignment_chaotic",
+		"enabled": true,
+		"display_name": "混沌",
+		"short_name": "混",
+		"type": "minor_alignment",
+		"tag": "CHAOTIC",
+		"thresholds": [2],
+		"order": 14,
+		"modifier_scope": "members",
+		"description": "2人：混沌英雄10秒未攻击且范围内无敌人时传送到最近可攻击站位，传送后3秒提升攻防；达到50层时全队攻速+50%。",
+		"scalable_modifiers": [
+			{"min_tier": 2, "min_layer": 50, "scope": "global", "stat": "attack_speed_multiplier", "base": 1.50, "per_layer": 0.0, "max_value": 1.50}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "chaotic_reposition",
+		"main_effect": {
+			"idle_seconds": 10.0,
+			"boost_duration": 3.0,
+			"boost_attack_multiplier": {"min_tier": 2, "base": 1.20, "per_layer": 0.0028, "max_value": 4.0, "fallback": 1.0},
+			"boost_defense_multiplier": {"min_tier": 2, "base": 1.20, "per_layer": 0.0028, "max_value": 4.0, "fallback": 1.0}
+		}
+	},
+	"alignment_good": {
+		"synergy_id": "alignment_good",
+		"enabled": true,
+		"display_name": "善良",
+		"short_name": "善",
+		"type": "minor_alignment",
+		"tag": "GOOD",
+		"thresholds": [2],
+		"order": 15,
+		"modifier_scope": "members",
+		"description": "2人：善良英雄的治疗和护盾量随层数提升；达到40层时全队受到的治疗量+60%。",
+		"scalable_modifiers": [
+			{"min_tier": 2, "scope": "members", "stat": "heal_multiplier", "base": 1.15, "per_layer": 0.0035, "max_value": 4.60},
+			{"min_tier": 2, "scope": "members", "stat": "shield_multiplier", "base": 1.15, "per_layer": 0.0035, "max_value": 4.60},
+			{"min_tier": 2, "min_layer": 40, "scope": "global", "stat": "incoming_heal_multiplier", "base": 1.60, "per_layer": 0.0, "max_value": 1.60}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "",
+		"main_effect": {}
+	},
+	"alignment_evil": {
+		"synergy_id": "alignment_evil",
+		"enabled": true,
+		"display_name": "邪恶",
+		"short_name": "邪",
+		"type": "minor_alignment",
+		"tag": "EVIL",
+		"thresholds": [2, 3],
+		"order": 16,
+		"modifier_scope": "members",
+		"description": "2人：邪恶英雄阵亡时按层数概率造成1000%攻击力范围爆炸。3人：邪恶英雄复活时间随层数减少。",
+		"scalable_modifiers": [
+			{"min_tier": 3, "stat": "revive_time_multiplier", "base": 0.85, "per_layer": -0.00055, "min_value": 0.30, "max_value": 0.85}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "evil_death_burst",
+		"main_effect": {
+			"death_burst_chance": {"min_tier": 2, "base": 0.08, "per_layer": 0.00062, "max_value": 0.70, "fallback": 0.0},
+			"death_burst_attack_ratio": 10.0,
+			"death_burst_radius": 1.5
+		}
+	},
+	"alignment_neutral": {
+		"synergy_id": "alignment_neutral",
+		"enabled": true,
+		"display_name": "中立",
+		"short_name": "中",
+		"type": "minor_alignment",
+		"tag": "NEUTRAL",
+		"thresholds": [2, 3],
+		"order": 17,
+		"modifier_scope": "global",
+		"description": "2人：全队防御提升、复活时间减少，回合休整后所有已激活羁绊+2层；3人时改为+4层。",
+		"scalable_modifiers": [
+			{"min_tier": 2, "stat": "defense_multiplier", "base": 1.08, "per_layer": 0.0029, "max_value": 4.0},
+			{"min_tier": 2, "stat": "revive_time_multiplier", "base": 0.92, "per_layer": -0.00042, "min_value": 0.50, "max_value": 0.92}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "neutral_rest_layers",
+		"main_effect": {}
+	},
+	"trait_flying": {
+		"synergy_id": "trait_flying",
+		"enabled": true,
+		"display_name": "飞行术",
+		"short_name": "飞",
+		"type": "minor_trait",
+		"tag": "FLYING",
+		"thresholds": [1],
+		"order": 18,
+		"modifier_scope": "members",
+		"description": "1人：飞行英雄获得空中优势，不阻挡地面敌人、免疫地面近战，对地伤害+50%，受到地面远程伤害-40%。",
+		"scalable_modifiers": [],
+		"fixed_modifiers": [],
+		"mechanic_id": "flying_advantage",
+		"main_effect": {"ground_damage_multiplier": 1.50, "ground_ranged_damage_multiplier": 0.60}
+	},
+	"trait_support": {
+		"synergy_id": "trait_support",
+		"enabled": true,
+		"display_name": "支援",
+		"short_name": "援",
+		"type": "minor_trait",
+		"tag": "SUPPORT",
+		"thresholds": [2],
+		"order": 19,
+		"modifier_scope": "members",
+		"description": "2人：全队受到伤害-20%；支援英雄伤害+20%，高阶支援英雄伤害改为+40%。",
+		"scalable_modifiers": [
+			{"min_tier": 2, "scope": "global", "stat": "damage_taken_multiplier", "base": 0.80, "per_layer": 0.0, "min_value": 0.80, "max_value": 0.80}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "support_damage_bonus",
+		"main_effect": {"member_damage_multiplier": 1.20, "advanced_member_damage_multiplier": 1.40}
+	},
+	"trait_advanced": {
+		"synergy_id": "trait_advanced",
+		"enabled": true,
+		"display_name": "高阶",
+		"short_name": "阶",
+		"type": "minor_trait",
+		"tag": "ADVANCED",
+		"thresholds": [2, 5],
+		"order": 20,
+		"modifier_scope": "members",
+		"description": "高阶即2星及以上。2人：高阶英雄攻击力+30%。5人：高阶英雄技能冷却-30%。",
+		"scalable_modifiers": [
+			{"min_tier": 2, "stat": "attack_multiplier", "base": 1.30, "per_layer": 0.0, "max_value": 1.30},
+			{"min_tier": 5, "stat": "skill_cooldown_reduction", "base": 0.30, "per_layer": 0.0, "max_value": 0.30}
+		],
+		"fixed_modifiers": [],
+		"mechanic_id": "",
+		"main_effect": {}
+	},
+	"trait_shapeshifter": {
+		"synergy_id": "trait_shapeshifter",
+		"enabled": true,
+		"display_name": "变形者",
+		"short_name": "变",
+		"type": "minor_trait",
+		"tag": "SHAPESHIFTER",
+		"thresholds": [1],
+		"order": 21,
+		"modifier_scope": "members",
+		"description": "1人：场上已有主羁绊的激活人数+1；变形者享受所有已激活主羁绊的成员数值与机制。",
+		"scalable_modifiers": [],
+		"fixed_modifiers": [],
+		"mechanic_id": "shapeshifter_main_bridge",
+		"main_effect": {}
+	}
+}

@@ -127,6 +127,8 @@ func start_battle(party_data: Array, enemy_pool: Array, wave_count: int = 3) -> 
 ## 开始一次新的肉鸽流程
 func start_roguelike_run(relic_id: String = "") -> void:
 	"""开始一次新的肉鸽流程"""
+	if SynergyManager and SynergyManager.has_method("reset_run_state"):
+		SynergyManager.reset_run_state()
 	_ensure_save_data()
 	active_run_relic_id = _resolve_run_relic_id(relic_id)
 	pending_run_relic_id = ""

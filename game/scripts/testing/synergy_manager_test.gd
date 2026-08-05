@@ -7,6 +7,7 @@ var t := TestAssertions.new("SynergyManager")
 var synergy_manager
 var battle_manager
 var resource_manager
+var game_manager
 
 
 func _init() -> void:
@@ -18,6 +19,7 @@ func _run() -> void:
 	synergy_manager = _autoload("SynergyManager")
 	battle_manager = _autoload("BattleManager")
 	resource_manager = _autoload("ResourceManager")
+	game_manager = _autoload("GameManager")
 
 	t.assert_true(synergy_manager != null, "SynergyManager autoload exists")
 	t.assert_true(battle_manager != null, "BattleManager autoload exists")
@@ -32,7 +34,10 @@ func _run() -> void:
 	_test_empty_roster_defaults()
 	_test_inactive_override_has_summary_without_modifiers()
 	_test_main_synergy_override()
-	_test_fixed_modifiers()
+	_test_new_minor_scopes()
+	_test_new_definition_options()
+	_test_shapeshifter_count_bonus()
+	_test_economy_and_rest_hooks()
 	_test_clear_override()
 
 	t.finish(self)
@@ -78,7 +83,7 @@ func _test_main_synergy_override() -> void:
 
 	var expected_attack := 1.3 + 60.0 * 0.008
 	var modifiers: Dictionary = synergy_manager.get_active_modifiers()
-	t.assert_near(float(modifiers.get("attack_multiplier", 0.0)), expected_attack, 0.0001, "main_naka attack multiplier matches data formula")
+	t.assert_near(float(modifiers.get("attack_multiplier", 0.0)), 1.0, 0.0001, "member-scoped main synergy does not modify unrelated units globally")
 
 	var main_effects: Dictionary = synergy_manager.get_active_main_effects()
 	t.assert_true(main_effects.has("naka"), "main_naka exposes naka main effect")
@@ -91,19 +96,70 @@ func _test_main_synergy_override() -> void:
 	t.assert_true(passive_effects.has("main_naka"), "main_naka passive payload exists")
 	var payload: Dictionary = passive_effects.get("main_naka", {})
 	t.assert_true(bool(payload.get("is_main", false)), "main_naka passive payload is marked main")
+	var member_modifiers: Dictionary = payload.get("member_modifiers", {})
+	t.assert_near(float(member_modifiers.get("attack_multiplier", 0.0)), expected_attack, 0.0001, "main_naka member multiplier matches data formula")
 
 
-func _test_fixed_modifiers() -> void:
+func _test_new_minor_scopes() -> void:
 	resource_manager.reset_dp(20, 100)
 	synergy_manager.set_test_synergy_override([
-		{"id": "stat_cha", "count": 3, "layer": 60},
-		{"id": "alignment_neutral", "count": 3, "layer": 60},
+		{"id": "trait_support", "count": 2, "layer": 40},
+		{"id": "alignment_good", "count": 2, "layer": 40},
+		{"id": "trait_advanced", "count": 5, "layer": 100},
+		{"id": "alignment_lawful", "count": 2, "layer": 100},
 	])
-	var fixed: Dictionary = synergy_manager.get_fixed_modifiers()
-	t.assert_near(float(fixed.get("max_dp_bonus", 0.0)), 15.0, 0.0001, "fixed max_dp_bonus stacks additively")
-	t.assert_near(float(fixed.get("victory_gold_multiplier", 1.0)), 1.05, 0.0001, "victory gold multiplier is applied")
-	t.assert_eq(resource_manager.max_dp, 115, "ResourceManager max_dp receives synergy max_dp_bonus")
-	t.assert_eq(synergy_manager.apply_victory_gold_bonus(100), 105, "victory gold bonus applies multiplier")
+	var global: Dictionary = synergy_manager.get_active_modifiers()
+	t.assert_near(float(global.get("damage_taken_multiplier", 1.0)), 0.8, 0.0001, "support applies global 20 percent damage reduction")
+	t.assert_near(float(global.get("incoming_heal_multiplier", 1.0)), 1.6, 0.0001, "good layer 40 applies global incoming healing milestone")
+	var advanced_payload: Dictionary = synergy_manager.get_active_synergy_passive_effects().get("trait_advanced", {})
+	var advanced_members: Dictionary = advanced_payload.get("member_modifiers", {})
+	t.assert_near(float(advanced_members.get("attack_multiplier", 1.0)), 1.3, 0.0001, "advanced tier 2 grants member attack")
+	t.assert_near(float(advanced_members.get("skill_cooldown_reduction", 0.0)), 0.3, 0.0001, "advanced tier 5 grants member cooldown reduction")
+	t.assert_eq(synergy_manager.notify_hero_acquired("fighter_champion"), 3, "lawful layer 100 repeats acquisition traits three times")
+
+
+func _test_new_definition_options() -> void:
+	var ids: Dictionary = {}
+	for option in synergy_manager.get_test_synergy_options():
+		ids[str(option.get("id", ""))] = option
+	t.assert_true(ids.has("trait_flying"), "flying trait definition is available")
+	t.assert_true(ids.has("trait_support"), "support trait definition is available")
+	t.assert_true(ids.has("trait_advanced"), "advanced trait definition is available")
+	t.assert_true(ids.has("trait_shapeshifter"), "shapeshifter trait definition is available")
+	t.assert_eq(int((ids.get("stat_wis", {}) as Dictionary).get("activation_count", 0)), 2, "wisdom activates at two members")
+
+
+func _test_shapeshifter_count_bonus() -> void:
+	var counts := {"trait_shapeshifter": 1, "main_naka": 2}
+	var names := {"trait_shapeshifter": ["变形者"], "main_naka": ["A", "B"]}
+	synergy_manager._apply_shapeshifter_main_count_bonus(counts, names)
+	t.assert_eq(int(counts.get("main_naka", 0)), 3, "shapeshifter adds one activation count to an existing main synergy")
+	t.assert_eq((names.get("main_naka", []) as Array).size(), 3, "shapeshifter count bonus is visible in member summary")
+
+
+func _test_economy_and_rest_hooks() -> void:
+	synergy_manager.clear_test_synergy_override()
+	synergy_manager.reset_run_state()
+	battle_manager.player_units.clear()
+	game_manager.is_roguelike_run = true
+	game_manager.run_gold = 0
+	game_manager.party = [
+		{"class_id": "bard_lore", "star_level": 3},
+		{"class_id": "bard_valor", "star_level": 3},
+		{"class_id": "paladin_devotion", "star_level": 3},
+	]
+	synergy_manager.recalculate()
+	t.assert_eq(game_manager.run_gold, 30, "charisma awards 10 gold for each crossed 50-layer milestone")
+	t.assert_eq(synergy_manager.get_recruit_cost_discount(), 1, "charisma layer 150 unlocks permanent recruit discount")
+
+	synergy_manager.set_test_synergy_override([{"id": "stat_wis", "count": 2, "layer": 999}])
+	var wis_bonus: int = int(synergy_manager.resolve_battle_end_gold_bonus(0))
+	t.assert_true(wis_bonus == 2 or wis_bonus == 4, "wisdom 160 percent chance gives one guaranteed and at most one extra reward")
+
+	synergy_manager.set_test_synergy_override([{"id": "alignment_neutral", "count": 3, "layer": 60}])
+	t.assert_eq(synergy_manager.apply_rest_synergy_layers(), 4, "neutral tier 3 grants four rest layers")
+	game_manager.party.clear()
+	game_manager.is_roguelike_run = false
 
 
 func _test_clear_override() -> void:
@@ -132,6 +188,7 @@ func _reset_state() -> void:
 	battle_manager.wave_enemies.clear()
 	battle_manager.enemy_pool.clear()
 	battle_manager.state = 0
+	game_manager.party.clear()
 	resource_manager.reset_dp(20, 100)
 	if synergy_manager.is_test_synergy_override_enabled():
 		synergy_manager.clear_test_synergy_override()

@@ -6,6 +6,7 @@ enum SynergyType {
 	MAIN_NATION,
 	MINOR_STAT,
 	MINOR_ALIGNMENT,
+	MINOR_TRAIT,
 }
 
 var synergy_id: String = ""
@@ -20,6 +21,8 @@ var scalable_modifiers: Array[Dictionary] = []
 var fixed_modifiers: Array[Dictionary] = []
 var mechanic_id: String = ""
 var main_effect: Dictionary = {}
+var modifier_scope: String = "global"
+var count_scope: String = "deployed"
 
 
 ## 初始化实例数据。
@@ -35,7 +38,9 @@ func _init(
 		p_scalable: Array[Dictionary] = [],
 		p_fixed: Array[Dictionary] = [],
 		p_mechanic_id: String = "",
-		p_main_effect: Dictionary = {}) -> void:
+		p_main_effect: Dictionary = {},
+		p_modifier_scope: String = "global",
+		p_count_scope: String = "deployed") -> void:
 	synergy_id = p_id
 	display_name = p_name
 	short_name = p_short
@@ -48,6 +53,8 @@ func _init(
 	fixed_modifiers = p_fixed.duplicate(true)
 	mechanic_id = p_mechanic_id
 	main_effect = p_main_effect.duplicate(true)
+	modifier_scope = p_modifier_scope
+	count_scope = p_count_scope
 
 
 ## 获取激活档位。

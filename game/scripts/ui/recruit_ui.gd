@@ -297,7 +297,7 @@ func _refresh_option_card(index: int, option, active_gold: int) -> void:
 	var has_owned_copy := _player_owns_recruit_class(option.class_id)
 	option_icons[index].color = ClassDefinitions.get_template_color(ct.class_id)
 	option_name_labels[index].text = ct.job_name
-	option_synergy_labels[index].text = _get_synergy_line(ct)
+	option_synergy_labels[index].text = _get_synergy_line(ct, option.level)
 	var tier_names := ["低阶", "中阶", "高阶"]
 	var tier_name: String = tier_names[clampi(option.level, 1, 3) - 1]
 	option_price_labels[index].text = "%s · %d 金币  酒馆Lv.%d" % [tier_name, option.cost, option.shop_level]
@@ -375,7 +375,7 @@ func _set_option_owned_blink(index: int, enabled: bool) -> void:
 		button.modulate = Color.WHITE
 
 
-func _get_synergy_line(ct: ClassTemplate) -> String:
+func _get_synergy_line(ct: ClassTemplate, star_level: int = 1) -> String:
 	var tags: Array[String] = []
 	if ct.class_group != "":
 		tags.append(_main_group_label(ct.class_group))
@@ -383,6 +383,10 @@ func _get_synergy_line(ct: ClassTemplate) -> String:
 		tags.append(_stat_label(str(tag)))
 	for tag in ct.alignment_tags:
 		tags.append(_alignment_label(str(tag)))
+	for tag in ct.trait_tags:
+		tags.append(_trait_label(str(tag)))
+	if star_level >= 2:
+		tags.append("阶")
 	return " / ".join(tags)
 
 
@@ -419,6 +423,17 @@ func _alignment_label(tag: String) -> String:
 			return "邪"
 		"NEUTRAL":
 			return "中"
+	return tag.left(1)
+
+
+func _trait_label(tag: String) -> String:
+	match tag:
+		"FLYING":
+			return "飞"
+		"SUPPORT":
+			return "援"
+		"SHAPESHIFTER":
+			return "变"
 	return tag.left(1)
 
 

@@ -187,6 +187,8 @@ func _find_target() -> void:
 	var target_team := _get_target_team()
 	var search_center := grid.world_to_grid(owner_unit.get_ground_position())
 	var candidates := grid.get_units_in_range(search_center, owner_unit.search_range, target_team)
+	if not _is_healer():
+		candidates = candidates.filter(func(u): return not (u is UnitBase) or owner_unit.can_target_combat_unit(u as UnitBase))
 	if _is_healer():
 		candidates = candidates.filter(func(u): return u != owner_unit and u.current_hp < u.max_hp)
 
@@ -205,7 +207,7 @@ func _find_target() -> void:
 			if _is_healer():
 				_select_by(candidates, func(u): return u.current_hp, false)
 			else:
-				owner_unit.target = grid.get_nearest_unit(search_center, target_team)
+				_select_by(candidates, func(u): return grid.get_distance(search_center, u.grid_position), false)
 		ClassTemplate.TargetPriority.LOWEST_HP:
 			_select_by(candidates, func(u): return u.current_hp, false)
 		ClassTemplate.TargetPriority.HIGHEST_ATK:
@@ -265,7 +267,9 @@ func _is_in_attack_range(target: Node) -> bool:
 func _is_valid_living_target(target: Node) -> bool:
 	if not target or not is_instance_valid(target):
 		return false
-	return not (target is UnitBase) or (target as UnitBase).is_alive
+	if _is_healer():
+		return not (target is UnitBase) or (target as UnitBase).is_alive
+	return not (target is UnitBase) or owner_unit.can_target_combat_unit(target as UnitBase)
 
 
 ## 获取攻击入口目标。

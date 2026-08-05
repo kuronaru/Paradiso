@@ -83,6 +83,8 @@ func generate_recruit_options(_round_number: int, _party_size: int) -> Array[Rec
 
 ## 获取当前选项。
 func get_current_options() -> Array[RecruitOption]:
+	for option in current_options:
+		option.cost = _calculate_cost(option.class_id, option.level)
 	return current_options
 
 
@@ -116,7 +118,10 @@ func advance_round() -> void:
 
 ## 获取消耗。
 func get_refresh_cost() -> int:
-	return GameManager.apply_roguelike_relic_refresh_cost(_cfg_int("tavern_refresh_cost", REFRESH_COST))
+	var cost := GameManager.apply_roguelike_relic_refresh_cost(_cfg_int("tavern_refresh_cost", REFRESH_COST))
+	if SynergyManager and SynergyManager.has_method("get_tavern_refresh_cost"):
+		cost = SynergyManager.get_tavern_refresh_cost(cost)
+	return cost
 
 
 ## 获取选项槽位数量。
@@ -164,7 +169,10 @@ func _calculate_cost(_class_id: String, level: int) -> int:
 	"""计算招募花费"""
 	var tier := clampi(level, 1, 3)
 	var configured_costs := _cfg_dict("tavern_recruit_cost_by_tier")
-	return int(configured_costs.get(str(tier), RECRUIT_COST_BY_TIER[tier]))
+	var cost := int(configured_costs.get(str(tier), RECRUIT_COST_BY_TIER[tier]))
+	if SynergyManager and SynergyManager.has_method("get_recruit_cost_discount"):
+		cost -= SynergyManager.get_recruit_cost_discount()
+	return maxi(1, cost)
 
 
 ## 构建可用选项池。

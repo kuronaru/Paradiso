@@ -76,6 +76,12 @@ func purchase_recruit(option_index: int) -> bool:
 		GameManager.earn_run_gold(option.cost)
 		return false
 	recruit_system.remove_option(option_index)
+	if SynergyManager and SynergyManager.has_method("notify_hero_acquired"):
+		SynergyManager.notify_hero_acquired(option.class_id, {
+			"class_id": option.class_id,
+			"star_level": option.level,
+			"shop_level": option.shop_level,
+		})
 	_sync_deployment_hand()
 	return true
 
@@ -85,6 +91,8 @@ func refresh_recruit_options() -> bool:
 	"""手动刷新酒馆。"""
 	if not GameManager.spend_run_gold(recruit_system.get_refresh_cost()):
 		return false
+	if SynergyManager and SynergyManager.has_method("notify_tavern_refreshed"):
+		SynergyManager.notify_tavern_refreshed()
 	recruit_system.set_frozen(false)
 	recruit_system.generate_recruit_options(GameManager.current_run_round, GameManager.party.size())
 	return true
@@ -239,7 +247,11 @@ func _complete_round_victory() -> void:
 	if SynergyManager and SynergyManager.has_method("apply_victory_gold_bonus"):
 		reward = SynergyManager.apply_victory_gold_bonus(reward)
 	reward = GameManager.apply_roguelike_relic_victory_reward(reward)
+	if SynergyManager and SynergyManager.has_method("resolve_battle_end_gold_bonus"):
+		reward += SynergyManager.resolve_battle_end_gold_bonus(BattleManager.defeated_enemy_count)
 	GameManager.earn_run_gold(reward)
+	if SynergyManager and SynergyManager.has_method("apply_rest_synergy_layers"):
+		SynergyManager.apply_rest_synergy_layers()
 	BattleManager.prepare_player_units_for_next_round()
 	recruit_system.advance_round()
 	Log.i(M, "战斗胜利! 获得 %d 金币" % reward)

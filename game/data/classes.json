@@ -45,6 +45,7 @@
 		"job_name": "图腾护卫",
 		"class_group": "naka",
 		"subclass_id": "totem_warrior",
+		"trait_tags": ["SUPPORT"],
 		"stat_tags": [
 			"CON",
 			"WIS"
@@ -123,6 +124,7 @@
 		"job_name": "学识歌者",
 		"class_group": "tro_poem",
 		"subclass_id": "lore",
+		"trait_tags": ["SUPPORT"],
 		"stat_tags": [
 			"CHA",
 			"INT"
@@ -162,6 +164,7 @@
 		"job_name": "勇气歌者",
 		"class_group": "tro_poem",
 		"subclass_id": "valor",
+		"trait_tags": ["SUPPORT"],
 		"stat_tags": [
 			"CHA",
 			"STR"
@@ -201,6 +204,7 @@
 		"job_name": "迷魅歌者",
 		"class_group": "tro_poem",
 		"subclass_id": "glamour",
+		"trait_tags": ["SUPPORT"],
 		"stat_tags": [
 			"CHA",
 			"DEX"
@@ -240,6 +244,7 @@
 		"job_name": "生命助祭",
 		"class_group": "moon_cult",
 		"subclass_id": "life_domain",
+		"trait_tags": ["SUPPORT"],
 		"stat_tags": [
 			"WIS",
 			"CON"
@@ -318,6 +323,7 @@
 		"job_name": "战争助祭",
 		"class_group": "moon_cult",
 		"subclass_id": "war_domain",
+		"trait_tags": ["SUPPORT"],
 		"stat_tags": [
 			"WIS",
 			"STR"
@@ -357,6 +363,7 @@
 		"job_name": "月环德鲁伊",
 		"class_group": "laferida",
 		"subclass_id": "moon",
+		"trait_tags": ["SHAPESHIFTER"],
 		"stat_tags": [
 			"WIS",
 			"CON"
@@ -707,6 +714,7 @@
 		"job_name": "奉献侍卫",
 		"class_group": "remolino_law",
 		"subclass_id": "devotion",
+		"trait_tags": ["SUPPORT"],
 		"stat_tags": [
 			"STR",
 			"CHA"
@@ -785,6 +793,7 @@
 		"job_name": "古贤侍卫",
 		"class_group": "remolino_law",
 		"subclass_id": "ancients",
+		"trait_tags": ["SUPPORT"],
 		"stat_tags": [
 			"STR",
 			"WIS"
@@ -1136,6 +1145,7 @@
 		"job_name": "风暴术士",
 		"class_group": "naka",
 		"subclass_id": "storm",
+		"trait_tags": ["FLYING"],
 		"stat_tags": [
 			"CHA",
 			"DEX"
@@ -1331,6 +1341,7 @@
 		"job_name": "防护法师",
 		"class_group": "moon_cult",
 		"subclass_id": "abjuration",
+		"trait_tags": ["SUPPORT"],
 		"stat_tags": [
 			"INT",
 			"CON"
@@ -1409,6 +1420,7 @@
 		"job_name": "炼金学徒",
 		"class_group": "kroen_trench",
 		"subclass_id": "alchemist",
+		"trait_tags": ["SUPPORT"],
 		"stat_tags": [
 			"INT",
 			"CON"
@@ -1448,6 +1460,7 @@
 		"job_name": "铸甲学徒",
 		"class_group": "kroen_trench",
 		"subclass_id": "armorer",
+		"trait_tags": ["SUPPORT"],
 		"stat_tags": [
 			"INT",
 			"CON"

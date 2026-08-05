@@ -50,6 +50,7 @@ func setup_from_template(template: Dictionary) -> void:
 	collision_radius = float(template.get("collision_radius", 0.0))
 	attack_range = template.get("attack_range", 1.5)
 	search_range = template.get("search_range", 5.0)
+	airborne = bool(template.get("is_airborne", false))
 	set_base_stats_from_current()
 	setup_intrinsic_passives_from_configs(template.get("passives", []))
 
@@ -95,6 +96,7 @@ func to_transfer_payload() -> Dictionary:
 	payload["move_speed"] = move_speed
 	payload["attack_range"] = attack_range
 	payload["search_range"] = search_range
+	payload["is_airborne"] = airborne
 	payload["source_player_id"] = source_player_id
 	payload["base_damage"] = base_damage
 	payload["transfer_count"] = transfer_count
