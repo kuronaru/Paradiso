@@ -300,8 +300,12 @@ func _refresh_option_card(index: int, option, active_gold: int) -> void:
 	option_synergy_labels[index].text = _get_synergy_line(ct, option.level)
 	var tier_names := ["低阶", "中阶", "高阶"]
 	var tier_name: String = tier_names[clampi(option.level, 1, 3) - 1]
-	option_price_labels[index].text = "%s · %d 金币  酒馆Lv.%d" % [tier_name, option.cost, option.shop_level]
-	option_buttons[index].tooltip_text = "手牌区已满（%d/%d）" % [GameManager.party.size(), GameManager.get_roguelike_max_hand_cards()] if hand_full else option.tavern_passive
+	option_price_labels[index].text = "%s · T%d · %d金币  酒馆Lv.%d" % [tier_name, ct.trait_tier, option.cost, option.shop_level]
+	var trait_names: Array[String] = []
+	for trait_id in ct.auto_trait_ids:
+		trait_names.append(str(DataRegistry.get_auto_trait(trait_id).get("display_name", trait_id)))
+	var trait_tip := "特质：%s" % ("无" if trait_names.is_empty() else "、".join(trait_names))
+	option_buttons[index].tooltip_text = "手牌区已满（%d/%d）" % [GameManager.party.size(), GameManager.get_roguelike_max_hand_cards()] if hand_full else "%s\n%s" % [trait_tip, option.tavern_passive]
 	option_buttons[index].disabled = (
 		active_gold < option.cost
 		or hand_full
@@ -377,6 +381,13 @@ func _set_option_owned_blink(index: int, enabled: bool) -> void:
 
 func _get_synergy_line(ct: ClassTemplate, star_level: int = 1) -> String:
 	var tags: Array[String] = []
+	if not ct.autochess_synergy_ids.is_empty():
+		for synergy_id in ct.autochess_synergy_ids:
+			var synergy_data := DataRegistry.get_synergy(synergy_id)
+			tags.append(str(synergy_data.get("short_name", synergy_data.get("display_name", synergy_id))))
+		if star_level >= 2:
+			tags.append("阶")
+		return " / ".join(tags)
 	if ct.class_group != "":
 		tags.append(_main_group_label(ct.class_group))
 	for tag in ct.stat_tags:

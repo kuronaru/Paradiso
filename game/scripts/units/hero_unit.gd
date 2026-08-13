@@ -3,6 +3,7 @@ class_name HeroUnit
 extends UnitBase
 
 const SynergyPassiveScript = preload("res://scripts/passives/synergy_passive.gd")
+const AutoTraitCombatPassiveScript = preload("res://scripts/passives/auto_trait_combat_passive.gd")
 
 signal soul_state_changed(in_soul_state: bool, remaining: float)
 
@@ -12,6 +13,7 @@ var star_level: int = 1
 var deployed_grid_position: Vector2i = Vector2i.ZERO
 var run_card_data: Dictionary = {}
 var synergy_passives: Array = []
+var auto_trait_passives: Array = []
 var is_in_soul_state: bool = false
 var soul_time_remaining: float = 0.0
 var soul_origin_grid_position: Vector2i = Vector2i.ZERO
@@ -45,6 +47,7 @@ func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 	BattleManager.register_player_unit(self)
 	if SynergyManager and SynergyManager.has_method("get_active_synergy_passive_effects"):
 		sync_synergy_passives(SynergyManager.get_active_synergy_passive_effects())
+	sync_auto_trait_passives()
 
 	# 根据战斗状态决定初始AI行为
 	# PREPARING → 静态部署（角色静止）
@@ -70,7 +73,7 @@ func sync_synergy_passives(active_synergy_effects: Dictionary) -> void:
 		var tag := str(effect_data.get("tag", ""))
 		var is_main := bool(effect_data.get("is_main", false))
 		var synergy_type := int(effect_data.get("type", 0))
-		var is_member := _matches_synergy(synergy_type, tag, is_main)
+		var is_member := _matches_synergy(str(synergy_id), synergy_type, tag, is_main)
 		var mechanics_enabled := is_member and str(effect_data.get("mechanic_id", "")) != ""
 		var modifiers: Dictionary = {}
 		_merge_synergy_modifier_set(modifiers, effect_data.get("global_modifiers", {}))
@@ -96,9 +99,14 @@ func sync_synergy_passives(active_synergy_effects: Dictionary) -> void:
 	_rebuild_passive_list()
 
 
-func _matches_synergy(synergy_type: int, tag: String, is_main: bool) -> bool:
+func _matches_synergy(synergy_id: String, synergy_type: int, tag: String, is_main: bool) -> bool:
+	var uses_test_override := SynergyManager and SynergyManager.has_method("is_test_synergy_override_enabled") and SynergyManager.is_test_synergy_override_enabled()
+	if class_template and not class_template.autochess_synergy_ids.is_empty() and not uses_test_override:
+		if SynergyManager and SynergyManager.has_method("hero_has_synergy"):
+			return SynergyManager.hero_has_synergy(self, synergy_id)
+		return synergy_id in class_template.autochess_synergy_ids
 	if is_main:
-		return class_template.class_group == tag or "SHAPESHIFTER" in class_template.trait_tags
+		return class_template.class_group == tag
 	match synergy_type:
 		SynergyDefinition.SynergyType.MINOR_STAT:
 			return tag in class_template.stat_tags
@@ -130,7 +138,18 @@ func _merge_synergy_modifier_set(target_modifiers: Dictionary, source_value) -> 
 
 
 func _get_extra_combat_passives() -> Array:
-	return synergy_passives
+	var result := synergy_passives.duplicate()
+	result.append_array(auto_trait_passives)
+	return result
+
+
+func sync_auto_trait_passives() -> void:
+	auto_trait_passives.clear()
+	if class_template and not class_template.auto_trait_ids.is_empty():
+		var passive = AutoTraitCombatPassiveScript.new()
+		passive.setup(self)
+		auto_trait_passives.append(passive)
+	_rebuild_passive_list()
 
 
 ## 处理未被界面消费的输入事件。
@@ -169,6 +188,7 @@ func toggle_stance() -> void:
 func mark_deployed(card_data: Dictionary, grid_pos: Vector2i) -> void:
 	run_card_data = card_data.duplicate(true)
 	deployed_grid_position = grid_pos
+	sync_auto_trait_passives()
 
 
 ## 准备单位进入下一回合。

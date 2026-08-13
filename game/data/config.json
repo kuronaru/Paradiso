@@ -36,7 +36,7 @@
 	"public_direct_connect_timeout": 4.0,
 	"public_upnp_enabled": true,
 	"public_direct_advertise_address": "",
-	"synergy_layer_per_star": 20,
+	"synergy_layer_per_star": 0,
 	"synergy_max_layer": 999,
 	"synergy_default_modifiers": {
 		"max_hp_multiplier": 1.0,

@@ -228,6 +228,7 @@
 	"trait_flying": {
 		"synergy_id": "trait_flying",
 		"enabled": true,
+		"stackable": false,
 		"display_name": "飞行术",
 		"short_name": "飞",
 		"type": "minor_trait",
@@ -262,6 +263,7 @@
 	"trait_advanced": {
 		"synergy_id": "trait_advanced",
 		"enabled": true,
+		"stackable": false,
 		"display_name": "高阶",
 		"short_name": "阶",
 		"type": "minor_trait",
@@ -281,6 +283,7 @@
 	"trait_shapeshifter": {
 		"synergy_id": "trait_shapeshifter",
 		"enabled": true,
+		"stackable": false,
 		"display_name": "变形者",
 		"short_name": "变",
 		"type": "minor_trait",
@@ -288,10 +291,10 @@
 		"thresholds": [1],
 		"order": 21,
 		"modifier_scope": "members",
-		"description": "1人：场上已有主羁绊的激活人数+1；变形者享受所有已激活主羁绊的成员数值与机制。",
+		"description": "1人：唯一T6英雄【变形者】启用变形术装备体系；该羁绊不提供层数，也不直接增加主羁绊人数。",
 		"scalable_modifiers": [],
 		"fixed_modifiers": [],
-		"mechanic_id": "shapeshifter_main_bridge",
+		"mechanic_id": "",
 		"main_effect": {}
 	}
 }

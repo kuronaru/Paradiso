@@ -54,6 +54,8 @@ func _enter_recruit_phase() -> void:
 	phase = RunPhase.RECRUIT
 	GameManager.current_mode = GameManager.GameMode.RECRUIT
 	var income := GameManager.grant_current_round_tavern_income()
+	if AutoTraitManager and AutoTraitManager.has_method("notify_rest_started"):
+		AutoTraitManager.notify_rest_started()
 	var options := recruit_system.generate_recruit_options(GameManager.current_run_round, GameManager.party.size())
 	_setup_round_preparation()
 	recruit_phase_started.emit()
@@ -76,12 +78,16 @@ func purchase_recruit(option_index: int) -> bool:
 		GameManager.earn_run_gold(option.cost)
 		return false
 	recruit_system.remove_option(option_index)
+	var acquired_card: Dictionary = GameManager.party.back().duplicate(true)
+	var repeat_count := 1
 	if SynergyManager and SynergyManager.has_method("notify_hero_acquired"):
-		SynergyManager.notify_hero_acquired(option.class_id, {
+		repeat_count = SynergyManager.notify_hero_acquired(option.class_id, {
 			"class_id": option.class_id,
 			"star_level": option.level,
 			"shop_level": option.shop_level,
 		})
+	if AutoTraitManager and AutoTraitManager.has_method("notify_hero_acquired"):
+		AutoTraitManager.notify_hero_acquired(acquired_card, repeat_count)
 	_sync_deployment_hand()
 	return true
 
@@ -93,6 +99,8 @@ func refresh_recruit_options() -> bool:
 		return false
 	if SynergyManager and SynergyManager.has_method("notify_tavern_refreshed"):
 		SynergyManager.notify_tavern_refreshed()
+	if AutoTraitManager and AutoTraitManager.has_method("notify_tavern_refreshed"):
+		AutoTraitManager.notify_tavern_refreshed()
 	recruit_system.set_frozen(false)
 	recruit_system.generate_recruit_options(GameManager.current_run_round, GameManager.party.size())
 	return true
@@ -116,6 +124,8 @@ func upgrade_tavern() -> bool:
 func skip_recruit() -> void:
 	"""兼容旧入口：准备阶段内直接开始战斗。"""
 	recruit_system.clear_options()
+	if AutoTraitManager and AutoTraitManager.has_method("notify_rest_ending"):
+		AutoTraitManager.notify_rest_ending()
 	if BattleManager.state == BattleManager.BattleState.PREPARING:
 		BattleManager.start_next_wave()
 

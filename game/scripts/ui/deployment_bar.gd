@@ -159,6 +159,13 @@ func _refresh_ui() -> void:
 		btn.position = Vector2(0.0, raise_height)
 		btn.flat = false
 		_apply_card_style(btn, bool(card_data.get("is_golden", false)))
+		var trait_names: Array[String] = []
+		for trait_id in ct.auto_trait_ids:
+			trait_names.append(str(DataRegistry.get_auto_trait(trait_id).get("display_name", trait_id)))
+		btn.tooltip_text = "%s\n左键选择/拖拽部署；备战阶段右键出售（%d金币）" % [
+			"特质：%s" % ("无" if trait_names.is_empty() else "、".join(trait_names)),
+			maxi(1, int(card_data.get("star_level", 1))),
+		]
 
 		var card_margin := MarginContainer.new()
 		card_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -301,12 +308,12 @@ func _get_class_icon_color(class_id: String) -> Color:
 ## 生成简化手牌文字。
 func _get_card_text(ct: ClassTemplate, card_data: Dictionary) -> String:
 	"""生成简化手牌文字。"""
-	var shop_level := int(card_data.get("shop_level", card_data.get("star_level", 1)))
 	var star_level := int(card_data.get("star_level", 1))
-	return "%s\n%d星 等阶%d" % [
+	return "%s\n%d星 T%d\n%s" % [
 		ct.job_name,
 		star_level,
-		shop_level
+		ct.trait_tier,
+		_get_synergy_short_line(ct),
 	]
 
 
@@ -320,12 +327,25 @@ func _get_deploy_cost(ct: ClassTemplate) -> int:
 ## 获取羁绊文本行。
 func _get_synergy_line(ct: ClassTemplate) -> String:
 	var tags: Array[String] = []
+	if not ct.autochess_synergy_ids.is_empty():
+		for synergy_id in ct.autochess_synergy_ids:
+			var synergy_data := DataRegistry.get_synergy(synergy_id)
+			tags.append(str(synergy_data.get("display_name", synergy_id)))
+		return " / ".join(tags)
 	if ct.class_group != "":
 		tags.append(_main_group_label(ct.class_group))
 	for tag in ct.stat_tags:
 		tags.append(str(tag))
 	for tag in ct.alignment_tags:
 		tags.append(_alignment_label(str(tag)))
+	return " / ".join(tags)
+
+
+func _get_synergy_short_line(ct: ClassTemplate) -> String:
+	var tags: Array[String] = []
+	for synergy_id in ct.autochess_synergy_ids:
+		var synergy_data := DataRegistry.get_synergy(synergy_id)
+		tags.append(str(synergy_data.get("short_name", synergy_data.get("display_name", synergy_id))))
 	return " / ".join(tags)
 
 
@@ -388,6 +408,8 @@ func _on_card_gui_input(event: InputEvent, index: int) -> void:
 		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 			_cancel_drag()
 			_clear_pending_press()
+			if deployment_system and deployment_system.sell_hand_card(index):
+				_refresh_ui()
 			accept_event()
 		elif event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 			_begin_card_press(index)

@@ -81,6 +81,25 @@ func _sync_hand_from_run_party() -> void:
 	setup_hand(GameManager.get_battle_party_data())
 
 
+## 在备战阶段出售指定手牌，并同步特质与手牌显示。
+func sell_hand_card(card_index: int) -> bool:
+	if not GameManager.is_roguelike_run or BattleManager.state != BattleManager.BattleState.PREPARING:
+		return false
+	if is_dragging or card_index < 0 or card_index >= hand_cards.size():
+		return false
+	var card: Dictionary = hand_cards[card_index]
+	var instance_id := int(card.get("instance_id", -1))
+	if instance_id < 0:
+		return false
+	var sell_value := maxi(1, int(card.get("star_level", 1)))
+	if not GameManager.sell_run_card(instance_id, sell_value):
+		return false
+	clear_selected_card()
+	_sync_hand_from_run_party()
+	Log.i(M, "出售备战英雄 %s，获得 %d 金币" % [card.get("class_id", ""), sell_value])
+	return true
+
+
 ## 扫描手牌和已部署英雄，处理同名三合一升星。
 func _resolve_run_roster_promotions() -> bool:
 	if _resolving_roster_promotions:
@@ -113,9 +132,12 @@ func _try_promote_one_run_roster_group() -> bool:
 
 	for key in groups.keys():
 		var group: Array = groups[key]
-		if group.size() >= 3:
+		var first_card: Dictionary = group[0].get("card", {}) if not group.is_empty() else {}
+		var class_id := str(first_card.get("class_id", ""))
+		var requirement: int = int(AutoTraitManager.get_merge_requirement(class_id)) if AutoTraitManager else 3
+		if group.size() >= requirement:
 			var selected: Array = []
-			for i in range(3):
+			for i in range(requirement):
 				selected.append(group[i])
 			return _promote_run_merge_group(selected)
 	return false
@@ -144,6 +166,8 @@ func _is_merge_candidate_card(card_data: Dictionary) -> bool:
 		return false
 	if bool(card_data.get("merge_locked", false)):
 		return false
+	if not (card_data.get("equipment_ids", []) as Array).is_empty():
+		return false
 	if int(card_data.get("upgrade_tier", 1)) > 1:
 		return false
 	var star := clampi(int(card_data.get("star_level", card_data.get("level", 1))), 1, GameManager.ROGUELIKE_MAX_CARD_STAR)
@@ -158,12 +182,15 @@ func _get_merge_key(card_data: Dictionary) -> String:
 
 
 func _promote_run_merge_group(group: Array) -> bool:
-	if group.size() < 3:
+	if group.is_empty():
 		return false
 
 	var first_entry: Dictionary = group[0]
 	var first_card: Dictionary = first_entry.get("card", {})
 	var class_id := ClassDefinitions.canonicalize_class_id(str(first_card.get("class_id", "")))
+	var requirement: int = int(AutoTraitManager.get_merge_requirement(class_id)) if AutoTraitManager else 3
+	if group.size() < requirement:
+		return false
 	var source_star := clampi(int(first_card.get("star_level", first_card.get("level", 1))), 1, GameManager.ROGUELIKE_MAX_CARD_STAR)
 	var shop_level := maxi(1, int(first_card.get("shop_level", 1)))
 	var promoted_star := source_star + 1

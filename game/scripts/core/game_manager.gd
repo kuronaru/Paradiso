@@ -129,6 +129,8 @@ func start_roguelike_run(relic_id: String = "") -> void:
 	"""开始一次新的肉鸽流程"""
 	if SynergyManager and SynergyManager.has_method("reset_run_state"):
 		SynergyManager.reset_run_state()
+	if AutoTraitManager and AutoTraitManager.has_method("reset_run_state"):
+		AutoTraitManager.reset_run_state()
 	_ensure_save_data()
 	active_run_relic_id = _resolve_run_relic_id(relic_id)
 	pending_run_relic_id = ""
@@ -371,6 +373,96 @@ func remove_from_party_card(card_data: Dictionary) -> bool:
 	return false
 
 
+## 出售一张备战区卡牌，并触发其出售特质。
+func sell_run_card(instance_id: int, gold_value: int = 1) -> bool:
+	if not is_roguelike_run:
+		return false
+	for i in range(party.size()):
+		var card: Dictionary = party[i]
+		if int(card.get("instance_id", -1)) != instance_id:
+			continue
+		var sold_card := card.duplicate(true)
+		party.remove_at(i)
+		if AutoTraitManager and AutoTraitManager.has_method("notify_hero_sold"):
+			AutoTraitManager.notify_hero_sold(sold_card)
+		earn_run_gold(maxi(0, gold_value))
+		party_changed.emit(party)
+		return true
+	return false
+
+
+## 为备战区英雄装备一件自走棋装备；装备从本局装备库存中消耗。
+func equip_run_card(instance_id: int, equipment_id: String) -> bool:
+	if not is_roguelike_run or DataRegistry.get_autochess_equipment(equipment_id).is_empty():
+		return false
+	for i in range(party.size()):
+		var card: Dictionary = party[i]
+		if int(card.get("instance_id", -1)) != instance_id:
+			continue
+		var equipment_ids: Array = card.get("equipment_ids", []).duplicate()
+		if equipment_id in equipment_ids or equipment_ids.size() >= 3:
+			return false
+		if not AutoTraitManager.consume_equipment(equipment_id):
+			return false
+		equipment_ids.append(equipment_id)
+		card["equipment_ids"] = equipment_ids
+		party[i] = card
+		party_changed.emit(party)
+		return true
+	for unit in BattleManager.player_units:
+		if not is_instance_valid(unit) or not (unit is HeroUnit):
+			continue
+		var hero := unit as HeroUnit
+		if int(hero.run_card_data.get("instance_id", -1)) != instance_id:
+			continue
+		var equipment_ids: Array = hero.run_card_data.get("equipment_ids", []).duplicate()
+		if equipment_id in equipment_ids or equipment_ids.size() >= 3:
+			return false
+		if not AutoTraitManager.consume_equipment(equipment_id):
+			return false
+		equipment_ids.append(equipment_id)
+		hero.run_card_data["equipment_ids"] = equipment_ids
+		SynergyManager.recalculate()
+		return true
+	return false
+
+
+## 从备战区英雄卸下一件自走棋装备并返还本局装备库存。
+func unequip_run_card(instance_id: int, equipment_id: String) -> bool:
+	if not is_roguelike_run:
+		return false
+	for i in range(party.size()):
+		var card: Dictionary = party[i]
+		if int(card.get("instance_id", -1)) != instance_id:
+			continue
+		var equipment_ids: Array = card.get("equipment_ids", []).duplicate()
+		var equipment_index := equipment_ids.find(equipment_id)
+		if equipment_index < 0:
+			return false
+		equipment_ids.remove_at(equipment_index)
+		card["equipment_ids"] = equipment_ids
+		party[i] = card
+		AutoTraitManager.grant_equipment(equipment_id)
+		party_changed.emit(party)
+		return true
+	for unit in BattleManager.player_units:
+		if not is_instance_valid(unit) or not (unit is HeroUnit):
+			continue
+		var hero := unit as HeroUnit
+		if int(hero.run_card_data.get("instance_id", -1)) != instance_id:
+			continue
+		var equipment_ids: Array = hero.run_card_data.get("equipment_ids", []).duplicate()
+		var equipment_index := equipment_ids.find(equipment_id)
+		if equipment_index < 0:
+			return false
+		equipment_ids.remove_at(equipment_index)
+		hero.run_card_data["equipment_ids"] = equipment_ids
+		AutoTraitManager.grant_equipment(equipment_id)
+		SynergyManager.recalculate()
+		return true
+	return false
+
+
 ## 撤回部署角色时，把卡牌放回单局手牌区。
 func return_card_to_party(card_data: Dictionary) -> bool:
 	"""撤回部署角色时，把卡牌放回单局手牌区。"""
@@ -407,11 +499,14 @@ func _try_promote_party_cards(class_id: String, star_level: int, shop_level: int
 		return {}
 
 	var matches: Array[int] = []
+	var merge_requirement: int = int(AutoTraitManager.get_merge_requirement(canonical_id)) if AutoTraitManager else 3
 	for i in range(party.size()):
 		var member: Dictionary = party[i]
 		if ClassDefinitions.canonicalize_class_id(str(member.get("class_id", ""))) != canonical_id:
 			continue
 		if bool(member.get("merge_locked", false)):
+			continue
+		if not (member.get("equipment_ids", []) as Array).is_empty():
 			continue
 		if int(member.get("upgrade_tier", 1)) > 1:
 			continue
@@ -420,10 +515,10 @@ func _try_promote_party_cards(class_id: String, star_level: int, shop_level: int
 		if int(member.get("shop_level", 1)) != shop_level:
 			continue
 		matches.append(i)
-		if matches.size() >= 3:
+		if matches.size() >= merge_requirement:
 			break
 
-	if matches.size() < 3:
+	if matches.size() < merge_requirement:
 		return {}
 
 	for j in range(matches.size() - 1, -1, -1):
@@ -480,6 +575,8 @@ func spend_run_gold(amount: int) -> bool:
 	if run_gold >= amount:
 		run_gold -= amount
 		run_gold_changed.emit(run_gold)
+		if AutoTraitManager and AutoTraitManager.has_method("notify_gold_spent"):
+			AutoTraitManager.notify_gold_spent(amount)
 		return true
 	return false
 

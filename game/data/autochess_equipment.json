@@ -1,0 +1,35 @@
+{
+  "polymorph": {
+    "equipment_id": "polymorph",
+    "display_name": "变形术",
+    "description": "与另一件带有主羁绊映射的装备共同装备时，使装备者获得该装备对应的额外主羁绊。",
+    "tags": ["main_synergy_converter"]
+  },
+  "trait_supply": {
+    "equipment_id": "trait_supply",
+    "display_name": "特质补给",
+    "description": "通用特质补给装备。",
+    "tags": []
+  },
+  "twisted_seed": {
+    "equipment_id": "twisted_seed",
+    "display_name": "扭曲之种",
+    "description": "携带扭曲生命的主羁绊映射。",
+    "main_synergy_id": "main_laferida",
+    "tags": ["main_synergy_source"]
+  },
+  "dragon_scale": {
+    "equipment_id": "dragon_scale",
+    "display_name": "龙焰鳞片",
+    "description": "携带龙焰吐息的主羁绊映射。",
+    "main_synergy_id": "main_naka",
+    "tags": ["main_synergy_source"]
+  },
+  "forbidden_tome": {
+    "equipment_id": "forbidden_tome",
+    "display_name": "禁忌残页",
+    "description": "携带窥探禁忌的主羁绊映射。",
+    "main_synergy_id": "main_moon_cult",
+    "tags": ["main_synergy_source"]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "enabled": [
+    "main_laferida",
+    "main_naka",
+    "main_moon_cult",
+    "stat_str",
+    "stat_dex",
+    "stat_con",
+    "stat_int",
+    "stat_wis",
+    "stat_cha",
+    "alignment_lawful",
+    "alignment_chaotic",
+    "alignment_good",
+    "alignment_evil",
+    "alignment_neutral",
+    "trait_flying",
+    "trait_support",
+    "trait_advanced",
+    "trait_shapeshifter"
+  ],
+  "disabled": [
+    "main_anmarit",
+    "main_remolino_law",
+    "main_kroen_trench",
+    "main_tro_poem"
+  ]
+}

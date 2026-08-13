@@ -24,6 +24,7 @@ func _run() -> void:
 	_test_skills(registry)
 	_test_enemies(registry)
 	_test_synergies(registry)
+	_test_auto_traits(registry)
 	_test_waves(registry)
 
 	t.finish(self)
@@ -155,6 +156,49 @@ func _test_synergies(registry: Node) -> void:
 		for modifier in _dictionary_array(data.get("fixed_modifiers", [])):
 			t.assert_true(str(modifier.get("stat", "")).strip_edges() != "", "synergy fixed modifier stat set: %s" % synergy_id)
 			t.assert_true(int(modifier.get("min_tier", 0)) >= 0, "synergy fixed modifier min_tier non-negative: %s" % synergy_id)
+
+
+func _test_auto_traits(registry: Node) -> void:
+	var enabled_synergies := _string_set(registry.get_enabled_synergy_ids())
+	var disabled_synergies := _string_set(registry.get_disabled_synergy_ids())
+	for disabled_id in ["main_anmarit", "main_remolino_law", "main_kroen_trench", "main_tro_poem"]:
+		t.assert_true(disabled_synergies.has(disabled_id), "disabled synergy retained: %s" % disabled_id)
+		t.assert_false(registry.get_synergy(disabled_id).is_empty(), "disabled synergy data remains loadable: %s" % disabled_id)
+
+	var template_ids: Array = registry.get_all_auto_trait_template_ids()
+	var trait_ids: Array = registry.get_all_auto_trait_ids()
+	t.assert_true(not template_ids.is_empty(), "auto trait templates are registered")
+	t.assert_true(not trait_ids.is_empty(), "default auto traits are registered")
+	var covered_templates: Dictionary = {}
+	for trait_id in trait_ids:
+		var trait_data: Dictionary = registry.get_auto_trait(trait_id)
+		var template_id := str(trait_data.get("template_id", ""))
+		t.assert_true(template_id in template_ids, "trait references template: %s -> %s" % [trait_id, template_id])
+		covered_templates[template_id] = true
+
+	var hero_ids: Array = registry.get_all_autochess_hero_ids()
+	t.assert_true(not hero_ids.is_empty(), "autochess hero skeletons are registered")
+	for hero_id in hero_ids:
+		var hero_data: Dictionary = registry.get_autochess_hero(hero_id)
+		var trait_tier := int(hero_data.get("trait_tier", 0))
+		t.assert_true(trait_tier >= 1 and trait_tier <= 6, "hero fixed trait tier is 1-6: %s" % hero_id)
+		var hero_synergies := _string_array(hero_data.get("autochess_synergy_ids", []))
+		for synergy_id in hero_synergies:
+			t.assert_false(registry.get_synergy(synergy_id).is_empty(), "hero synergy reference exists: %s -> %s" % [hero_id, synergy_id])
+		var hero_traits := _string_array(hero_data.get("trait_ids", []))
+		if "trait_flying" in hero_synergies:
+			t.assert_eq(hero_synergies.size(), 1, "flying hero carries only the flying synergy: %s" % hero_id)
+			t.assert_true(hero_traits.is_empty(), "flying hero carries no auto trait: %s" % hero_id)
+		for trait_id in hero_traits:
+			t.assert_true(trait_id in trait_ids, "hero trait exists: %s -> %s" % [hero_id, trait_id])
+
+	for equipment_id in registry.get_all_autochess_equipment_ids():
+		var equipment: Dictionary = registry.get_autochess_equipment(equipment_id)
+		t.assert_eq(str(equipment.get("equipment_id", "")), equipment_id, "autochess equipment id matches key: %s" % equipment_id)
+		var main_synergy_id := str(equipment.get("main_synergy_id", ""))
+		if main_synergy_id != "":
+			t.assert_true(main_synergy_id.begins_with("main_"), "equipment mapping targets a main synergy: %s" % equipment_id)
+			t.assert_true(enabled_synergies.has(main_synergy_id), "equipment mapping targets an enabled main synergy: %s" % equipment_id)
 
 
 func _test_waves(registry: Node) -> void:

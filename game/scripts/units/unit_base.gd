@@ -947,6 +947,7 @@ func apply_anmarit_poison(attacker: UnitBase, effect: Dictionary) -> void:
 	poison["tick_timer"] = minf(float(poison.get("tick_timer", poison["tick_interval"])), float(poison["tick_interval"]))
 	poison["aoe_radius"] = maxf(0.0, float(effect.get("poison_aoe_radius", 0.0)))
 	combat_statuses["anmarit_poison"] = poison
+	_notify_auto_trait_status(attacker, "anmarit_poison")
 
 
 ## 应用拉费里达自然值。
@@ -971,6 +972,7 @@ func apply_laferida_nature(attacker: UnitBase, effect: Dictionary) -> void:
 				if not is_alive:
 					return
 	combat_statuses["laferida_nature"] = nature
+	_notify_auto_trait_status(attacker, "laferida_nature")
 
 
 ## 应用纳卡灼烧值。
@@ -985,6 +987,7 @@ func apply_naka_burn(attacker: UnitBase, effect: Dictionary) -> void:
 		burn_value["value"] = 0.0
 		_ignite_naka_burning(attacker, effect)
 	combat_statuses["naka_burn_value"] = burn_value
+	_notify_auto_trait_status(attacker, "naka_burn_value")
 
 
 ## 应用窥探禁忌标记。
@@ -1000,8 +1003,14 @@ func apply_moon_forbidden_mark(attacker: UnitBase, effect: Dictionary, try_execu
 	mark["burst_radius"] = maxf(float(mark.get("burst_radius", 0.0)), float(effect.get("forbidden_burst_radius", 1.0)))
 	mark["execute_threshold"] = maxf(float(mark.get("execute_threshold", 0.0)), execute_threshold)
 	combat_statuses["moon_forbidden_mark"] = mark
+	_notify_auto_trait_status(attacker, "moon_forbidden_mark")
 	if try_execute:
 		_try_moon_forbidden_execute(mark)
+
+
+func _notify_auto_trait_status(source: UnitBase, status_id: String) -> void:
+	if AutoTraitManager and AutoTraitManager.has_method("notify_status_applied"):
+		AutoTraitManager.notify_status_applied(source, self, status_id)
 
 
 ## 应用十一长诗祝福。
@@ -1526,6 +1535,7 @@ func _deal_damage_to_target(target_unit: Node, base_amount: float, is_skill: boo
 	if not target_unit or not is_instance_valid(target_unit) or not target_unit.has_method("take_damage"):
 		return 0
 	var damage := _calculate_damage(base_amount, is_skill)
+	var resolved_armor_pierce := _get_armor_pierce()
 	var target_combat_unit: UnitBase = target_unit as UnitBase if target_unit is UnitBase else null
 	if target_combat_unit:
 		var damage_context := {
@@ -1537,7 +1547,8 @@ func _deal_damage_to_target(target_unit: Node, base_amount: float, is_skill: boo
 		}
 		_notify_passives("before_deal_damage", damage_context)
 		damage = maxi(1, int(damage_context.get("damage", damage)))
-	var dealt: int = target_combat_unit.receive_attack_damage(damage, _get_armor_pierce(), self) if target_combat_unit else target_unit.take_damage(damage, _get_armor_pierce())
+		resolved_armor_pierce = float(damage_context.get("armor_pierce", resolved_armor_pierce))
+	var dealt: int = target_combat_unit.receive_attack_damage(damage, resolved_armor_pierce, self) if target_combat_unit else target_unit.take_damage(damage, resolved_armor_pierce)
 	_apply_life_steal(dealt)
 	if target_combat_unit:
 		_notify_passives("after_deal_damage", {

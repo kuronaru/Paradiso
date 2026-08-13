@@ -159,6 +159,8 @@ func start_next_wave() -> bool:
 	var was_preparing := state == BattleState.PREPARING
 	current_wave += 1
 	state = BattleState.IN_PROGRESS
+	if was_preparing and AutoTraitManager and AutoTraitManager.has_method("notify_battle_started"):
+		AutoTraitManager.notify_battle_started()
 	if was_preparing and GameManager.is_roguelike_run:
 		GameManager.clear_run_gold()
 	_spawn_wave_enemies(current_wave)

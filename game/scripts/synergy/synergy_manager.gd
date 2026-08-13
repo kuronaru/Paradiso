@@ -42,16 +42,14 @@ func recalculate() -> void:
 	var count_by_id: Dictionary = {}
 	var layer_by_id: Dictionary = {}
 	var member_names_by_id: Dictionary = {}
-	var layer_per_star := _cfg_int("synergy_layer_per_star", 20)
 	var max_layer := _cfg_int("synergy_max_layer", 999)
 
 	if _test_override_enabled:
 		_collect_test_synergy_counts(count_by_id, layer_by_id, member_names_by_id, max_layer)
 	else:
-		_collect_roster_synergy_counts(count_by_id, layer_by_id, member_names_by_id, layer_per_star)
-		_apply_shapeshifter_main_count_bonus(count_by_id, member_names_by_id)
+		_collect_roster_synergy_counts(count_by_id, layer_by_id, member_names_by_id)
 		for synergy_id in _persistent_layers.keys():
-			if int(count_by_id.get(synergy_id, 0)) > 0:
+			if int(count_by_id.get(synergy_id, 0)) > 0 and _is_stackable(synergy_id):
 				layer_by_id[synergy_id] = int(layer_by_id.get(synergy_id, 0)) + int(_persistent_layers[synergy_id])
 
 	_active_modifiers = _default_modifiers()
@@ -67,7 +65,7 @@ func recalculate() -> void:
 			continue
 
 		var active_tier := definition.get_active_tier(count)
-		var layer := clampi(int(layer_by_id.get(synergy_id, 0)), 0, max_layer)
+		var layer := clampi(int(layer_by_id.get(synergy_id, 0)), 0, max_layer) if _is_stackable(synergy_id) else 0
 		var summary := _build_summary(definition, count, active_tier, layer, member_names_by_id.get(synergy_id, []))
 		_summaries.append(summary)
 
@@ -115,9 +113,40 @@ func get_active_synergy_passive_effects() -> Dictionary:
 	return _active_synergy_passive_effects.duplicate(true)
 
 
+func get_synergy_layer(synergy_id: String) -> int:
+	if not _is_stackable(synergy_id):
+		return 0
+	return int(_summary_by_id(synergy_id).get("layer", _persistent_layers.get(synergy_id, 0)))
+
+
+func is_synergy_active(synergy_id: String) -> bool:
+	return bool(_summary_by_id(synergy_id).get("is_active", false))
+
+
+func apply_trait_layer_batch(commands: Array[Dictionary], context: Dictionary = {}) -> Dictionary:
+	var max_layer := _cfg_int("synergy_max_layer", 999)
+	var merged: Dictionary = {}
+	for raw_command in commands:
+		var synergy_id := str(raw_command.get("synergy_id", ""))
+		var amount := maxi(0, int(raw_command.get("amount", 0)))
+		if not _definitions.has(synergy_id) or not _is_stackable(synergy_id) or amount <= 0:
+			continue
+		if bool(raw_command.get("requires_active", false)) and not is_synergy_active(synergy_id):
+			continue
+		merged[synergy_id] = int(merged.get(synergy_id, 0)) + amount
+	var applied: Dictionary = {}
+	for synergy_id in merged.keys():
+		var before := int(_persistent_layers.get(synergy_id, 0))
+		var after := clampi(before + int(merged[synergy_id]), 0, max_layer)
+		_persistent_layers[synergy_id] = after
+		applied[synergy_id] = after - before
+	if not applied.is_empty():
+		recalculate()
+	return {"applied": applied, "event_id": str(context.get("event_id", ""))}
+
+
 func get_test_synergy_options() -> Array[Dictionary]:
 	var options: Array[Dictionary] = []
-	var layer_per_star := _cfg_int("synergy_layer_per_star", 20)
 	var max_layer := _cfg_int("synergy_max_layer", 999)
 	for synergy_id in _definition_order:
 		var definition := _definitions[synergy_id] as SynergyDefinition
@@ -131,7 +160,7 @@ func get_test_synergy_options() -> Array[Dictionary]:
 			"thresholds": definition.thresholds.duplicate(),
 			"activation_count": activation_count,
 			"max_threshold": definition.get_max_threshold(),
-			"default_layer": activation_count * layer_per_star,
+			"default_layer": 0,
 			"max_layer": max_layer,
 			"order": definition.order,
 		})
@@ -225,6 +254,8 @@ func apply_rest_synergy_layers() -> int:
 		if not bool(active_summary.get("is_active", false)):
 			continue
 		var synergy_id := str(active_summary.get("id", ""))
+		if not _is_stackable(synergy_id):
+			continue
 		_persistent_layers[synergy_id] = int(_persistent_layers.get(synergy_id, 0)) + amount
 	recalculate()
 	return amount
@@ -245,9 +276,29 @@ func _on_party_changed(_party: Array) -> void:
 	recalculate()
 
 
+func get_hero_synergy_ids(hero: HeroUnit) -> Array[String]:
+	return _get_unit_synergy_ids(hero)
+
+
+func hero_has_synergy(hero: HeroUnit, synergy_id: String) -> bool:
+	return synergy_id in _get_unit_synergy_ids(hero)
+
+
+func get_equipment_main_synergy_ids(equipment_ids: Array) -> Array[String]:
+	var result: Array[String] = []
+	_append_equipment_main_synergies(result, equipment_ids)
+	return result
+
+
 func _get_unit_synergy_ids(hero: HeroUnit) -> Array[String]:
 	var ids: Array[String] = []
 	var ct := hero.class_template
+	if not ct.autochess_synergy_ids.is_empty():
+		ids.assign(ct.autochess_synergy_ids)
+		_append_equipment_main_synergies(ids, hero.run_card_data.get("equipment_ids", []))
+		if hero.star_level >= 2:
+			_append_unique(ids, "trait_advanced")
+		return ids
 	var class_group := str(ct.class_group)
 	if class_group != "":
 		ids.append("main_%s" % class_group)
@@ -257,12 +308,13 @@ func _get_unit_synergy_ids(hero: HeroUnit) -> Array[String]:
 		ids.append("alignment_%s" % str(tag).to_lower())
 	for tag in ct.trait_tags:
 		ids.append("trait_%s" % str(tag).to_lower())
+	_append_equipment_main_synergies(ids, hero.run_card_data.get("equipment_ids", []))
 	if hero.star_level >= 2:
-		ids.append("trait_advanced")
+		_append_unique(ids, "trait_advanced")
 	return ids
 
 
-func _collect_roster_synergy_counts(count_by_id: Dictionary, layer_by_id: Dictionary, member_names_by_id: Dictionary, layer_per_star: int) -> void:
+func _collect_roster_synergy_counts(count_by_id: Dictionary, layer_by_id: Dictionary, member_names_by_id: Dictionary) -> void:
 	var contributors: Dictionary = {}
 	for unit in BattleManager.player_units:
 		if not is_instance_valid(unit):
@@ -286,11 +338,13 @@ func _collect_roster_synergy_counts(count_by_id: Dictionary, layer_by_id: Dictio
 			continue
 		var template := ClassDefinitions.get_template(class_id)
 		var star := clampi(int(card.get("star_level", card.get("level", 1))), 1, 3)
-		var roster_ids: Array[String] = []
-		for tag in template.stat_tags:
-			roster_ids.append("stat_%s" % str(tag).to_lower())
-		for tag in template.alignment_tags:
-			roster_ids.append("alignment_%s" % str(tag).to_lower())
+		var roster_ids: Array[String] = template.autochess_synergy_ids.duplicate()
+		if roster_ids.is_empty():
+			for tag in template.stat_tags:
+				roster_ids.append("stat_%s" % str(tag).to_lower())
+			for tag in template.alignment_tags:
+				roster_ids.append("alignment_%s" % str(tag).to_lower())
+		_append_equipment_main_synergies(roster_ids, card.get("equipment_ids", []))
 		for synergy_id in roster_ids:
 			if not _definitions.has(synergy_id):
 				continue
@@ -302,12 +356,10 @@ func _collect_roster_synergy_counts(count_by_id: Dictionary, layer_by_id: Dictio
 		var entries: Dictionary = contributors[synergy_id]
 		count_by_id[synergy_id] = entries.size()
 		member_names_by_id[synergy_id] = []
-		var total_layer := 0
 		for contributor in entries.values():
 			var data: Dictionary = contributor
-			total_layer += int(data.get("star", 1)) * layer_per_star
 			member_names_by_id[synergy_id].append(str(data.get("name", "")))
-		layer_by_id[synergy_id] = total_layer
+		layer_by_id[synergy_id] = 0
 
 
 func _add_contributor(contributors: Dictionary, synergy_id: String, contributor_id: String, star: int, display_name: String) -> void:
@@ -322,19 +374,6 @@ func _add_contributor(contributors: Dictionary, synergy_id: String, contributor_
 	contributors[synergy_id] = entries
 
 
-func _apply_shapeshifter_main_count_bonus(count_by_id: Dictionary, member_names_by_id: Dictionary) -> void:
-	if int(count_by_id.get("trait_shapeshifter", 0)) <= 0:
-		return
-	for synergy_id in _definition_order:
-		var definition := _definitions[synergy_id] as SynergyDefinition
-		if definition.type != SynergyDefinition.SynergyType.MAIN_NATION or int(count_by_id.get(synergy_id, 0)) <= 0:
-			continue
-		count_by_id[synergy_id] = int(count_by_id[synergy_id]) + 1
-		if not member_names_by_id.has(synergy_id):
-			member_names_by_id[synergy_id] = []
-		member_names_by_id[synergy_id].append("变形者加成")
-
-
 func _collect_test_synergy_counts(count_by_id: Dictionary, layer_by_id: Dictionary, member_names_by_id: Dictionary, max_layer: int) -> void:
 	for spec in _test_synergy_specs:
 		var synergy_id := str(spec.get("id", ""))
@@ -343,7 +382,7 @@ func _collect_test_synergy_counts(count_by_id: Dictionary, layer_by_id: Dictiona
 		var count := maxi(0, int(spec.get("count", 0)))
 		if count <= 0:
 			continue
-		var layer := clampi(int(spec.get("layer", 0)), 0, max_layer)
+		var layer := clampi(int(spec.get("layer", 0)), 0, max_layer) if _is_stackable(synergy_id) else 0
 		count_by_id[synergy_id] = count
 		layer_by_id[synergy_id] = layer
 		member_names_by_id[synergy_id] = ["测试配置 %d人" % count]
@@ -351,7 +390,6 @@ func _collect_test_synergy_counts(count_by_id: Dictionary, layer_by_id: Dictiona
 
 func _sanitize_test_synergy_specs(specs: Array) -> Array[Dictionary]:
 	var max_layer := _cfg_int("synergy_max_layer", 999)
-	var layer_per_star := _cfg_int("synergy_layer_per_star", 20)
 	var by_id: Dictionary = {}
 	for raw_spec in specs:
 		if not (raw_spec is Dictionary):
@@ -363,7 +401,7 @@ func _sanitize_test_synergy_specs(specs: Array) -> Array[Dictionary]:
 		var count := maxi(0, int(spec.get("count", 0)))
 		if count <= 0:
 			continue
-		var layer := int(spec.get("layer", count * layer_per_star))
+		var layer := int(spec.get("layer", 0)) if _is_stackable(synergy_id) else 0
 		by_id[synergy_id] = {
 			"id": synergy_id,
 			"count": count,
@@ -602,6 +640,30 @@ func _summary_by_id(synergy_id: String) -> Dictionary:
 	return {}
 
 
+func _is_stackable(synergy_id: String) -> bool:
+	var registry := _registry()
+	return bool(registry and registry.has_method("is_synergy_stackable") and registry.is_synergy_stackable(synergy_id))
+
+
+func _append_equipment_main_synergies(ids: Array[String], equipment_value) -> void:
+	var equipment_ids: Array = equipment_value if equipment_value is Array else []
+	if "polymorph" not in equipment_ids:
+		return
+	var registry := _registry()
+	if not registry or not registry.has_method("get_autochess_equipment"):
+		return
+	for equipment_id_value in equipment_ids:
+		var equipment: Dictionary = registry.get_autochess_equipment(str(equipment_id_value))
+		var main_synergy_id := str(equipment.get("main_synergy_id", ""))
+		if main_synergy_id.begins_with("main_") and _definitions.has(main_synergy_id):
+			_append_unique(ids, main_synergy_id)
+
+
+func _append_unique(ids: Array[String], synergy_id: String) -> void:
+	if synergy_id != "" and synergy_id not in ids:
+		ids.append(synergy_id)
+
+
 func _active_effect_for(synergy_id: String) -> Dictionary:
 	var payload: Dictionary = _active_synergy_passive_effects.get(synergy_id, {})
 	var effect = payload.get("effect", {})
@@ -619,6 +681,8 @@ func _sync_passives_to_units() -> void:
 	for unit in BattleManager.player_units:
 		if is_instance_valid(unit) and unit is HeroUnit:
 			(unit as HeroUnit).sync_synergy_passives(_active_synergy_passive_effects)
+			if unit.has_method("sync_auto_trait_passives"):
+				unit.sync_auto_trait_passives()
 
 
 func _apply_resource_modifiers() -> void:
@@ -633,7 +697,8 @@ func _build_definitions() -> void:
 
 	var registry := _registry()
 	if registry and registry.has_method("get_all_synergy_ids") and registry.has_method("get_synergy"):
-		for synergy_id in registry.get_all_synergy_ids():
+		var source_ids: Array = registry.get_enabled_synergy_ids() if registry.has_method("get_enabled_synergy_ids") else registry.get_all_synergy_ids()
+		for synergy_id in source_ids:
 			var data: Dictionary = registry.get_synergy(str(synergy_id))
 			if data.is_empty():
 				continue

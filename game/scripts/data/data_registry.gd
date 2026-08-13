@@ -10,6 +10,11 @@ const DATA_PATHS := {
 	"enemy_scaling": "res://data/enemy_scaling.json",
 	"synergies": "res://data/synergies.json",
 	"minor_synergies": "res://data/minor_synergies.json",
+	"synergy_availability": "res://data/synergy_availability.json",
+	"auto_trait_templates": "res://data/auto_trait_templates.json",
+	"auto_traits": "res://data/auto_traits.json",
+	"autochess_heroes": "res://data/autochess_heroes.json",
+	"autochess_equipment": "res://data/autochess_equipment.json",
 	"waves": "res://data/waves.json",
 }
 
@@ -21,6 +26,11 @@ var _status_effects: Dictionary = {}
 var _enemies: Dictionary = {}
 var _enemy_scaling: Dictionary = {}
 var _synergies: Dictionary = {}
+var _synergy_availability: Dictionary = {}
+var _auto_trait_templates: Dictionary = {}
+var _auto_traits: Dictionary = {}
+var _autochess_heroes: Dictionary = {}
+var _autochess_equipment: Dictionary = {}
 var _waves: Dictionary = {}
 
 
@@ -39,6 +49,11 @@ func load_all() -> void:
 	var minor_synergies := _load_table(DATA_PATHS["minor_synergies"], "synergy_id")
 	for synergy_id in minor_synergies.keys():
 		_synergies[synergy_id] = minor_synergies[synergy_id]
+	_synergy_availability = _load_dictionary(DATA_PATHS["synergy_availability"])
+	_auto_trait_templates = _load_table(DATA_PATHS["auto_trait_templates"], "template_id")
+	_auto_traits = _load_table(DATA_PATHS["auto_traits"], "trait_id")
+	_autochess_heroes = _load_table(DATA_PATHS["autochess_heroes"], "hero_id")
+	_autochess_equipment = _load_table(DATA_PATHS["autochess_equipment"], "equipment_id")
 	_waves = _load_table(DATA_PATHS["waves"], "wave_id")
 	_loaded = true
 
@@ -116,6 +131,72 @@ func get_synergy(synergy_id: String) -> Dictionary:
 
 func get_all_synergy_ids() -> Array[String]:
 	return _sorted_keys(_synergies)
+
+
+func get_enabled_synergy_ids() -> Array[String]:
+	ensure_loaded()
+	var configured = _synergy_availability.get("enabled", [])
+	if not (configured is Array) or configured.is_empty():
+		return get_all_synergy_ids()
+	var result: Array[String] = []
+	for value in configured:
+		var synergy_id := str(value)
+		if _synergies.has(synergy_id):
+			result.append(synergy_id)
+	return result
+
+
+func get_disabled_synergy_ids() -> Array[String]:
+	ensure_loaded()
+	var result: Array[String] = []
+	var configured = _synergy_availability.get("disabled", [])
+	if configured is Array:
+		for value in configured:
+			var synergy_id := str(value)
+			if _synergies.has(synergy_id):
+				result.append(synergy_id)
+	return result
+
+
+func is_synergy_enabled(synergy_id: String) -> bool:
+	return synergy_id in get_enabled_synergy_ids()
+
+
+func is_synergy_stackable(synergy_id: String) -> bool:
+	var data := get_synergy(synergy_id)
+	return not data.is_empty() and bool(data.get("stackable", true))
+
+
+func get_auto_trait_template(template_id: String) -> Dictionary:
+	return _get_record(_auto_trait_templates, template_id, "auto trait template")
+
+
+func get_all_auto_trait_template_ids() -> Array[String]:
+	return _sorted_keys(_auto_trait_templates)
+
+
+func get_auto_trait(trait_id: String) -> Dictionary:
+	return _get_record(_auto_traits, trait_id, "auto trait")
+
+
+func get_all_auto_trait_ids() -> Array[String]:
+	return _sorted_keys(_auto_traits)
+
+
+func get_autochess_hero(hero_id: String) -> Dictionary:
+	return _get_record(_autochess_heroes, hero_id, "autochess hero")
+
+
+func get_all_autochess_hero_ids() -> Array[String]:
+	return _sorted_keys(_autochess_heroes)
+
+
+func get_autochess_equipment(equipment_id: String) -> Dictionary:
+	return _get_record(_autochess_equipment, equipment_id, "autochess equipment")
+
+
+func get_all_autochess_equipment_ids() -> Array[String]:
+	return _sorted_keys(_autochess_equipment)
 
 
 func get_wave(wave_id: String) -> Dictionary:

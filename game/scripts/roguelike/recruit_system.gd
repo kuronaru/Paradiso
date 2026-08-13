@@ -121,6 +121,8 @@ func get_refresh_cost() -> int:
 	var cost := GameManager.apply_roguelike_relic_refresh_cost(_cfg_int("tavern_refresh_cost", REFRESH_COST))
 	if SynergyManager and SynergyManager.has_method("get_tavern_refresh_cost"):
 		cost = SynergyManager.get_tavern_refresh_cost(cost)
+	if AutoTraitManager and AutoTraitManager.has_method("get_refresh_cost"):
+		cost = AutoTraitManager.get_refresh_cost(cost)
 	return cost
 
 
@@ -165,13 +167,15 @@ func set_frozen(frozen: bool) -> void:
 
 
 ## 计算招募花费
-func _calculate_cost(_class_id: String, level: int) -> int:
+func _calculate_cost(class_id: String, level: int) -> int:
 	"""计算招募花费"""
 	var tier := clampi(level, 1, 3)
 	var configured_costs := _cfg_dict("tavern_recruit_cost_by_tier")
 	var cost := int(configured_costs.get(str(tier), RECRUIT_COST_BY_TIER[tier]))
 	if SynergyManager and SynergyManager.has_method("get_recruit_cost_discount"):
 		cost -= SynergyManager.get_recruit_cost_discount()
+	if AutoTraitManager and AutoTraitManager.has_method("get_purchase_cost"):
+		cost = AutoTraitManager.get_purchase_cost(class_id, cost)
 	return maxi(1, cost)
 
 

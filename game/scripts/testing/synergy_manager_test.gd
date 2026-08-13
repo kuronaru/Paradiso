@@ -36,7 +36,7 @@ func _run() -> void:
 	_test_main_synergy_override()
 	_test_new_minor_scopes()
 	_test_new_definition_options()
-	_test_shapeshifter_count_bonus()
+	_test_non_stackable_synergies_and_polymorph()
 	_test_economy_and_rest_hooks()
 	_test_clear_override()
 
@@ -115,6 +115,7 @@ func _test_new_minor_scopes() -> void:
 	var advanced_members: Dictionary = advanced_payload.get("member_modifiers", {})
 	t.assert_near(float(advanced_members.get("attack_multiplier", 1.0)), 1.3, 0.0001, "advanced tier 2 grants member attack")
 	t.assert_near(float(advanced_members.get("skill_cooldown_reduction", 0.0)), 0.3, 0.0001, "advanced tier 5 grants member cooldown reduction")
+	t.assert_eq(synergy_manager.get_synergy_layer("trait_advanced"), 0, "advanced is non-stackable even when override supplies layers")
 	t.assert_eq(synergy_manager.notify_hero_acquired("fighter_champion"), 3, "lawful layer 100 repeats acquisition traits three times")
 
 
@@ -129,12 +130,18 @@ func _test_new_definition_options() -> void:
 	t.assert_eq(int((ids.get("stat_wis", {}) as Dictionary).get("activation_count", 0)), 2, "wisdom activates at two members")
 
 
-func _test_shapeshifter_count_bonus() -> void:
-	var counts := {"trait_shapeshifter": 1, "main_naka": 2}
-	var names := {"trait_shapeshifter": ["变形者"], "main_naka": ["A", "B"]}
-	synergy_manager._apply_shapeshifter_main_count_bonus(counts, names)
-	t.assert_eq(int(counts.get("main_naka", 0)), 3, "shapeshifter adds one activation count to an existing main synergy")
-	t.assert_eq((names.get("main_naka", []) as Array).size(), 3, "shapeshifter count bonus is visible in member summary")
+func _test_non_stackable_synergies_and_polymorph() -> void:
+	for synergy_id in ["trait_flying", "trait_advanced", "trait_shapeshifter"]:
+		synergy_manager.set_test_synergy_override([{"id": synergy_id, "count": 5, "layer": 999}])
+		t.assert_eq(synergy_manager.get_synergy_layer(synergy_id), 0, "%s always has zero layers" % synergy_id)
+		var commands: Array[Dictionary] = [{"synergy_id": synergy_id, "amount": 50}]
+		var result: Dictionary = synergy_manager.apply_trait_layer_batch(commands)
+		t.assert_true((result.get("applied", {}) as Dictionary).is_empty(), "%s rejects trait layer commands" % synergy_id)
+
+	synergy_manager.clear_test_synergy_override()
+	var converted: Array[String] = synergy_manager.get_equipment_main_synergy_ids(["polymorph", "dragon_scale"])
+	t.assert_true("main_naka" in converted, "polymorph converts mapped equipment into an extra main synergy")
+	t.assert_true(synergy_manager.get_equipment_main_synergy_ids(["dragon_scale"]).is_empty(), "mapped equipment alone does not grant a main synergy")
 
 
 func _test_economy_and_rest_hooks() -> void:
@@ -149,6 +156,9 @@ func _test_economy_and_rest_hooks() -> void:
 		{"class_id": "paladin_devotion", "star_level": 3},
 	]
 	synergy_manager.recalculate()
+	t.assert_eq(int(_summary_by_id("stat_cha").get("layer", -1)), 0, "roster synergies start with zero layers")
+	var commands: Array[Dictionary] = [{"synergy_id": "stat_cha", "amount": 150}]
+	synergy_manager.apply_trait_layer_batch(commands)
 	t.assert_eq(game_manager.run_gold, 30, "charisma awards 10 gold for each crossed 50-layer milestone")
 	t.assert_eq(synergy_manager.get_recruit_cost_discount(), 1, "charisma layer 150 unlocks permanent recruit discount")
 

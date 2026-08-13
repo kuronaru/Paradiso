@@ -1,0 +1,48 @@
+{
+  "barbarian_berserker": {"hero_id":"barbarian_berserker","trait_tier":1,"autochess_synergy_ids":["main_naka"],"trait_ids":["CB_ENEMY_TYPE"]},
+  "barbarian_totem_warrior": {"hero_id":"barbarian_totem_warrior","trait_tier":2,"autochess_synergy_ids":["main_naka","trait_support"],"trait_ids":["CB_MAIN_LAYER_STAT"]},
+  "barbarian_ancestral_guardian": {"hero_id":"barbarian_ancestral_guardian","trait_tier":5,"autochess_synergy_ids":["main_naka","stat_wis","alignment_good"],"trait_ids":["CB_SYNERGY_LAYER_STAT"]},
+  "bard_lore": {"hero_id":"bard_lore","trait_tier":3,"autochess_synergy_ids":["main_moon_cult","stat_cha"],"trait_ids":["CB_DUAL_LAYER_DEF"]},
+  "bard_valor": {"hero_id":"bard_valor","trait_tier":4,"autochess_synergy_ids":["main_naka","stat_cha","stat_str"],"trait_ids":["CB_FAST_MERGE"]},
+  "bard_glamour": {"hero_id":"bard_glamour","trait_tier":6,"autochess_synergy_ids":["main_naka","stat_dex","trait_support"],"trait_ids":["CB_ADAPTIVE_DAMAGE"]},
+
+  "cleric_life_domain": {"hero_id":"cleric_life_domain","trait_tier":1,"autochess_synergy_ids":["main_moon_cult"],"trait_ids":["CB_FRONT_LAYER_RELAY"]},
+  "cleric_light_domain": {"hero_id":"cleric_light_domain","trait_tier":2,"autochess_synergy_ids":["trait_flying"],"trait_ids":[]},
+  "cleric_war_domain": {"hero_id":"cleric_war_domain","trait_tier":5,"autochess_synergy_ids":["main_moon_cult","stat_str","trait_support"],"trait_ids":["P_GAIN_REFRESH"]},
+  "druid_moon": {"hero_id":"druid_moon","trait_tier":3,"autochess_synergy_ids":["main_laferida","stat_wis"],"trait_ids":["P_GAIN_NEXT_GOLD"]},
+  "druid_land": {"hero_id":"druid_land","trait_tier":4,"autochess_synergy_ids":["main_laferida","stat_con"],"trait_ids":["P_GAIN_EQUIPMENT"]},
+  "druid_spores": {"hero_id":"druid_spores","trait_tier":6,"autochess_synergy_ids":["main_laferida","stat_int","alignment_evil"],"trait_ids":["P_SELL_REFRESH"]},
+
+  "fighter_champion": {"hero_id":"fighter_champion","trait_tier":1,"autochess_synergy_ids":["stat_str"],"trait_ids":["P_SELL_NEXT_GOLD"]},
+  "fighter_battle_master": {"hero_id":"fighter_battle_master","trait_tier":2,"autochess_synergy_ids":["main_naka","stat_dex"],"trait_ids":["P_SELL_SPECIAL_RECRUIT"]},
+  "fighter_eldritch_knight": {"hero_id":"fighter_eldritch_knight","trait_tier":3,"autochess_synergy_ids":["main_moon_cult","stat_int","alignment_neutral"],"trait_ids":["P_ROW_RECRUIT"]},
+  "monk_open_hand": {"hero_id":"monk_open_hand","trait_tier":4,"autochess_synergy_ids":["main_laferida"],"trait_ids":["P_REST_NEXT_GOLD"]},
+  "monk_shadow": {"hero_id":"monk_shadow","trait_tier":5,"autochess_synergy_ids":["main_laferida","alignment_chaotic"],"trait_ids":["B_OWNER_ALL"]},
+  "monk_four_elements": {"hero_id":"monk_four_elements","trait_tier":6,"autochess_synergy_ids":["main_naka","stat_wis","alignment_good"],"trait_ids":["B_TAVERN_NAMED"]},
+
+  "paladin_devotion": {"hero_id":"paladin_devotion","trait_tier":1,"autochess_synergy_ids":["main_laferida","stat_cha"],"trait_ids":["B_LINKED_SPLIT"]},
+  "paladin_vengeance": {"hero_id":"paladin_vengeance","trait_tier":2,"autochess_synergy_ids":["main_naka","stat_cha","alignment_neutral"],"trait_ids":["E_REST_ENTER_OWNER"]},
+  "paladin_ancients": {"hero_id":"paladin_ancients","trait_tier":3,"autochess_synergy_ids":["stat_wis","alignment_good"],"trait_ids":["E_REST_ENTER_FRONT"]},
+  "ranger_hunter": {"hero_id":"ranger_hunter","trait_tier":4,"autochess_synergy_ids":["main_laferida"],"trait_ids":["E_REST_END_FRONT"]},
+  "ranger_beast_master": {"hero_id":"ranger_beast_master","trait_tier":5,"autochess_synergy_ids":["main_laferida","alignment_good"],"trait_ids":["E_REST_END_NAMED"]},
+  "ranger_gloom_stalker": {"hero_id":"ranger_gloom_stalker","trait_tier":6,"autochess_synergy_ids":["main_laferida","stat_dex","alignment_chaotic"],"trait_ids":["E_REST_HIGHEST_BENCH"]},
+
+  "rogue_thief": {"hero_id":"rogue_thief","trait_tier":1,"autochess_synergy_ids":["main_laferida"],"trait_ids":["E_REST_COUNT_GAIN"]},
+  "rogue_assassin": {"hero_id":"rogue_assassin","trait_tier":2,"autochess_synergy_ids":["main_moon_cult","alignment_evil"],"trait_ids":["E_REST_COUNT_REFRESH"]},
+  "rogue_arcane_trickster": {"hero_id":"rogue_arcane_trickster","trait_tier":3,"autochess_synergy_ids":["stat_int","alignment_neutral"],"trait_ids":["E_REST_END_BACK"]},
+  "sorcerer_draconic": {"hero_id":"sorcerer_draconic","trait_tier":4,"autochess_synergy_ids":["main_naka","stat_con"],"trait_ids":["E_REST_COUNT_DISTINCT_TIER"]},
+  "sorcerer_wild_magic": {"hero_id":"sorcerer_wild_magic","trait_tier":5,"autochess_synergy_ids":["main_naka","alignment_chaotic"],"trait_ids":["E_REST_HIGHEST_DISTINCT_TIER"]},
+  "sorcerer_storm": {"hero_id":"sorcerer_storm","trait_tier":6,"autochess_synergy_ids":["trait_flying"],"trait_ids":[]},
+
+  "warlock_blade": {"hero_id":"warlock_blade","trait_tier":1,"autochess_synergy_ids":["trait_flying"],"trait_ids":[]},
+  "warlock_tome": {"hero_id":"warlock_tome","trait_tier":2,"autochess_synergy_ids":["main_moon_cult"],"trait_ids":["E_REST_COUNT_SPEND"]},
+  "warlock_chain": {"hero_id":"warlock_chain","trait_tier":3,"autochess_synergy_ids":["trait_flying"],"trait_ids":[]},
+  "wizard_evocation": {"hero_id":"wizard_evocation","trait_tier":4,"autochess_synergy_ids":["main_moon_cult"],"trait_ids":["E_GRANT_ROW_RIGHT_TRAIT"]},
+  "wizard_abjuration": {"hero_id":"wizard_abjuration","trait_tier":4,"autochess_synergy_ids":["main_moon_cult","stat_con","trait_support"],"trait_ids":["E_FIRST_DEFEAT","E_DEPLOY"]},
+  "wizard_divination": {"hero_id":"wizard_divination","trait_tier":6,"autochess_synergy_ids":["main_moon_cult","trait_support"],"trait_ids":["E_FIRST_SKILL","E_SELF_DEFEATED"]},
+
+  "artificer_alchemist": {"hero_id":"artificer_alchemist","trait_tier":3,"autochess_synergy_ids":["main_moon_cult","trait_support"],"trait_ids":["E_DEFEAT_EVERY_3","E_STATUS_IN_RANGE"]},
+  "artificer_armorer": {"hero_id":"artificer_armorer","trait_tier":4,"autochess_synergy_ids":["trait_flying"],"trait_ids":[]},
+  "artificer_artillerist": {"hero_id":"artificer_artillerist","trait_tier":5,"autochess_synergy_ids":["trait_flying"],"trait_ids":[]},
+  "shapeshifter": {"hero_id":"shapeshifter","trait_tier":6,"autochess_synergy_ids":["trait_shapeshifter"],"trait_ids":["P_GAIN_SHAPESHIFT"]}
+}

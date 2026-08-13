@@ -25,6 +25,11 @@ extends Resource
 ## 特性小羁绊标签（FLYING / SUPPORT / SHAPESHIFTER；ADVANCED 由星级动态判定）
 @export var trait_tags: Array[String] = []
 
+## 自走棋英雄骨架：固定等阶、当前模式羁绊与特质。
+@export var trait_tier: int = 1
+@export var autochess_synergy_ids: Array[String] = []
+@export var auto_trait_ids: Array[String] = []
+
 ## 部署消耗 DP
 @export var deploy_cost: int = 10
 

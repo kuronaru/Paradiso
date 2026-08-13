@@ -61,6 +61,10 @@ static func get_template(class_id: String) -> ClassTemplate:
 	template.stat_tags = _string_array(data.get("stat_tags", []))
 	template.alignment_tags = _string_array(data.get("alignment_tags", []))
 	template.trait_tags = _string_array(data.get("trait_tags", []))
+	var auto_data := _get_autochess_hero_data(canonical_id)
+	template.trait_tier = clampi(int(auto_data.get("trait_tier", data.get("shop_level", 1))), 1, 6)
+	template.autochess_synergy_ids = _string_array(auto_data.get("autochess_synergy_ids", []))
+	template.auto_trait_ids = _string_array(auto_data.get("trait_ids", []))
 	template.deploy_cost = int(data.get("deploy_cost", 10))
 	template.attack_mode = _attack_mode(str(data.get("attack_mode", "melee_single")))
 	template.target_type = _target_type(str(data.get("target_type", "ground")))
@@ -95,6 +99,10 @@ static func get_tavern_data(class_id: String) -> Dictionary:
 		"base_cost": int(data.get("base_cost", 2)),
 		"passive": str(data.get("tavern_passive", "")),
 	}
+
+
+static func get_autochess_data(class_id: String) -> Dictionary:
+	return _get_autochess_hero_data(canonicalize_class_id(class_id))
 
 
 static func get_all_class_ids() -> Array[String]:
@@ -173,6 +181,13 @@ static func _get_class_data(class_id: String) -> Dictionary:
 	var registry := _registry()
 	if registry and registry.has_method("get_class_data"):
 		return registry.get_class_data(class_id)
+	return {}
+
+
+static func _get_autochess_hero_data(class_id: String) -> Dictionary:
+	var registry := _registry()
+	if registry and registry.has_method("get_autochess_hero"):
+		return registry.get_autochess_hero(class_id)
 	return {}
 
 
