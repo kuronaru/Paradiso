@@ -47,6 +47,7 @@ const RECRUIT_COST_BY_TIER := {
 	2: 3,
 	3: 4,
 }
+const PROMOTION_REWARD_OPTION_COUNT := 3
 
 var tavern_level: int = 1
 var upgrade_discount: int = 0
@@ -62,22 +63,22 @@ func generate_recruit_options(_round_number: int, _party_size: int) -> Array[Rec
 	current_options.clear()
 
 	var available_options := _build_available_option_pool()
-	if available_options.is_empty():
-		return current_options
-
-	available_options.shuffle()
 	var slots := get_option_slot_count()
-	for i in range(slots):
-		var data: Dictionary = available_options[i % available_options.size()]
-		var option := RecruitOption.new(
-			str(data["class_id"]),
-			int(data["level"]),
-			int(data["cost"]),
-			int(data["shop_level"]),
-			str(data["tavern_passive"])
-		)
-		current_options.append(option)
+	_fill_options_from_pool(available_options, slots)
 
+	return current_options
+
+
+## 三合一晋升奖励：立即刷新为 3 个当前酒馆等级 +1 阶的英雄选项。
+func generate_promotion_reward_options() -> Array[RecruitOption]:
+	var reward_tier := mini(tavern_level + 1, MAX_TAVERN_LEVEL)
+	var reward_pool := _build_tier_option_pool(reward_tier)
+	if reward_pool.is_empty():
+		reward_pool = _build_available_option_pool()
+	current_options.clear()
+	_fill_options_from_pool(reward_pool, PROMOTION_REWARD_OPTION_COUNT)
+	is_frozen = false
+	Log.i(M, "三合一晋升奖励刷新: T%d 选项 %d 个" % [reward_tier, current_options.size()])
 	return current_options
 
 
@@ -201,6 +202,42 @@ func _build_available_option_pool() -> Array[Dictionary]:
 				"tavern_passive": str(data.get("passive", ""))
 			})
 	return pool
+
+
+func _build_tier_option_pool(target_tier: int) -> Array[Dictionary]:
+	var pool: Array[Dictionary] = []
+	var reward_tier := clampi(target_tier, 1, MAX_TAVERN_LEVEL)
+	for class_id in ClassDefinitions.get_all_class_ids():
+		var data: Dictionary = ClassDefinitions.get_tavern_data(class_id)
+		if data.is_empty():
+			continue
+		var hero_tier := clampi(int(ClassDefinitions.get_template(class_id).trait_tier), 1, MAX_TAVERN_LEVEL)
+		if hero_tier != reward_tier:
+			continue
+		pool.append({
+			"class_id": class_id,
+			"level": 1,
+			"shop_level": hero_tier,
+			"cost": _calculate_cost(class_id, 1),
+			"tavern_passive": str(data.get("passive", ""))
+		})
+	return pool
+
+
+func _fill_options_from_pool(pool: Array[Dictionary], option_count: int) -> void:
+	if pool.is_empty() or option_count <= 0:
+		return
+	pool.shuffle()
+	for i in range(option_count):
+		var data: Dictionary = pool[i % pool.size()]
+		var option := RecruitOption.new(
+			str(data["class_id"]),
+			int(data["level"]),
+			int(data["cost"]),
+			int(data["shop_level"]),
+			str(data["tavern_passive"])
+		)
+		current_options.append(option)
 
 
 ## 获取星级所需的酒馆等级。

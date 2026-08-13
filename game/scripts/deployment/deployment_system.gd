@@ -221,8 +221,21 @@ func _promote_run_merge_group(group: Array) -> bool:
 
 	var promoted := GameManager.add_to_party(class_id, promoted_star, shop_level, 2)
 	if promoted:
+		_refresh_recruit_options_for_promotion_reward()
 		Log.i(M, "三合一升星: %s 等阶%d %d星 -> %d星" % [class_id, shop_level, source_star, promoted_star])
 	return promoted
+
+
+func _refresh_recruit_options_for_promotion_reward() -> void:
+	var tree := get_tree()
+	if not tree:
+		return
+	var nodes := tree.get_nodes_in_group("roguelike_manager")
+	if nodes.is_empty():
+		return
+	var manager = nodes[0]
+	if manager and manager.has_method("refresh_recruit_options_for_promotion_reward"):
+		manager.refresh_recruit_options_for_promotion_reward()
 
 
 func _remove_deployed_unit_for_promotion(unit: HeroUnit) -> void:

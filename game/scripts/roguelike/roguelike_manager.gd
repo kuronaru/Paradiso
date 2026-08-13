@@ -106,6 +106,15 @@ func refresh_recruit_options() -> bool:
 	return true
 
 
+## 三合一晋升奖励：刷新为当前酒馆等级 +1 阶的 3 个英雄。
+func refresh_recruit_options_for_promotion_reward() -> bool:
+	if phase != RunPhase.RECRUIT or BattleManager.state != BattleManager.BattleState.PREPARING:
+		return false
+	recruit_system.generate_promotion_reward_options()
+	recruit_phase_started.emit()
+	return true
+
+
 ## 升级酒馆，并立即刷新一次招募列表。
 func upgrade_tavern() -> bool:
 	"""升级酒馆，并立即刷新一次招募列表。"""
