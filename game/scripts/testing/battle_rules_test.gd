@@ -27,6 +27,8 @@ func _run() -> void:
 	await get_tree().process_frame
 
 	_test_grid_and_bases(grid)
+	_test_hero_grid_scale(grid)
+	_test_enemy_grid_scale_and_advance(grid)
 	_test_spawn_sequence(grid)
 	_test_life_and_breach(grid)
 	_test_soul_revive(grid)
@@ -55,6 +57,72 @@ func _test_grid_and_bases(grid: GridSystem) -> void:
 	t.assert_false(grid.can_place_at(Vector2i(7, 3)), "a friendly occupied cell is not deployable")
 	grid.free_cell(Vector2i(7, 3))
 	blocker.free()
+
+
+func _test_hero_grid_scale(grid: GridSystem) -> void:
+	var melee_template := ClassDefinitions.get_template("fighter_champion")
+	var ranged_template := ClassDefinitions.get_template("ranger_hunter")
+	t.assert_near(melee_template.attack_range, 1.0, 0.001, "melee range remains one adjacent cell")
+	t.assert_near(ranged_template.attack_range, 2.0, 0.001, "legacy ranged reach is adapted to the 9-column map")
+
+	var hero := HeroUnit.new()
+	hero.setup(melee_template, 1)
+	grid.place_unit(hero, Vector2i(4, 0))
+	t.assert_near(hero.unit_radius, grid.cell_size * 0.4, 0.001, "hero art footprint follows preparation cell size")
+	t.assert_near(hero.get_collision_radius(), grid.cell_size * 0.25, 0.001, "hero collision follows preparation cell size")
+
+	grid.cell_size = 128.0
+	grid._sync_unit_positions()
+	t.assert_near(hero.unit_radius, 51.2, 0.001, "hero art footprint follows battle cell size")
+	t.assert_near(hero.get_collision_radius(), 32.0, 0.001, "hero collision follows battle cell size")
+	grid.remove_unit(hero)
+	hero.queue_free()
+	grid._apply_stage_layout(false)
+
+
+func _test_enemy_grid_scale_and_advance(grid: GridSystem) -> void:
+	var normal := EnemyUnit.new()
+	normal.setup_from_template(_enemy_template("normal_scale"))
+	grid.place_unit(normal, Vector2i(8, 0))
+	t.assert_near(normal.unit_radius, grid.cell_size * 0.4, 0.001, "normal enemy body follows cell size")
+	t.assert_near(normal.get_collision_radius(), grid.cell_size * 0.25, 0.001, "normal enemy collision follows cell size")
+	var base_distance_before := normal.get_ground_position().distance_to(grid.get_nearest_player_base_world(normal.get_ground_position()))
+	normal.ai_controller._move_enemy_forward(0.1)
+	var base_distance_after := normal.get_ground_position().distance_to(grid.get_nearest_player_base_world(normal.get_ground_position()))
+	t.assert_true(base_distance_after < base_distance_before, "unblocked enemy continues toward the nearest player base")
+	grid.remove_unit(normal)
+	BattleManager.unregister_enemy_unit(normal)
+	normal.queue_free()
+
+	var blocker := HeroUnit.new()
+	blocker.setup(ClassDefinitions.get_template("fighter_champion"), 1)
+	grid.place_unit(blocker, Vector2i(6, 1))
+	var blocked_enemy := EnemyUnit.new()
+	blocked_enemy.setup_from_template(_enemy_template("blocked_advance"))
+	grid.place_unit(blocked_enemy, Vector2i(7, 1))
+	blocked_enemy.ai_controller._move_enemy_forward(1.0)
+	t.assert_eq(blocked_enemy.target, blocker, "enemy locks the player unit that blocks its advance")
+	var separation := blocked_enemy.get_ground_position().distance_to(blocker.get_ground_position())
+	var minimum_separation := blocked_enemy.get_collision_radius() + blocker.get_collision_radius()
+	t.assert_true(separation >= minimum_separation - 0.001, "enemy stops at contact without overlapping the blocking hero")
+	t.assert_eq(blocked_enemy.ai_controller.state, "attacking", "enemy enters attack state after a hero blocks its advance")
+	grid.remove_unit(blocked_enemy)
+	BattleManager.unregister_enemy_unit(blocked_enemy)
+	blocked_enemy.queue_free()
+	grid.remove_unit(blocker)
+	BattleManager.unregister_player_unit(blocker)
+	blocker.queue_free()
+
+	var brute_data := _enemy_template("brute_scale")
+	brute_data["type"] = EnemyUnit.EnemyType.BRUTE
+	var brute := EnemyUnit.new()
+	brute.setup_from_template(brute_data)
+	grid.place_unit(brute, Vector2i(8, 0))
+	t.assert_near(brute.unit_radius, grid.cell_size * 0.4 * 32.0 / 24.0, 0.001, "brute preserves its larger body tier")
+	t.assert_near(brute.get_collision_radius(), grid.cell_size * 0.25 * 32.0 / 24.0, 0.001, "brute collision preserves its larger tier")
+	grid.remove_unit(brute)
+	BattleManager.unregister_enemy_unit(brute)
+	brute.queue_free()
 
 
 func _test_spawn_sequence(grid: GridSystem) -> void:

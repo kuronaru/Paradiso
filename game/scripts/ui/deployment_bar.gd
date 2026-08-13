@@ -164,7 +164,7 @@ func _refresh_ui() -> void:
 			trait_names.append(str(DataRegistry.get_auto_trait(trait_id).get("display_name", trait_id)))
 		btn.tooltip_text = "%s\n左键选择/拖拽部署；备战阶段右键出售（%d金币）" % [
 			"特质：%s" % ("无" if trait_names.is_empty() else "、".join(trait_names)),
-			maxi(1, int(card_data.get("star_level", 1))),
+			1,
 		]
 
 		var card_margin := MarginContainer.new()

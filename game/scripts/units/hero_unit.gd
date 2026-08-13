@@ -4,6 +4,10 @@ extends UnitBase
 
 const SynergyPassiveScript = preload("res://scripts/passives/synergy_passive.gd")
 const AutoTraitCombatPassiveScript = preload("res://scripts/passives/auto_trait_combat_passive.gd")
+const REFERENCE_BODY_RADIUS := 24.0
+const REFERENCE_COLLISION_RADIUS := 12.0
+const BODY_RADIUS_CELL_RATIO := 0.4
+const COLLISION_RADIUS_CELL_RATIO := 0.25
 
 signal soul_state_changed(in_soul_state: bool, remaining: float)
 
@@ -18,6 +22,8 @@ var is_in_soul_state: bool = false
 var soul_time_remaining: float = 0.0
 var soul_origin_grid_position: Vector2i = Vector2i.ZERO
 var soul_label: Label = null
+var reference_collision_radius: float = REFERENCE_COLLISION_RADIUS
+var applied_geometry_scale: float = -1.0
 
 @export var hero_color: Color = Color(0.3, 0.6, 1.0)
 
@@ -25,6 +31,7 @@ var soul_label: Label = null
 ## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
 	team = "player"
+	sync_geometry_to_grid(_current_grid_cell_size())
 	super._ready()
 
 
@@ -39,6 +46,9 @@ func _process(delta: float) -> void:
 ## 初始化单位或组件数据。
 func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 	super.setup(class_data, lvl)
+	reference_collision_radius = class_data.collision_radius if class_data.collision_radius > 0.0 else REFERENCE_COLLISION_RADIUS
+	applied_geometry_scale = -1.0
+	sync_geometry_to_grid(_current_grid_cell_size())
 	deploy_cost = class_data.deploy_cost
 	color = hero_color
 	for child in get_children():
@@ -57,6 +67,25 @@ func setup(class_data: ClassTemplate, lvl: int = 1) -> void:
 			deactivate_ai()
 		_:
 			activate_ai()
+
+
+## Keep hero art, body outline and collision proportional to the live grid size.
+func sync_geometry_to_grid(cell_size: float) -> void:
+	var safe_cell_size := maxf(cell_size, 1.0)
+	var next_body_radius := safe_cell_size * BODY_RADIUS_CELL_RATIO
+	var geometry_scale := next_body_radius / REFERENCE_BODY_RADIUS
+	if is_equal_approx(geometry_scale, applied_geometry_scale):
+		return
+	applied_geometry_scale = geometry_scale
+	unit_radius = next_body_radius
+	collision_radius = safe_cell_size * COLLISION_RADIUS_CELL_RATIO * reference_collision_radius / REFERENCE_COLLISION_RADIUS
+	set_visual_scale_multiplier(geometry_scale)
+	refresh_unit_geometry()
+
+
+func _current_grid_cell_size() -> float:
+	var current_grid: GridSystem = BattleManager.grid
+	return current_grid.cell_size if current_grid else 64.0
 
 
 ## 同步当前已激活羁绊提供给该英雄的被动。

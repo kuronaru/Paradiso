@@ -104,7 +104,10 @@ var hp_bar_fill: ColorRect = null
 var body_placeholder: ColorRect = null
 var body_sprite: Sprite2D = null
 var animated_body_sprite: AnimatedSprite2D = null
+var unit_name_label: Label = null
 var visual_node: Node2D = null
+var visual_base_scale: Vector2 = Vector2.ONE
+var visual_scale_multiplier: float = 1.0
 var visual_default_animation: String = "idle"
 var visual_walk_animation: String = "walk"
 var visual_flip_when_moving_left: bool = true
@@ -420,12 +423,12 @@ func _setup_visual() -> void:
 	_apply_visual_config(visual_id)
 
 	# 名称标签
-	var label := Label.new()
-	label.text = unit_name
-	label.add_theme_font_size_override("font_size", 10)
-	label.position = Vector2(-20, unit_radius + 4)
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	add_child(label)
+	unit_name_label = Label.new()
+	unit_name_label.text = unit_name
+	unit_name_label.add_theme_font_size_override("font_size", 10)
+	unit_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(unit_name_label)
+	refresh_unit_geometry()
 
 
 func _apply_visual_config(next_visual_id: String) -> void:
@@ -464,7 +467,8 @@ func _apply_texture_visual(texture: Texture2D, offset: Vector2, scale_value: Vec
 	body_sprite.texture = texture
 	body_sprite.centered = true
 	body_sprite.position = offset
-	body_sprite.scale = scale_value
+	visual_base_scale = scale_value
+	body_sprite.scale = visual_base_scale * visual_scale_multiplier
 	body_sprite.visible = false
 	visual_node = body_sprite
 
@@ -474,7 +478,8 @@ func _apply_sprite_frames_visual(frames: SpriteFrames, offset: Vector2, scale_va
 		return
 	animated_body_sprite.sprite_frames = frames
 	animated_body_sprite.position = offset
-	animated_body_sprite.scale = scale_value
+	visual_base_scale = scale_value
+	animated_body_sprite.scale = visual_base_scale * visual_scale_multiplier
 	animated_body_sprite.visible = false
 	visual_node = animated_body_sprite
 
@@ -554,6 +559,34 @@ func _art_registry() -> Node:
 	if not tree or not tree.root:
 		return null
 	return tree.root.get_node_or_null("ArtRegistry")
+
+
+## Scale authored unit art without changing its resource-level scale.
+func set_visual_scale_multiplier(multiplier: float) -> void:
+	visual_scale_multiplier = maxf(multiplier, 0.01)
+	if body_sprite:
+		body_sprite.scale = visual_base_scale * visual_scale_multiplier
+	if animated_body_sprite:
+		animated_body_sprite.scale = visual_base_scale * visual_scale_multiplier
+
+
+## Refresh every visual and collision element that depends on unit geometry.
+func refresh_unit_geometry() -> void:
+	var bar_height := 6.0
+	var bar_y := -unit_radius - bar_height - 4.0
+	if hp_bar_bg:
+		hp_bar_bg.size = Vector2(unit_radius * 2.0, bar_height)
+		hp_bar_bg.position = Vector2(-unit_radius, bar_y)
+	if hp_bar_fill:
+		hp_bar_fill.position = Vector2(-unit_radius, bar_y)
+	if body_placeholder:
+		body_placeholder.size = Vector2(unit_radius * 2.0, unit_radius * 2.0)
+		body_placeholder.position = -Vector2(unit_radius, unit_radius)
+	if unit_name_label:
+		unit_name_label.size = Vector2(unit_radius * 2.0, 20.0)
+		unit_name_label.position = Vector2(-unit_radius, unit_radius + 4.0)
+	refresh_ground_collision()
+	_update_hp_bar(current_hp, max_hp)
 
 
 ## 初始化AI。

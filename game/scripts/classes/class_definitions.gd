@@ -5,6 +5,9 @@ extends RefCounted
 static var _cache: Dictionary = {}
 
 const FALLBACK_CLASS_ID := "fighter_champion"
+const LEGACY_BATTLE_GRID_WIDTH := 19.0
+const BATTLE_GRID_WIDTH := 9.0
+const MELEE_ATTACK_RANGE_MAX := 1.5
 const LEGACY_ALIASES := {
 	"warrior": "fighter_champion",
 	"ranger": "ranger_hunter",
@@ -69,7 +72,10 @@ static func get_template(class_id: String) -> ClassTemplate:
 	template.attack_mode = _attack_mode(str(data.get("attack_mode", "melee_single")))
 	template.target_type = _target_type(str(data.get("target_type", "ground")))
 	template.range_shape = _range_shape(str(data.get("range_shape", "circle")))
-	template.attack_range = float(data.get("attack_range", 1.5))
+	template.attack_range = _attack_range_for_current_grid(
+		float(data.get("attack_range", 1.5)),
+		template.attack_mode
+	)
 	template.search_range = float(data.get("search_range", 5.0))
 	template.base_hp = int(data.get("base_hp", data.get("hp", 100)))
 	template.base_atk = int(data.get("base_atk", data.get("atk", 15)))
@@ -238,6 +244,14 @@ static func _bool_value(value, default_value: bool) -> bool:
 	if text in ["false", "0", "no", "n"]:
 		return false
 	return default_value
+
+
+## Convert ranges authored for the legacy 19-column battlefield to the 9-column map.
+static func _attack_range_for_current_grid(authored_range: float, attack_mode: int) -> float:
+	if attack_mode == ClassTemplate.AttackMode.MELEE_SINGLE or authored_range <= MELEE_ATTACK_RANGE_MAX:
+		return authored_range
+	var scaled_range := authored_range * BATTLE_GRID_WIDTH / LEGACY_BATTLE_GRID_WIDTH
+	return snappedf(scaled_range, 0.1)
 
 
 static func _attack_mode(value: String) -> int:

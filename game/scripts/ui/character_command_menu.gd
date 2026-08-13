@@ -13,10 +13,10 @@ var selected_unit: HeroUnit = null
 var was_paused_before_open: bool = false
 
 var menu_panel: Control = null
+var sell_button: Button = null
 var retreat_button: Button = null
 var stance_button: Button = null
 var skill_button: Button = null
-var reserved_button: Button = null
 
 
 ## 初始化角色菜单并连接部署系统
@@ -62,14 +62,14 @@ func _build_menu() -> void:
 	outline.add_theme_stylebox_override("panel", _create_outline_style())
 	menu_panel.add_child(outline)
 
+	sell_button = _create_corner_button("出售\n1金", _on_sell_pressed)
 	retreat_button = _create_corner_button("撤退", _on_retreat_pressed)
 	stance_button = _create_corner_button("驻扎", _on_stance_pressed)
 	skill_button = _create_corner_button("技能", _on_skill_pressed)
-	reserved_button = _create_corner_button("待定", _on_reserved_pressed)
+	menu_panel.add_child(sell_button)
 	menu_panel.add_child(retreat_button)
 	menu_panel.add_child(stance_button)
 	menu_panel.add_child(skill_button)
-	menu_panel.add_child(reserved_button)
 
 	_layout_menu()
 
@@ -123,8 +123,8 @@ func _layout_menu() -> void:
 	var outline := menu_panel.get_node("Outline") as Panel
 	outline.size = panel_size
 
-	retreat_button.position = Vector2.ZERO
-	reserved_button.position = Vector2(panel_size.x - button_size.x, 0)
+	sell_button.position = Vector2.ZERO
+	retreat_button.position = Vector2(panel_size.x - button_size.x, 0)
 	stance_button.position = Vector2(0, panel_size.y - button_size.y)
 	skill_button.position = panel_size - button_size
 
@@ -171,7 +171,15 @@ func _update_unit_display() -> void:
 		return
 
 	stance_button.text = "驻扎" if selected_unit.stance == UnitBase.Stance.MARCH else "移动"
+	sell_button.disabled = not _can_sell_selected_unit()
 	skill_button.disabled = not _can_use_first_skill()
+
+
+## 检查当前选中英雄是否可以被出售。
+func _can_sell_selected_unit() -> bool:
+	if not selected_unit or not is_instance_valid(selected_unit):
+		return false
+	return GameManager.is_roguelike_run and BattleManager.state == BattleManager.BattleState.PREPARING
 
 
 ## 检查当前角色是否有可释放的第一个技能
@@ -212,6 +220,15 @@ func _clear_selection_and_hide() -> void:
 		_hide_menu(true)
 
 
+## 出售：从战场移除角色并获得固定 1 金币。
+func _on_sell_pressed() -> void:
+	"""出售：从战场移除角色并获得固定 1 金币。"""
+	if deployment_system and deployment_system.sell_selected_unit():
+		_hide_menu(true)
+	else:
+		_update_unit_display()
+
+
 ## 撤退：从战场移除角色并收回手牌
 func _on_retreat_pressed() -> void:
 	"""撤退：从战场移除角色并收回手牌"""
@@ -234,12 +251,6 @@ func _on_skill_pressed() -> void:
 	if deployment_system:
 		deployment_system.use_selected_skill(0)
 	_update_unit_display()
-
-
-## 右上角预留功能入口
-func _on_reserved_pressed() -> void:
-	"""右上角预留功能入口"""
-	Log.i(M, "角色菜单右上角功能待实现")
 
 
 ## 点击角色菜单区域外时取消角色选中

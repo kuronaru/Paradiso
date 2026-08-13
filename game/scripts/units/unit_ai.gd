@@ -396,8 +396,10 @@ func _move_enemy_toward(target: Node, delta: float) -> void:
 	var attack_distance : float = target_unit.get_body_radius() + owner_unit.attack_range * _cell_size()
 	var travel := minf(speed_px * delta, maxf(0.0, distance - attack_distance))
 	if travel > 0.0:
-		owner_unit.global_position += dir.normalized() * travel
+		_move_enemy_along_ground_segment(owner_unit.get_ground_position() + dir.normalized() * travel)
 	if _try_resolve_enemy_base_entry():
+		return
+	if owner_unit.target != target_unit:
 		return
 	if _is_in_attack_range(target_unit):
 		state = "attacking"
@@ -416,9 +418,38 @@ func _move_enemy_forward(delta: float) -> void:
 	var direction := target_world - owner_unit.get_ground_position()
 	var travel := owner_unit.move_speed * _cell_size() * delta
 	if direction.length_squared() > 0.01:
-		owner_unit.global_position += direction.normalized() * minf(travel, direction.length())
+		_move_enemy_along_ground_segment(
+			owner_unit.get_ground_position() + direction.normalized() * minf(travel, direction.length())
+		)
 	_update_continuous_grid_position()
 	_try_resolve_enemy_base_entry()
+
+
+## Move continuously until a player body blocks the segment; enemies never block each other.
+func _move_enemy_along_ground_segment(target_ground: Vector2) -> void:
+	var grid: GridSystem = BattleManager.grid
+	if not grid:
+		return
+	var from_ground := owner_unit.get_ground_position()
+	var collision := grid.predict_unit_collision_on_segment(
+		owner_unit,
+		from_ground,
+		target_ground,
+		"player",
+		GridSystem.INVALID_GRID_POS
+	)
+	if collision.is_empty():
+		owner_unit.global_position = target_ground - owner_unit.ground_anchor_offset
+		_update_continuous_grid_position()
+		return
+
+	var hit_ground: Vector2 = collision.get("hit_position", from_ground)
+	owner_unit.global_position = hit_ground - owner_unit.ground_anchor_offset
+	_update_continuous_grid_position()
+	var hit_unit := collision.get("hit_unit", null) as UnitBase
+	if hit_unit and owner_unit.can_target_combat_unit(hit_unit):
+		owner_unit.target = hit_unit
+		state = "attacking" if _is_in_attack_range(hit_unit) else "idle"
 
 
 ## 敌人进入我方据点后交给 BattleManager 做一次性漏怪结算。

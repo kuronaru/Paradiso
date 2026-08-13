@@ -202,7 +202,11 @@ func _apply_stage_layout(animated: bool) -> void:
 ## 同步单位位置。
 func _sync_unit_positions() -> void:
 	for unit in all_units:
-		if is_instance_valid(unit) and _uses_grid_occupancy(unit) and not (unit as UnitBase).is_moving():
+		if not is_instance_valid(unit):
+			continue
+		if unit.has_method("sync_geometry_to_grid"):
+			unit.sync_geometry_to_grid(cell_size)
+		if _uses_grid_occupancy(unit) and not (unit as UnitBase).is_moving():
 			unit.global_position = grid_to_world(unit.grid_position)
 
 
@@ -405,6 +409,8 @@ func place_unit(unit: Node, grid_pos: Vector2i) -> bool:
 		occupy_cell(grid_pos, unit)
 	elif not is_move_zone(grid_pos):
 		return false
+	if unit.has_method("sync_geometry_to_grid"):
+		unit.sync_geometry_to_grid(cell_size)
 	unit.grid_position = grid_pos
 	unit.global_position = grid_to_world(grid_pos)
 	if unit is UnitBase and _uses_grid_occupancy(unit):
@@ -1228,6 +1234,7 @@ func _spawn_next_queued_enemy() -> void:
 	var spawn_pos: Vector2i = entry["spawn_pos"]
 	var enemy := EnemyUnit.new()
 	enemy.setup_from_template(template)
+	enemy.sync_geometry_to_grid(cell_size)
 	enemy.grid_position = spawn_pos
 	enemy.global_position = grid_to_world(spawn_pos)
 	all_units.append(enemy)

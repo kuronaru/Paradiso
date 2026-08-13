@@ -4,6 +4,7 @@ class_name DeploymentSystem
 extends Node
 
 const M = "Deploy"
+const RUN_SELL_GOLD_VALUE := 1
 
 signal unit_selected(unit: HeroUnit)
 signal unit_deselected
@@ -91,7 +92,7 @@ func sell_hand_card(card_index: int) -> bool:
 	var instance_id := int(card.get("instance_id", -1))
 	if instance_id < 0:
 		return false
-	var sell_value := maxi(1, int(card.get("star_level", 1)))
+	var sell_value := RUN_SELL_GOLD_VALUE
 	if not GameManager.sell_run_card(instance_id, sell_value):
 		return false
 	clear_selected_card()
@@ -688,6 +689,28 @@ func retreat_selected() -> void:
 					hand_updated.emit(hand_cards)
 		selected_unit = null
 		unit_deselected.emit()
+
+
+## 出售当前选中的已部署英雄，固定获得 1 金币。
+func sell_selected_unit() -> bool:
+	if not GameManager.is_roguelike_run or BattleManager.state != BattleManager.BattleState.PREPARING:
+		return false
+	if not selected_unit or not is_instance_valid(selected_unit):
+		return false
+	var sold_unit := selected_unit
+	var card_data := _card_data_from_unit(sold_unit)
+	if card_data.is_empty():
+		return false
+	_remove_deployed_unit_for_promotion(sold_unit)
+	_notify_run_card_sold(card_data, RUN_SELL_GOLD_VALUE)
+	Log.i(M, "出售部署英雄 %s，获得 %d 金币" % [card_data.get("class_id", ""), RUN_SELL_GOLD_VALUE])
+	return true
+
+
+func _notify_run_card_sold(card_data: Dictionary, gold_value: int) -> void:
+	if AutoTraitManager and AutoTraitManager.has_method("notify_hero_sold"):
+		AutoTraitManager.notify_hero_sold(card_data.duplicate(true))
+	GameManager.earn_run_gold(gold_value)
 
 
 ## 处理卡牌数据单位逻辑。
