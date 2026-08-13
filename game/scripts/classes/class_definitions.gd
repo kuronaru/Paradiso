@@ -94,8 +94,9 @@ static func get_tavern_data(class_id: String) -> Dictionary:
 	var data := _get_class_data(canonical_id)
 	if data.is_empty():
 		data = _fallback_class_data(canonical_id)
+	var hero_tier := clampi(int(_get_autochess_hero_data(canonical_id).get("trait_tier", data.get("shop_level", 1))), 1, 6)
 	return {
-		"shop_level": int(data.get("shop_level", 1)),
+		"shop_level": hero_tier,
 		"base_cost": int(data.get("base_cost", 2)),
 		"passive": str(data.get("tavern_passive", "")),
 	}

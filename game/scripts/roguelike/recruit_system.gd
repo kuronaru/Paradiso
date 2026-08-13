@@ -187,15 +187,16 @@ func _build_available_option_pool() -> Array[Dictionary]:
 		if data.is_empty():
 			continue
 
-		var class_shop_level := int(data.get("shop_level", 1))
+		var hero_tier := clampi(int(ClassDefinitions.get_template(class_id).trait_tier), 1, 6)
+		if hero_tier > tavern_level:
+			continue
 		for star_level in range(1, 4):
-			var required_shop_level := maxi(class_shop_level, _required_shop_level_for_star(star_level))
-			if required_shop_level > tavern_level:
+			if _required_shop_level_for_star(star_level) > tavern_level:
 				continue
 			pool.append({
 				"class_id": class_id,
 				"level": star_level,
-				"shop_level": required_shop_level,
+				"shop_level": hero_tier,
 				"cost": _calculate_cost(class_id, star_level),
 				"tavern_passive": str(data.get("passive", ""))
 			})

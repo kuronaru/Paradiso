@@ -182,6 +182,7 @@ func _test_auto_traits(registry: Node) -> void:
 		var hero_data: Dictionary = registry.get_autochess_hero(hero_id)
 		var trait_tier := int(hero_data.get("trait_tier", 0))
 		t.assert_true(trait_tier >= 1 and trait_tier <= 6, "hero fixed trait tier is 1-6: %s" % hero_id)
+		t.assert_eq(int(ClassDefinitions.get_tavern_data(hero_id).get("shop_level", 0)), trait_tier, "hero tier binds its minimum tavern level: %s" % hero_id)
 		var hero_synergies := _string_array(hero_data.get("autochess_synergy_ids", []))
 		for synergy_id in hero_synergies:
 			t.assert_false(registry.get_synergy(synergy_id).is_empty(), "hero synergy reference exists: %s -> %s" % [hero_id, synergy_id])

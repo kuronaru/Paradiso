@@ -62,7 +62,7 @@ func _build_top_buttons() -> void:
 	bar.z_index = 100
 	add_child(bar)
 
-	bar.add_child(_create_top_button("角色图鉴", _on_catalog_pressed))
+	bar.add_child(_create_top_button("英雄图鉴", _on_catalog_pressed))
 
 	pause_shortcut_button = _create_top_button("暂停", _on_pause_shortcut_pressed)
 	bar.add_child(pause_shortcut_button)

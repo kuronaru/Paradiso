@@ -140,6 +140,15 @@ func _test_tavern_rules() -> void:
 	t.assert_eq(recruit._calculate_cost("", 1), 2, "low-tier recruit costs 2")
 	t.assert_eq(recruit._calculate_cost("", 2), 3, "mid-tier recruit costs 3")
 	t.assert_eq(recruit._calculate_cost("", 3), 4, "high-tier recruit costs 4")
+	for tavern_level in range(1, 7):
+		recruit.tavern_level = tavern_level
+		var pool: Array[Dictionary] = recruit._build_available_option_pool()
+		t.assert_true(not pool.is_empty(), "tavern level %d has recruit options" % tavern_level)
+		for option in pool:
+			var class_id := str(option.get("class_id", ""))
+			var hero_tier := ClassDefinitions.get_template(class_id).trait_tier
+			t.assert_true(hero_tier <= tavern_level, "tavern level %d never offers T%d hero %s" % [tavern_level, hero_tier, class_id])
+			t.assert_eq(int(option.get("shop_level", 0)), hero_tier, "recruit option shop_level matches hero tier: %s" % class_id)
 	recruit.queue_free()
 
 

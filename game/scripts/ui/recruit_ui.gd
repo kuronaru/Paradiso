@@ -298,9 +298,7 @@ func _refresh_option_card(index: int, option, active_gold: int) -> void:
 	option_icons[index].color = ClassDefinitions.get_template_color(ct.class_id)
 	option_name_labels[index].text = ct.job_name
 	option_synergy_labels[index].text = _get_synergy_line(ct, option.level)
-	var tier_names := ["低阶", "中阶", "高阶"]
-	var tier_name: String = tier_names[clampi(option.level, 1, 3) - 1]
-	option_price_labels[index].text = "%s · T%d · %d金币  酒馆Lv.%d" % [tier_name, ct.trait_tier, option.cost, option.shop_level]
+	option_price_labels[index].text = "T%d · %d金币" % [ct.trait_tier, option.cost]
 	var trait_names: Array[String] = []
 	for trait_id in ct.auto_trait_ids:
 		trait_names.append(str(DataRegistry.get_auto_trait(trait_id).get("display_name", trait_id)))

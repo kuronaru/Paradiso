@@ -352,7 +352,7 @@ func _build_bottom_bar() -> Control:
 
 	actions.add_child(_create_action_button("英雄养成", _open_storage_overlay))
 	actions.add_child(_create_action_button("装备背包", _open_equipment_overlay))
-	actions.add_child(_create_action_button("角色图鉴", _open_encyclopedia_overlay))
+	actions.add_child(_create_action_button("英雄图鉴", _open_encyclopedia_overlay))
 	actions.add_child(_create_action_button("肉鸽模式", _enter_roguelike_mode))
 	actions.add_child(_create_action_button("联机肉鸽", _enter_multiplayer_roguelike))
 	return panel
