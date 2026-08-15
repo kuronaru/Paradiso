@@ -43,10 +43,13 @@ func _test_public_contract() -> void:
 		"join_public_session",
 		"join_relay_session",
 		"switch_to_relay_session",
+		"attach_nakama_session",
 		"leave_session",
 		"is_run_active",
 		"is_local_room_host",
 		"get_transport_snapshot",
+		"get_protocol_version",
+		"is_nakama_transport",
 		"set_local_ready",
 		"start_session_run",
 		"submit_local_battle_result",
@@ -75,6 +78,8 @@ func _test_public_transport_contract() -> void:
 	t.assert_false(bool(member_state.get("room_host", true)), "ordinary relay member is not room host")
 	var sanitized: Dictionary = coordinator._sanitize_player_state(host_state)
 	t.assert_true(bool(sanitized.get("room_host", false)), "room-host authority survives snapshots")
+	t.assert_true(coordinator.TransportMode.has("NAKAMA"), "transport enum exposes Nakama backend")
+	t.assert_eq(coordinator.get_protocol_version(), 2, "room naming and RPC registration share protocol version")
 
 
 func _test_defender_selection() -> void:

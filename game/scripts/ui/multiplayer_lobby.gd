@@ -18,12 +18,14 @@ const COLOR_ERROR := Color(1.0, 0.38, 0.38, 1.0)
 
 var multiplayer_manager: Node = null
 var public_room_client: Node = null
+var nakama_session_manager: Node = null
 var players_snapshot: Array = []
 var connection_status := "offline"
 var scene_transitioning := false
 var public_request_pending := false
 var last_public_generation := -1
 var failed_direct_generation := -1
+var last_diagnostic_id := ""
 
 var nickname_input: LineEdit = null
 var address_input: LineEdit = null
@@ -34,6 +36,8 @@ var join_button: Button = null
 var public_host_button: Button = null
 var public_join_button: Button = null
 var public_room_label: Label = null
+var copy_invite_button: Button = null
+var feedback_button: Button = null
 var ready_button: Button = null
 var start_button: Button = null
 var leave_button: Button = null
@@ -42,6 +46,8 @@ var role_label: Label = null
 var player_count_label: Label = null
 var player_list: VBoxContainer = null
 var hint_label: Label = null
+var subtitle_label: Label = null
+var public_title_label: Label = null
 
 
 func _ready() -> void:
@@ -49,8 +55,11 @@ func _ready() -> void:
 	_build_ui()
 	multiplayer_manager = get_node_or_null("/root/MultiplayerRunManager")
 	public_room_client = get_node_or_null("/root/PublicRoomClient")
+	nakama_session_manager = get_node_or_null("/root/NakamaSessionManager")
 	_connect_manager_signals()
 	_connect_public_room_signals()
+	_connect_nakama_signals()
+	_configure_platform_ui()
 	_refresh_from_manager()
 
 
@@ -108,11 +117,11 @@ func _build_ui() -> void:
 	title.add_theme_color_override("font_color", COLOR_TEXT)
 	heading_stack.add_child(title)
 
-	var subtitle := Label.new()
-	subtitle.text = "支持房间码公网联机与 LAN/IP 直连，2～4 名玩家协同迎敌"
-	subtitle.add_theme_font_size_override("font_size", 14)
-	subtitle.add_theme_color_override("font_color", Color(0.70, 0.76, 0.84, 1.0))
-	heading_stack.add_child(subtitle)
+	subtitle_label = Label.new()
+	subtitle_label.text = "支持房间码公网联机与 LAN/IP 直连，2～4 名玩家协同迎敌"
+	subtitle_label.add_theme_font_size_override("font_size", 14)
+	subtitle_label.add_theme_color_override("font_color", Color(0.70, 0.76, 0.84, 1.0))
+	heading_stack.add_child(subtitle_label)
 
 	var status_panel := PanelContainer.new()
 	status_panel.custom_minimum_size = Vector2(310, 58)
@@ -206,12 +215,12 @@ func _build_ui() -> void:
 	public_row.add_theme_constant_override("separation", 12)
 	public_margin.add_child(public_row)
 
-	var public_title := Label.new()
-	public_title.text = "公网房间"
-	public_title.custom_minimum_size.x = 86.0
-	public_title.add_theme_font_size_override("font_size", 16)
-	public_title.add_theme_color_override("font_color", COLOR_GOLD)
-	public_row.add_child(public_title)
+	public_title_label = Label.new()
+	public_title_label.text = "公网房间"
+	public_title_label.custom_minimum_size.x = 86.0
+	public_title_label.add_theme_font_size_override("font_size", 16)
+	public_title_label.add_theme_color_override("font_color", COLOR_GOLD)
+	public_row.add_child(public_title_label)
 
 	room_code_input = _make_labeled_input(public_row, "房间码", "例如 AB3D7K", 160.0)
 	room_code_input.max_length = 6
@@ -331,6 +340,16 @@ func _build_ui() -> void:
 	start_button.pressed.connect(_on_start_pressed)
 	side_stack.add_child(start_button)
 
+	copy_invite_button = _make_action_button("复制邀请信息", Color(0.20, 0.36, 0.50, 1.0))
+	copy_invite_button.custom_minimum_size.y = 40.0
+	copy_invite_button.pressed.connect(_on_copy_invite_pressed)
+	side_stack.add_child(copy_invite_button)
+
+	feedback_button = _make_action_button("填写体验反馈", Color(0.28, 0.31, 0.42, 1.0))
+	feedback_button.custom_minimum_size.y = 40.0
+	feedback_button.pressed.connect(_on_feedback_pressed)
+	side_stack.add_child(feedback_button)
+
 	leave_button = _make_action_button("离开并返回大厅", Color(0.34, 0.20, 0.22, 1.0))
 	leave_button.custom_minimum_size.y = 40.0
 	leave_button.pressed.connect(_on_leave_pressed)
@@ -432,6 +451,40 @@ func _connect_public_room_signals() -> void:
 			public_room_client.connect(signal_name, callback)
 
 
+func _connect_nakama_signals() -> void:
+	if not nakama_session_manager:
+		return
+	for signal_and_callback in [
+		["room_joined", Callable(self, "_on_nakama_room_joined")],
+		["request_failed", Callable(self, "_on_nakama_request_failed")],
+		["state_changed", Callable(self, "_on_nakama_state_changed")],
+		["persistence_warning", Callable(self, "_on_nakama_persistence_warning")],
+	]:
+		var signal_name: StringName = signal_and_callback[0]
+		var callback: Callable = signal_and_callback[1]
+		if nakama_session_manager.has_signal(signal_name) \
+				and not nakama_session_manager.is_connected(signal_name, callback):
+			nakama_session_manager.connect(signal_name, callback)
+
+
+func _configure_platform_ui() -> void:
+	if not _is_web_demo():
+		if feedback_button:
+			feedback_button.visible = not _feedback_url().is_empty()
+		return
+	address_input.get_parent().visible = false
+	port_input.get_parent().visible = false
+	host_button.visible = false
+	join_button.visible = false
+	subtitle_label.text = "浏览器房间码联机验证 · 2～4 名玩家各自战斗并联合防守"
+	public_title_label.text = "浏览器房间"
+	public_host_button.text = "创建浏览器房间"
+	public_host_button.tooltip_text = "通过 Nakama 创建 6 位房间码，支持 2～4 名玩家"
+	public_join_button.text = "通过房间码加入"
+	public_room_label.text = "Web Demo · 构建 %s · Nakama WSS" % _build_version()
+	feedback_button.visible = not _feedback_url().is_empty()
+
+
 func _refresh_from_manager() -> void:
 	if not multiplayer_manager:
 		connection_status = "error"
@@ -484,6 +537,9 @@ func _on_join_pressed() -> void:
 
 
 func _on_public_host_pressed() -> void:
+	if _is_web_demo():
+		_on_nakama_host_pressed()
+		return
 	if not multiplayer_manager or not public_room_client:
 		return
 	var nickname := _validated_nickname()
@@ -504,6 +560,9 @@ func _on_public_host_pressed() -> void:
 
 
 func _on_public_join_pressed() -> void:
+	if _is_web_demo():
+		_on_nakama_join_pressed()
+		return
 	if not public_room_client:
 		return
 	var nickname := _validated_nickname()
@@ -521,6 +580,90 @@ func _on_public_join_pressed() -> void:
 	_set_connection_message("正在查询公网房间……", COLOR_WARNING)
 	public_room_client.call("join_public_room", room_code, nickname)
 	_refresh_ui()
+
+
+func _on_nakama_host_pressed() -> void:
+	if not nakama_session_manager:
+		_refresh_ui("Nakama 会话管理器未加载。")
+		return
+	var nickname := _validated_nickname()
+	if nickname.is_empty():
+		return
+	public_request_pending = true
+	_set_connection_message("正在匿名登录并创建浏览器房间……", COLOR_WARNING)
+	nakama_session_manager.call("create_room", nickname)
+	_refresh_ui()
+
+
+func _on_nakama_join_pressed() -> void:
+	if not nakama_session_manager:
+		_refresh_ui("Nakama 会话管理器未加载。")
+		return
+	var nickname := _validated_nickname()
+	var room_code := str(nakama_session_manager.call("normalize_room_code", room_code_input.text))
+	if nickname.is_empty():
+		return
+	if not bool(nakama_session_manager.call("is_valid_room_code", room_code)):
+		_refresh_ui("请输入有效的 6 位房间码。")
+		room_code_input.grab_focus()
+		return
+	room_code_input.text = room_code
+	public_request_pending = true
+	_set_connection_message("正在匿名登录并加入浏览器房间……", COLOR_WARNING)
+	nakama_session_manager.call("join_room", room_code, nickname)
+	_refresh_ui()
+
+
+func _on_nakama_room_joined(room_code: String, _is_host: bool) -> void:
+	public_request_pending = false
+	room_code_input.text = room_code
+	public_room_label.text = "房间码 %s · 构建 %s · Nakama WSS" % [room_code, _build_version()]
+	_refresh_from_manager()
+
+
+func _on_nakama_request_failed(_operation: String, message: String, diagnostic_id: String) -> void:
+	public_request_pending = false
+	last_diagnostic_id = diagnostic_id
+	connection_status = "error"
+	_refresh_ui("%s（诊断编号 %s，可随反馈一并复制）" % [message, diagnostic_id])
+
+
+func _on_nakama_state_changed(state: String) -> void:
+	if state in ["authenticating", "connecting", "joining"]:
+		connection_status = "connecting"
+	elif state == "in_room":
+		connection_status = "lobby"
+	elif state == "offline" and not _manager_is_active():
+		connection_status = "offline"
+	_refresh_ui()
+
+
+func _on_nakama_persistence_warning(message: String) -> void:
+	_set_connection_message(message, COLOR_WARNING)
+
+
+func _on_copy_invite_pressed() -> void:
+	var room_code := room_code_input.text.strip_edges().to_upper()
+	if room_code.is_empty() and nakama_session_manager:
+		room_code = str(nakama_session_manager.call("get_room_code"))
+	var page_url := _publish_url()
+	if page_url.is_empty():
+		page_url = "（测试页面地址尚未配置）"
+	var invitation := "Paradiso 浏览器联机测试\n%s\n房间码：%s\n构建版本：%s\n推荐桌面版 Chrome、Edge 或 Firefox。" % [
+		page_url,
+		room_code if not room_code.is_empty() else "（创建房间后生成）",
+		_build_version(),
+	]
+	if not last_diagnostic_id.is_empty():
+		invitation += "\n最近诊断编号：%s" % last_diagnostic_id
+	DisplayServer.clipboard_set(invitation)
+	_set_connection_message("邀请信息已复制。", COLOR_READY)
+
+
+func _on_feedback_pressed() -> void:
+	var url := _feedback_url()
+	if not url.is_empty():
+		OS.shell_open(url)
 
 
 func _on_public_endpoint_ready(
@@ -703,7 +846,7 @@ func _on_leave_pressed() -> void:
 	if scene_transitioning:
 		return
 	scene_transitioning = true
-	if public_room_client and bool(public_room_client.call("has_room")):
+	if not _is_web_demo() and public_room_client and bool(public_room_client.call("has_room")):
 		if bool(public_room_client.call("is_room_host")):
 			public_room_client.call("close_room")
 		else:
@@ -836,18 +979,24 @@ func _refresh_ui(message_override: String = "") -> void:
 	room_code_input.editable = not active and not public_request_pending
 	host_button.disabled = multiplayer_manager == null or active or connection_status in ["connecting", "hosting"]
 	join_button.disabled = multiplayer_manager == null or active or connection_status in ["connecting", "hosting"]
+	var public_backend_available := (
+		nakama_session_manager != null and bool(nakama_session_manager.call("is_configured"))
+		if _is_web_demo()
+		else public_room_client != null
+	)
 	public_host_button.disabled = (
 		multiplayer_manager == null
-		or public_room_client == null
+		or not public_backend_available
 		or active
 		or public_request_pending
 	)
 	public_join_button.disabled = (
 		multiplayer_manager == null
-		or public_room_client == null
+		or not public_backend_available
 		or active
 		or public_request_pending
 	)
+	copy_invite_button.disabled = not active or room_code_input.text.strip_edges().is_empty()
 	ready_button.disabled = not active or not _has_local_player() or connection_status in ["connecting", "running"]
 	ready_button.text = "取消准备" if local_ready else "准备"
 
@@ -877,7 +1026,9 @@ func _refresh_status(message_override: String = "") -> void:
 
 	if _is_local_host():
 		var public_code := ""
-		if public_room_client:
+		if _is_web_demo() and nakama_session_manager:
+			public_code = str(nakama_session_manager.call("get_room_code"))
+		elif public_room_client:
 			public_code = str(public_room_client.call("get_room_code"))
 		role_label.text = (
 			"你是房主 · 房间码 %s · 最多 4 人" % public_code
@@ -887,7 +1038,10 @@ func _refresh_status(message_override: String = "") -> void:
 	elif _manager_is_active():
 		role_label.text = "你是房间成员 · 等待所有玩家准备"
 	else:
-		role_label.text = "可创建房间或加入已有房间"
+		if _is_web_demo() and (not nakama_session_manager or not bool(nakama_session_manager.call("is_configured"))):
+			role_label.text = "Web Demo 尚未配置 Nakama Validation 环境"
+		else:
+			role_label.text = "可创建房间或加入已有房间"
 
 
 func _set_connection_message(message: String, color: Color) -> void:
@@ -934,6 +1088,35 @@ func _validated_port_without_message() -> int:
 	if raw.is_valid_int():
 		return clampi(int(raw), 1, 65535)
 	return DEFAULT_PORT
+
+
+func _is_web_demo() -> bool:
+	return OS.has_feature("web") or OS.has_feature("web_demo")
+
+
+func _build_version() -> String:
+	if nakama_session_manager and nakama_session_manager.has_method("get_build_version"):
+		return str(nakama_session_manager.call("get_build_version"))
+	return str(_cfg("web_build_version", "dev"))
+
+
+func _publish_url() -> String:
+	if nakama_session_manager and nakama_session_manager.has_method("get_publish_url"):
+		return str(nakama_session_manager.call("get_publish_url"))
+	return str(_cfg("web_publish_url", ""))
+
+
+func _feedback_url() -> String:
+	if nakama_session_manager and nakama_session_manager.has_method("get_feedback_url"):
+		return str(nakama_session_manager.call("get_feedback_url"))
+	return str(_cfg("web_feedback_url", ""))
+
+
+func _cfg(key: String, fallback):
+	var registry := get_node_or_null("/root/DataRegistry")
+	if registry and registry.has_method("get_config"):
+		return registry.call("get_config", key, fallback)
+	return fallback
 
 
 func _refresh_player_list() -> void:

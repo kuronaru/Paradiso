@@ -43,6 +43,7 @@ enum TransportMode {
 	LAN_DIRECT,
 	PUBLIC_DIRECT,
 	RELAY,
+	NAKAMA,
 }
 
 var _enet_peer: ENetMultiplayerPeer = null
@@ -60,6 +61,8 @@ var _awaiting_connection := false
 var _connect_time_remaining := 0.0
 var _dedicated_owner_token := ""
 var _relay_owner_token := ""
+var _authority_peer_id := SERVER_PEER_ID
+var _registration_sent := false
 
 # {peer_id: {peer_id, seat, display_name, ready, connected, eliminated, life, max_life}}
 var _players: Dictionary = {}
@@ -277,6 +280,39 @@ func _join_enet_session(
 	return OK
 
 
+## Attach a connected NakamaMultiplayerBridge without changing the gameplay RPC protocol.
+func attach_nakama_session(
+		room_code: String,
+		display_name: String,
+		is_host: bool,
+		authority_peer_id: int = SERVER_PEER_ID
+	) -> Error:
+	if _session_active:
+		return ERR_ALREADY_IN_USE
+	if multiplayer.multiplayer_peer == null \
+			or multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return ERR_UNCONFIGURED
+
+	_reset_runtime_state()
+	_local_display_name = _sanitize_display_name(display_name)
+	_session_uid = room_code.strip_edges().to_upper()
+	_session_active = true
+	_transport_mode = TransportMode.NAKAMA
+	_authority_peer_id = maxi(1, authority_peer_id)
+	set_multiplayer_authority(_authority_peer_id)
+	_phase = SessionPhase.LOBBY
+	var local_id := get_local_player_id()
+	if is_host:
+		_players[local_id] = _make_player_state(local_id, 1, _local_display_name, true)
+		connection_status_changed.emit("hosting")
+		_emit_lobby_updated()
+	else:
+		connection_status_changed.emit("connected")
+		call_deferred("_send_local_registration")
+	transport_changed.emit(int(_transport_mode), _transport_generation)
+	return OK
+
+
 ## 主动离开房间。房主离开时其他客户端会收到会话结束通知。
 func leave_session() -> void:
 	if not _session_active and _phase == SessionPhase.OFFLINE:
@@ -287,6 +323,10 @@ func leave_session() -> void:
 	if multiplayer.is_server() and _session_active:
 		_rpc_session_ended.rpc("host_left")
 	var local_reason := "host_left" if multiplayer.is_server() else "left"
+	if _transport_mode == TransportMode.NAKAMA:
+		var nakama_manager := _nakama_session_manager()
+		if nakama_manager and nakama_manager.has_method("leave_room"):
+			nakama_manager.call("leave_room", local_reason)
 	_close_peer()
 	_reset_runtime_state()
 	connection_status_changed.emit("offline")
@@ -337,6 +377,14 @@ func is_relay_transport() -> bool:
 	return _session_active and _transport_mode == TransportMode.RELAY
 
 
+func is_nakama_transport() -> bool:
+	return _session_active and _transport_mode == TransportMode.NAKAMA
+
+
+func get_protocol_version() -> int:
+	return PROTOCOL_VERSION
+
+
 func get_transport_snapshot() -> Dictionary:
 	return {
 		"mode": int(_transport_mode),
@@ -348,7 +396,7 @@ func get_transport_snapshot() -> Dictionary:
 
 func get_local_player_id() -> int:
 	if not _session_active:
-		return SERVER_PEER_ID
+		return _authority_peer_id
 	var peer_id := multiplayer.get_unique_id()
 	return peer_id if peer_id > 0 else 0
 
@@ -376,7 +424,7 @@ func set_local_ready(ready: bool) -> void:
 	if multiplayer.is_server():
 		_server_set_ready(local_id, ready)
 	else:
-		_rpc_set_ready.rpc_id(SERVER_PEER_ID, ready)
+		_rpc_set_ready.rpc_id(_server_peer_id(), ready)
 
 
 ## 只有房主、2～4 人且所有已连接玩家都准备后才能开局。
@@ -401,7 +449,7 @@ func start_session_run() -> bool:
 	if not can_start_run():
 		return false
 	if not multiplayer.is_server():
-		_rpc_request_start_run.rpc_id(SERVER_PEER_ID)
+		_rpc_request_start_run.rpc_id(_server_peer_id())
 		return true
 	return _server_start_session_run()
 
@@ -440,7 +488,7 @@ func submit_local_battle_result(result: Dictionary) -> bool:
 	var sanitized := _sanitize_local_result(result, local_id, _round_number)
 	if multiplayer.is_server():
 		return _server_accept_local_result(local_id, sanitized)
-	_rpc_submit_local_result.rpc_id(SERVER_PEER_ID, sanitized)
+	_rpc_submit_local_result.rpc_id(_server_peer_id(), sanitized)
 	_phase = SessionPhase.WAITING_LOCAL_RESULTS
 	return true
 
@@ -455,7 +503,7 @@ func route_local_joint_breach(payload: Dictionary, stage_index: int) -> void:
 	if multiplayer.is_server():
 		_server_accept_joint_breach(get_local_player_id(), stage_index, sanitized)
 	else:
-		_rpc_submit_joint_breach.rpc_id(SERVER_PEER_ID, stage_index, sanitized)
+		_rpc_submit_joint_breach.rpc_id(_server_peer_id(), stage_index, sanitized)
 
 
 ## 当前防守段在“输入已关闭、出生队列为空、场上敌人为空”后报告完成。
@@ -465,7 +513,7 @@ func report_local_joint_stage_cleared(stage_index: int) -> void:
 	if multiplayer.is_server():
 		_server_accept_stage_cleared(get_local_player_id(), stage_index)
 	else:
-		_rpc_submit_stage_cleared.rpc_id(SERVER_PEER_ID, stage_index)
+		_rpc_submit_stage_cleared.rpc_id(_server_peer_id(), stage_index)
 
 
 ## 标记本地玩家淘汰。若 BattleManager 可用，会先补交当前战果避免屏障永久等待。
@@ -478,7 +526,7 @@ func mark_local_player_eliminated() -> void:
 	if multiplayer.is_server():
 		_server_mark_player_eliminated(get_local_player_id())
 	else:
-		_rpc_mark_player_eliminated.rpc_id(SERVER_PEER_ID)
+		_rpc_mark_player_eliminated.rpc_id(_server_peer_id())
 
 
 func _connect_multiplayer_signals() -> void:
@@ -500,7 +548,17 @@ func _on_connected_to_server() -> void:
 	_awaiting_connection = false
 	_connect_time_remaining = 0.0
 	connection_status_changed.emit("connected")
-	_rpc_register_player.rpc_id(SERVER_PEER_ID, {
+	_send_local_registration()
+
+
+func _send_local_registration() -> void:
+	if not _session_active or multiplayer.is_server() or _registration_sent:
+		return
+	var server_id := _server_peer_id()
+	if server_id <= 0:
+		return
+	_registration_sent = true
+	_rpc_register_player.rpc_id(server_id, {
 		"display_name": _local_display_name,
 		"protocol_version": PROTOCOL_VERSION,
 		"owner_token": _relay_owner_token,
@@ -556,16 +614,19 @@ func _on_peer_disconnected(peer_id: int) -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 0)
 func _rpc_register_player(info: Dictionary) -> void:
-	if not multiplayer.is_server() or _run_active:
+	if not multiplayer.is_server():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id <= 0:
 		return
+	if _run_active:
+		_reject_remote_peer(sender_id, "run_started")
+		return
 	if int(info.get("protocol_version", -1)) != PROTOCOL_VERSION:
-		_disconnect_remote_peer(sender_id)
+		_reject_remote_peer(sender_id, "version_mismatch")
 		return
 	if not _players.has(sender_id) and _players.size() >= MAX_PLAYERS:
-		_disconnect_remote_peer(sender_id)
+		_reject_remote_peer(sender_id, "room_full")
 		return
 
 	if _players.has(sender_id):
@@ -576,7 +637,7 @@ func _rpc_register_player(info: Dictionary) -> void:
 	else:
 		var seat := _allocate_seat()
 		if seat < 0:
-			_disconnect_remote_peer(sender_id)
+			_reject_remote_peer(sender_id, "room_full")
 			return
 		var room_host := false
 		if _dedicated_server and not _dedicated_owner_token.is_empty() \
@@ -589,6 +650,16 @@ func _rpc_register_player(info: Dictionary) -> void:
 			room_host
 		)
 	_broadcast_lobby_snapshot()
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _rpc_reject_player(reason: String) -> void:
+	if _transport_mode == TransportMode.NAKAMA:
+		var nakama_manager := _nakama_session_manager()
+		if nakama_manager and nakama_manager.has_method("reject_local_player"):
+			nakama_manager.call_deferred("reject_local_player", reason)
+		return
+	call_deferred("leave_session")
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)
@@ -1030,6 +1101,7 @@ func _apply_begin_run() -> void:
 	_phase = SessionPhase.LOCAL_BATTLE
 	_round_number = 1
 	connection_status_changed.emit("running")
+	_track_validation_event("run_started", {"round": _round_number})
 	run_start_requested.emit()
 
 
@@ -1070,6 +1142,7 @@ func _apply_round_resolved(resolved_round: int) -> void:
 	var is_final_round := _is_final_run_round(resolved_round)
 	_round_number = resolved_round if is_final_round else resolved_round + 1
 	_phase = SessionPhase.ROUND_RESOLVED if is_final_round else SessionPhase.LOCAL_BATTLE
+	_track_validation_event("round_completed", {"round": resolved_round})
 	cooperative_round_resolved.emit(resolved_round)
 
 
@@ -1365,9 +1438,21 @@ func _bounded_string(value, maximum_length: int) -> String:
 	return result
 
 
+func _reject_remote_peer(peer_id: int, reason: String) -> void:
+	if peer_id <= 0:
+		return
+	_rpc_reject_player.rpc_id(peer_id, reason)
+	if _transport_mode != TransportMode.NAKAMA:
+		call_deferred("_disconnect_remote_peer", peer_id)
+
+
 func _disconnect_remote_peer(peer_id: int) -> void:
 	if _enet_peer and peer_id > 0:
 		_enet_peer.disconnect_peer(peer_id)
+
+
+func _server_peer_id() -> int:
+	return maxi(1, _authority_peer_id)
 
 
 func _battle_manager() -> Node:
@@ -1389,6 +1474,30 @@ func _public_network_helper() -> Node:
 	if not tree or not tree.root:
 		return null
 	return tree.root.get_node_or_null("PublicNetworkHelper")
+
+
+func _nakama_session_manager() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	if not tree or not tree.root:
+		return null
+	return tree.root.get_node_or_null("NakamaSessionManager")
+
+
+func _track_validation_event(event_name: String, properties: Dictionary) -> void:
+	if _transport_mode != TransportMode.NAKAMA:
+		return
+	var nakama_manager := _nakama_session_manager()
+	if nakama_manager and nakama_manager.has_method("track_event"):
+		nakama_manager.call("track_event", event_name, properties)
+
+
+func handle_nakama_transport_lost(reason: String = "connection_lost") -> void:
+	if _manual_leave or _transport_mode != TransportMode.NAKAMA:
+		return
+	_close_peer()
+	_reset_runtime_state()
+	connection_status_changed.emit("offline")
+	session_ended.emit(reason)
 
 
 func _cfg_value(key: String, default_value):
@@ -1484,6 +1593,9 @@ func _reset_runtime_state() -> void:
 	_connect_time_remaining = 0.0
 	_dedicated_owner_token = ""
 	_relay_owner_token = ""
+	_authority_peer_id = SERVER_PEER_ID
+	set_multiplayer_authority(SERVER_PEER_ID)
+	_registration_sent = false
 	_players.clear()
 	_round_number = 0
 	_round_expected.clear()

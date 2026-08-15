@@ -8,8 +8,10 @@ const UPGRADE_BASE_COST := 20
 const UPGRADE_COST_STEP := 5
 const SAVE_VERSION := 1
 const SAVE_DIR_PATH := "res://userdata"
+const WEB_SAVE_DIR_PATH := "user://userdata"
 const SAVE_SLOT_IDS: Array[String] = ["save1", "save2", "save3"]
 const LAST_SAVE_FILE_PATH := "res://userdata/last_save"
+const WEB_LAST_SAVE_FILE_PATH := "user://userdata/last_save"
 const ROGUELIKE_STARTING_GOLD := 0
 const ROGUELIKE_MAX_HAND_CARDS := 10
 const ROGUELIKE_MAX_DEPLOYED_UNITS := 8
@@ -840,20 +842,26 @@ func _ensure_save_directory() -> void:
 ## 获取项目根目录下 userdata 的绝对路径
 func _get_save_dir_absolute_path() -> String:
 	"""获取项目根目录下 userdata 的绝对路径"""
-	return ProjectSettings.globalize_path(SAVE_DIR_PATH)
+	return ProjectSettings.globalize_path(_runtime_save_dir_path())
 
 
 ## 获取指定存档槽位文件的绝对路径
 func _get_save_file_absolute_path(save_id: String = "") -> String:
 	"""获取指定存档槽位文件的绝对路径"""
 	var normalized := _normalize_save_id(save_id if save_id != "" else current_save_id)
-	return ProjectSettings.globalize_path("%s/%s" % [SAVE_DIR_PATH, normalized])
+	return ProjectSettings.globalize_path("%s/%s" % [_runtime_save_dir_path(), normalized])
 
 
 ## 获取上次使用存档记录文件的绝对路径
 func _get_last_save_file_absolute_path() -> String:
 	"""获取上次使用存档记录文件的绝对路径"""
-	return ProjectSettings.globalize_path(LAST_SAVE_FILE_PATH)
+	return ProjectSettings.globalize_path(
+		WEB_LAST_SAVE_FILE_PATH if OS.has_feature("web") else LAST_SAVE_FILE_PATH
+	)
+
+
+func _runtime_save_dir_path() -> String:
+	return WEB_SAVE_DIR_PATH if OS.has_feature("web") else SAVE_DIR_PATH
 
 
 ## 读取上次使用的存档槽位

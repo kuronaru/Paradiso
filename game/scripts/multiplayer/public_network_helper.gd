@@ -48,6 +48,8 @@ func _process(_delta: float) -> void:
 
 
 func request_port_mapping(port: int) -> bool:
+	if OS.has_feature("web"):
+		return false
 	if is_busy() or port <= 0 or port > 65535:
 		return false
 	_operation = OP_MAP
@@ -63,6 +65,8 @@ func request_port_mapping(port: int) -> bool:
 
 
 func request_mapping_removal(port: int = _mapped_port) -> bool:
+	if OS.has_feature("web"):
+		return false
 	if is_busy() or port <= 0 or port > 65535:
 		return false
 	_operation = OP_UNMAP

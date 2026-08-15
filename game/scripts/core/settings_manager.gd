@@ -4,6 +4,8 @@ extends Node
 
 const CONFIG_DIR_PATH := "res://userdata"
 const CONFIG_FILE_PATH := "res://userdata/settings.cfg"
+const WEB_CONFIG_DIR_PATH := "user://userdata"
+const WEB_CONFIG_FILE_PATH := "user://userdata/settings.cfg"
 
 signal settings_changed
 
@@ -75,6 +77,8 @@ func apply_settings() -> void:
 	if master_bus >= 0:
 		AudioServer.set_bus_mute(master_bus, muted)
 
+	if OS.has_feature("web"):
+		return
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync_enabled else DisplayServer.VSYNC_DISABLED)
 	if DisplayServer.get_name() != "headless":
 		var mode := DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED
@@ -162,10 +166,14 @@ func _ensure_config_directory() -> void:
 ## 获取全局配置目录的绝对路径
 func _get_config_dir_absolute_path() -> String:
 	"""获取全局配置目录的绝对路径"""
-	return ProjectSettings.globalize_path(CONFIG_DIR_PATH)
+	return ProjectSettings.globalize_path(
+		WEB_CONFIG_DIR_PATH if OS.has_feature("web") else CONFIG_DIR_PATH
+	)
 
 
 ## 获取全局配置文件的绝对路径
 func _get_config_file_absolute_path() -> String:
 	"""获取全局配置文件的绝对路径"""
-	return ProjectSettings.globalize_path(CONFIG_FILE_PATH)
+	return ProjectSettings.globalize_path(
+		WEB_CONFIG_FILE_PATH if OS.has_feature("web") else CONFIG_FILE_PATH
+	)
