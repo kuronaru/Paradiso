@@ -1,7 +1,9 @@
-[gd_resource type="Resource" script_class="UnitVisualConfig" load_steps=2 format=3 uid="uid://clo5ftadq0ofm"]
+[gd_resource type="Resource" script_class="UnitVisualConfig" load_steps=3 format=3 uid="uid://clo5ftadq0ofm"]
 
 [ext_resource type="Script" uid="uid://dlm6n2mqga04l" path="res://scripts/data/unit_visual_config.gd" id="1_config"]
+[ext_resource type="Texture2D" uid="uid://28dcysrqyc36" path="res://assets/units/heros/q_stemizole.png" id="2_s4tk1"]
 
 [resource]
 script = ExtResource("1_config")
-sprite_scale = Vector2(0.2, 0.2)
+texture = ExtResource("2_s4tk1")
+sprite_scale = Vector2(0.05, 0.05)
