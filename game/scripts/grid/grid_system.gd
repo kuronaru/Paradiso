@@ -4,9 +4,11 @@ class_name GridSystem
 extends Node2D
 
 const M = "Grid"
+const BattlefieldProjectionScript = preload("res://scripts/grid/battlefield_projection.gd")
 const PREP_GRID_RECT := Rect2(64, 32, 1152, 400)
 const BATTLE_GRID_RECT := Rect2(64, 32, 1152, 512)
 const LAYOUT_TWEEN_TIME := 0.22
+const UNIT_DEPTH_Z_RANGE := 64
 const INVALID_GRID_POS := Vector2i(-9999, -9999)
 const PATH_DIRS_8 := [
 	Vector2i(1, 0),
@@ -35,6 +37,15 @@ signal unit_placed(unit: Node, grid_pos: Vector2i)
 @export var grid_height: int = 4         # 格子行数
 @export var cell_size: float = 64.0      # 格子像素大小
 @export var grid_offset: Vector2 = Vector2(32, 32)  # 网格起始偏移
+
+## 2.5D 轻透视投影。X 为横向、Y 为高度、Z 为棋盘纵深。
+@export var projection_enabled: bool = true
+@export_range(45.0, 60.0, 0.5) var camera_pitch_degrees: float = 55.0
+@export_range(0.0, 0.25, 0.01) var perspective_strength: float = 0.12
+@export_range(0.0, 1.0, 0.05) var unit_visual_y_anchor: float = 0.2
+@export var board_thickness: float = 18.0
+@export var board_front_side_color: Color = Color(0.09, 0.11, 0.15, 0.92)
+@export var board_right_side_color: Color = Color(0.07, 0.09, 0.12, 0.92)
 
 ## 旧版部署行范围，仅保留给外部旧代码读取；部署与寻路不再依赖它
 @export var deploy_rows: Vector2i = Vector2i(0, 3)
@@ -147,6 +158,9 @@ func _sort_cells_top_to_bottom(cells: Array[Vector2i]) -> void:
 ## 每帧更新运行状态。
 func _process(delta: float) -> void:
 	_update_enemy_spawn_queue(delta)
+	for unit in all_units:
+		if is_instance_valid(unit):
+			_sync_unit_projection(unit)
 	var wants_prepare := _is_prepare_layout()
 	if wants_prepare != last_prepare_layout:
 		last_prepare_layout = wants_prepare
@@ -170,11 +184,15 @@ func _is_prepare_layout() -> bool:
 ## 应用阶段布局。
 func _apply_stage_layout(animated: bool) -> void:
 	var target_rect := PREP_GRID_RECT if _is_prepare_layout() else BATTLE_GRID_RECT
+	var projected_depth := get_projection_depth_scale()
 	var next_cell_size := maxf(1.0, floorf(minf(
 		target_rect.size.x / float(grid_width),
-		target_rect.size.y / float(grid_height)
+		target_rect.size.y / (float(grid_height) * projected_depth)
 	)))
-	var next_grid_size := Vector2(float(grid_width) * next_cell_size, float(grid_height) * next_cell_size)
+	var next_grid_size := Vector2(
+		float(grid_width) * next_cell_size,
+		float(grid_height) * next_cell_size * projected_depth
+	)
 	var next_offset := target_rect.position + (target_rect.size - next_grid_size) * 0.5
 
 	if layout_tween and layout_tween.is_valid():
@@ -208,11 +226,13 @@ func _sync_unit_positions() -> void:
 			unit.sync_geometry_to_grid(cell_size)
 		if _uses_grid_occupancy(unit) and not (unit as UnitBase).is_moving():
 			unit.global_position = grid_to_world(unit.grid_position)
+		_sync_unit_projection(unit)
 
 
 ## 绘制调试或界面可视元素。
 func _draw() -> void:
 	if draw_grid:
+		_draw_board_sides()
 		# 逐格绘制可部署普通地形、阻挡地形和双方据点。
 		for x in range(grid_width):
 			for y in range(grid_height):
@@ -225,16 +245,18 @@ func _draw() -> void:
 						terrain_color = player_base_color
 					TerrainType.ENEMY_BASE:
 						terrain_color = enemy_base_color
-				draw_rect(_get_cell_rect(cell), terrain_color)
+				draw_colored_polygon(_get_cell_polygon(cell), terrain_color)
 
 		# 网格线画在地形填充之上。
 		for x in range(grid_width + 1):
-			var line_x := grid_offset.x + x * cell_size
-			draw_line(Vector2(line_x, grid_offset.y), Vector2(line_x, grid_offset.y + grid_height * cell_size), grid_color, 1.0)
+			var start := world_to_screen(Vector3(float(x) * cell_size, 0.0, 0.0))
+			var end := world_to_screen(Vector3(float(x) * cell_size, 0.0, float(grid_height) * cell_size))
+			draw_line(start, end, grid_color, 1.0)
 
 		for y in range(grid_height + 1):
-			var line_y := grid_offset.y + y * cell_size
-			draw_line(Vector2(grid_offset.x, line_y), Vector2(grid_offset.x + grid_width * cell_size, line_y), grid_color, 1.0)
+			var start := world_to_screen(Vector3(0.0, 0.0, float(y) * cell_size))
+			var end := world_to_screen(Vector3(float(grid_width) * cell_size, 0.0, float(y) * cell_size))
+			draw_line(start, end, grid_color, 1.0)
 
 	if debug_collision_prediction:
 		_draw_collision_debug_entries()
@@ -243,26 +265,138 @@ func _draw() -> void:
 ## 网格坐标转世界坐标（格子中心）
 func grid_to_world(grid_pos: Vector2i) -> Vector2:
 	"""网格坐标转世界坐标（格子中心）"""
-	return Vector2(
-		grid_offset.x + grid_pos.x * cell_size + cell_size / 2.0,
-		grid_offset.y + grid_pos.y * cell_size + cell_size / 2.0
+	return world_to_screen(Vector3(
+		(float(grid_pos.x) + 0.5) * cell_size,
+		0.0,
+		(float(grid_pos.y) + 0.5) * cell_size
+	))
+
+
+## 三维战场坐标转到当前二维画布。
+func world_to_screen(world_position: Vector3) -> Vector2:
+	if not projection_enabled:
+		return grid_offset + Vector2(world_position.x, world_position.z - world_position.y)
+	return BattlefieldProjectionScript.world_to_screen(
+		world_position,
+		grid_offset,
+		camera_pitch_degrees,
+		float(grid_width) * cell_size * 0.5,
+		float(grid_height) * cell_size,
+		perspective_strength
 	)
+
+
+## 二维画布点反算到指定高度的三维战场平面。
+func screen_to_world(screen_position: Vector2, world_height: float = 0.0) -> Vector3:
+	if not projection_enabled:
+		var local := screen_position - grid_offset
+		return Vector3(local.x, world_height, local.y + world_height)
+	return BattlefieldProjectionScript.screen_to_world(
+		screen_position,
+		world_height,
+		grid_offset,
+		camera_pitch_degrees,
+		float(grid_width) * cell_size * 0.5,
+		float(grid_height) * cell_size,
+		perspective_strength
+	)
+
+
+## 当前纵深方向的屏幕压缩比例。
+func get_projection_depth_scale() -> float:
+	return BattlefieldProjectionScript.depth_scale(camera_pitch_degrees, perspective_strength) if projection_enabled else 1.0
+
+
+## 当前高度方向的屏幕投影比例。
+func get_projection_height_scale() -> float:
+	return BattlefieldProjectionScript.height_scale(camera_pitch_degrees) if projection_enabled else 1.0
+
+
+## 把地面上的局部 X/Z 偏移转换为屏幕偏移，供碰撞圈和攻击范围逐点投影。
+func project_ground_offset(screen_ground_position: Vector2, ground_offset: Vector2) -> Vector2:
+	if not projection_enabled:
+		return ground_offset
+	var center_world := screen_to_world(screen_ground_position, 0.0)
+	var offset_world := center_world + Vector3(ground_offset.x, 0.0, ground_offset.y)
+	return world_to_screen(offset_world) - screen_ground_position
+
+
+## 当前地面点附近的局部投影基，用于让 CollisionShape2D 近似匹配透视平面。
+func get_ground_projection_basis(screen_ground_position: Vector2) -> Transform2D:
+	var x_axis := project_ground_offset(screen_ground_position, Vector2.RIGHT)
+	var z_axis := project_ground_offset(screen_ground_position, Vector2.DOWN)
+	return Transform2D(x_axis, z_axis, Vector2.ZERO)
 
 
 ## 获取格子的世界坐标矩形。
 func _get_cell_rect(grid_pos: Vector2i) -> Rect2:
-	return Rect2(
-		Vector2(grid_offset.x + grid_pos.x * cell_size, grid_offset.y + grid_pos.y * cell_size),
-		Vector2(cell_size, cell_size)
-	)
+	var polygon := _get_cell_polygon(grid_pos)
+	return Rect2(polygon[0], Vector2.ZERO).expand(polygon[1]).expand(polygon[2]).expand(polygon[3])
+
+
+## 获取投影后的格子四边形。
+func _get_cell_polygon(grid_pos: Vector2i) -> PackedVector2Array:
+	var left := float(grid_pos.x) * cell_size
+	var right := float(grid_pos.x + 1) * cell_size
+	var far_depth := float(grid_pos.y) * cell_size
+	var near_depth := float(grid_pos.y + 1) * cell_size
+	return PackedVector2Array([
+		world_to_screen(Vector3(left, 0.0, far_depth)),
+		world_to_screen(Vector3(right, 0.0, far_depth)),
+		world_to_screen(Vector3(right, 0.0, near_depth)),
+		world_to_screen(Vector3(left, 0.0, near_depth)),
+	])
+
+
+## 绘制棋盘前沿和右侧厚度，让平面获得稳定的 3D 轮廓。
+func _draw_board_sides() -> void:
+	if not projection_enabled or board_thickness <= 0.0:
+		return
+	var width := float(grid_width) * cell_size
+	var depth := float(grid_height) * cell_size
+	var front_left := world_to_screen(Vector3(0.0, 0.0, 0.0))
+	var front_right := world_to_screen(Vector3(width, 0.0, 0.0))
+	var front_left_bottom := world_to_screen(Vector3(0.0, -board_thickness, 0.0))
+	var front_right_bottom := world_to_screen(Vector3(width, -board_thickness, 0.0))
+	draw_colored_polygon(PackedVector2Array([front_left, front_right, front_right_bottom, front_left_bottom]), board_front_side_color)
+
+	var far_right := world_to_screen(Vector3(width, 0.0, depth))
+	var far_right_bottom := world_to_screen(Vector3(width, -board_thickness, depth))
+	draw_colored_polygon(PackedVector2Array([far_right, front_right, front_right_bottom, far_right_bottom]), board_right_side_color)
+
+
+## 根据纵深设置单位绘制顺序，人物贴图本身始终保持正立。
+func _sync_unit_projection(unit: Node) -> void:
+	if not (unit is UnitBase):
+		return
+	var combat_unit := unit as UnitBase
+	var ground := screen_to_world(combat_unit.get_ground_position(), 0.0)
+	var board_depth := maxf(float(grid_height) * cell_size, 1.0)
+	var depth_ratio := clampf(ground.z / board_depth, 0.0, 1.0)
+	combat_unit.z_index = 1 + int(round((1.0 - depth_ratio) * float(UNIT_DEPTH_Z_RANGE)))
+	if combat_unit.has_method("set_ground_projection_scale"):
+		combat_unit.set_ground_projection_scale(get_projection_depth_scale(), projection_enabled)
+	if combat_unit.has_method("set_billboard_screen_offset"):
+		var far_edge := world_to_screen(ground + Vector3(0.0, 0.0, cell_size * 0.5))
+		var near_edge := world_to_screen(ground - Vector3(0.0, 0.0, cell_size * 0.5))
+		var visual_screen := far_edge.lerp(near_edge, unit_visual_y_anchor)
+		combat_unit.set_billboard_screen_offset(visual_screen - combat_unit.global_position)
 
 
 ## 世界坐标转网格坐标
 func world_to_grid(world_pos: Vector2) -> Vector2i:
 	"""世界坐标转网格坐标"""
-	var gx := int((world_pos.x - grid_offset.x) / cell_size)
-	var gy := int((world_pos.y - grid_offset.y) / cell_size)
+	var ground := screen_to_world(world_pos, 0.0)
+	var gx := int(floor(ground.x / cell_size))
+	var gy := int(floor(ground.z / cell_size))
 	return Vector2i(clamp(gx, 0, grid_width - 1), clamp(gy, 0, grid_height - 1))
+
+
+## 判断二维画布点是否落在投影后的棋盘表面。
+func is_world_point_inside_grid(world_pos: Vector2) -> bool:
+	var ground := screen_to_world(world_pos, 0.0)
+	return ground.x >= 0.0 and ground.x < float(grid_width) * cell_size \
+		and ground.z >= 0.0 and ground.z < float(grid_height) * cell_size
 
 
 ## 判断边界状态。
@@ -418,6 +552,7 @@ func place_unit(unit: Node, grid_pos: Vector2i) -> bool:
 	if unit not in all_units:
 		all_units.append(unit)
 		add_child(unit)
+	_sync_unit_projection(unit)
 	unit_placed.emit(unit, grid_pos)
 	return true
 
@@ -1001,9 +1136,10 @@ func is_enemy_in_player_base(enemy: Node) -> bool:
 ## 世界坐标转未钳制网格坐标，供据点进入判定使用。
 func _world_to_grid_unclamped(world_pos: Vector2) -> Vector2i:
 	var safe_cell_size := maxf(cell_size, 1.0)
+	var ground := screen_to_world(world_pos, 0.0)
 	return Vector2i(
-		int(floor((world_pos.x - grid_offset.x) / safe_cell_size)),
-		int(floor((world_pos.y - grid_offset.y) / safe_cell_size))
+		int(floor(ground.x / safe_cell_size)),
+		int(floor(ground.z / safe_cell_size))
 	)
 
 
@@ -1239,6 +1375,7 @@ func _spawn_next_queued_enemy() -> void:
 	enemy.global_position = grid_to_world(spawn_pos)
 	all_units.append(enemy)
 	add_child(enemy)
+	_sync_unit_projection(enemy)
 	BattleManager.register_enemy_unit(enemy)
 
 
@@ -1281,7 +1418,10 @@ func _input(event: InputEvent) -> void:
 		if clicked_unit:
 			unit_clicked.emit(clicked_unit)
 			return
-		var grid_pos := world_to_grid(get_global_mouse_position())
+		var mouse_position := get_global_mouse_position()
+		if not is_world_point_inside_grid(mouse_position):
+			return
+		var grid_pos := world_to_grid(mouse_position)
 		if is_in_bounds(grid_pos):
 			cell_clicked.emit(grid_pos)
 
@@ -1303,8 +1443,10 @@ func _get_unit_at_mouse_position() -> Node:
 			continue
 
 		var hit_size := combat_unit.unit_radius * 2.0
+		var visual_center := combat_unit.get_billboard_screen_center() \
+			if combat_unit.has_method("get_billboard_screen_center") else combat_unit.global_position
 		var hit_rect := Rect2(
-			combat_unit.global_position - Vector2(hit_size, hit_size) * 0.5,
+			visual_center - Vector2(hit_size, hit_size) * 0.5,
 			Vector2(hit_size, hit_size)
 		)
 		if hit_rect.has_point(mouse_pos):

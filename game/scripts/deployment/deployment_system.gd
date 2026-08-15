@@ -948,11 +948,7 @@ func _get_mouse_grid_position():
 		return null
 
 	var local_pos := grid.get_local_mouse_position()
-	var grid_rect := Rect2(
-		grid.grid_offset,
-		Vector2(grid.grid_width * grid.cell_size, grid.grid_height * grid.cell_size)
-	)
-	if not grid_rect.has_point(local_pos):
+	if not grid.is_world_point_inside_grid(local_pos):
 		return null
 	return grid.world_to_grid(local_pos)
 

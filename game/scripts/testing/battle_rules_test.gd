@@ -27,6 +27,7 @@ func _run() -> void:
 	await get_tree().process_frame
 
 	_test_grid_and_bases(grid)
+	_test_projection_round_trip(grid)
 	_test_hero_grid_scale(grid)
 	_test_enemy_grid_scale_and_advance(grid)
 	_test_spawn_sequence(grid)
@@ -48,7 +49,7 @@ func _test_grid_and_bases(grid: GridSystem) -> void:
 	t.assert_false(grid.can_place_at(Vector2i(0, 2)), "player base is not manually deployable")
 	t.assert_false(grid.can_place_at(Vector2i(8, 2)), "enemy base is not manually deployable")
 	t.assert_true(
-		grid.grid_offset.y + grid.grid_height * grid.cell_size <= 432.0,
+		grid.world_to_screen(Vector3(0.0, 0.0, 0.0)).y <= 432.0,
 		"preparation battlefield reserves vertical space for the hand area"
 	)
 
@@ -57,6 +58,35 @@ func _test_grid_and_bases(grid: GridSystem) -> void:
 	t.assert_false(grid.can_place_at(Vector2i(7, 3)), "a friendly occupied cell is not deployable")
 	grid.free_cell(Vector2i(7, 3))
 	blocker.free()
+
+
+func _test_projection_round_trip(grid: GridSystem) -> void:
+	t.assert_true(grid.camera_pitch_degrees >= 45.0 and grid.camera_pitch_degrees <= 60.0, "camera pitch stays in the requested 45-60 degree range")
+	t.assert_true(grid.perspective_strength > 0.0, "battlefield enables mild Z-based perspective")
+	var world_point := Vector3(314.0, 27.0, 183.0)
+	var screen_point := grid.world_to_screen(world_point)
+	var restored := grid.screen_to_world(screen_point, world_point.y)
+	t.assert_near(restored.x, world_point.x, 0.001, "projection round trip restores horizontal position")
+	t.assert_near(restored.y, world_point.y, 0.001, "projection round trip restores height")
+	t.assert_near(restored.z, world_point.z, 0.001, "projection round trip restores depth")
+
+	var target_cell := Vector2i(6, 2)
+	t.assert_eq(grid.world_to_grid(grid.grid_to_world(target_cell)), target_cell, "projected cell center maps back to the same grid cell")
+	var ground_screen := grid.world_to_screen(Vector3(100.0, 0.0, 100.0))
+	var raised_screen := grid.world_to_screen(Vector3(100.0, 40.0, 100.0))
+	t.assert_true(raised_screen.y < ground_screen.y, "positive 3D height moves a billboard upward on screen")
+
+	var board_depth := float(grid.grid_height) * grid.cell_size
+	t.assert_true(
+		grid.world_to_screen(Vector3(0.0, 0.0, board_depth)).y < grid.world_to_screen(Vector3(0.0, 0.0, 0.0)).y,
+		"larger Z projects toward the top of the screen"
+	)
+	var near_width := grid.world_to_screen(Vector3(grid.cell_size, 0.0, 0.0)).distance_to(grid.world_to_screen(Vector3(0.0, 0.0, 0.0)))
+	var far_width := grid.world_to_screen(Vector3(grid.cell_size, 0.0, board_depth)).distance_to(grid.world_to_screen(Vector3(0.0, 0.0, board_depth)))
+	t.assert_true(far_width < near_width, "larger Z shrinks projected X distances")
+	var near_height := grid.world_to_screen(Vector3(0.0, 0.0, grid.cell_size)).distance_to(grid.world_to_screen(Vector3(0.0, 0.0, 0.0)))
+	var far_height := grid.world_to_screen(Vector3(0.0, 0.0, board_depth)).distance_to(grid.world_to_screen(Vector3(0.0, 0.0, board_depth - grid.cell_size)))
+	t.assert_true(far_height < near_height, "larger Z shrinks projected Y distances")
 
 
 func _test_hero_grid_scale(grid: GridSystem) -> void:
@@ -70,6 +100,19 @@ func _test_hero_grid_scale(grid: GridSystem) -> void:
 	grid.place_unit(hero, Vector2i(4, 0))
 	t.assert_near(hero.unit_radius, grid.cell_size * 0.4, 0.001, "hero art footprint follows preparation cell size")
 	t.assert_near(hero.get_collision_radius(), grid.cell_size * 0.25, 0.001, "hero collision follows preparation cell size")
+	var logical_center := grid.screen_to_world(hero.get_ground_position(), 0.0)
+	var far_edge := grid.world_to_screen(logical_center + Vector3(0.0, 0.0, grid.cell_size * 0.5))
+	var near_edge := grid.world_to_screen(logical_center - Vector3(0.0, 0.0, grid.cell_size * 0.5))
+	var expected_visual_center := far_edge.lerp(near_edge, grid.unit_visual_y_anchor) - hero.global_position
+	var actual_visual_center := hero.body_placeholder.position + Vector2(hero.unit_radius, hero.unit_radius)
+	t.assert_near(actual_visual_center.x, expected_visual_center.x, 0.001, "2D hero visual center follows the projected tile X at its anchor")
+	t.assert_near(actual_visual_center.y, expected_visual_center.y, 0.001, "2D hero visual center moves from tile depth 1/2 to 1/5")
+	var expected_collision_point := hero.ground_anchor_offset + grid.project_ground_offset(
+		hero.get_ground_position(), Vector2(hero.get_collision_radius(), 0.0)
+	)
+	var actual_collision_point := hero.collision_debug_ring.points[0]
+	t.assert_near(actual_collision_point.x, expected_collision_point.x, 0.001, "collision debug X uses battlefield projection")
+	t.assert_near(actual_collision_point.y, expected_collision_point.y, 0.001, "collision debug Y uses battlefield projection")
 
 	grid.cell_size = 128.0
 	grid._sync_unit_positions()

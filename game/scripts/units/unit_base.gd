@@ -111,6 +111,9 @@ var visual_scale_multiplier: float = 1.0
 var visual_default_animation: String = "idle"
 var visual_walk_animation: String = "walk"
 var visual_flip_when_moving_left: bool = true
+var body_sprite_authored_position: Vector2 = Vector2.ZERO
+var animated_sprite_authored_position: Vector2 = Vector2.ZERO
+var billboard_screen_offset: Vector2 = Vector2.ZERO
 var last_visual_position: Vector2 = Vector2.ZERO
 var ground_collision_area: Area2D = null
 var ground_collision_shape: CollisionShape2D = null
@@ -119,6 +122,8 @@ var body_debug_ring_radius: float = -1.0
 var collision_debug_ring: Line2D = null
 var attack_range_debug_ring: Line2D = null
 var attack_range_debug_ring_radius: float = -1.0
+var ground_projection_scale: float = 1.0
+var billboard_projection_enabled: bool = false
 
 
 ## 初始化节点状态并连接必要依赖。
@@ -466,7 +471,8 @@ func _apply_texture_visual(texture: Texture2D, offset: Vector2, scale_value: Vec
 		return
 	body_sprite.texture = texture
 	body_sprite.centered = true
-	body_sprite.position = offset
+	body_sprite_authored_position = offset
+	body_sprite.position = body_sprite_authored_position + billboard_screen_offset
 	visual_base_scale = scale_value
 	body_sprite.scale = visual_base_scale * visual_scale_multiplier
 	body_sprite.visible = false
@@ -477,7 +483,8 @@ func _apply_sprite_frames_visual(frames: SpriteFrames, offset: Vector2, scale_va
 	if not animated_body_sprite:
 		return
 	animated_body_sprite.sprite_frames = frames
-	animated_body_sprite.position = offset
+	animated_sprite_authored_position = offset
+	animated_body_sprite.position = animated_sprite_authored_position + billboard_screen_offset
 	visual_base_scale = scale_value
 	animated_body_sprite.scale = visual_base_scale * visual_scale_multiplier
 	animated_body_sprite.visible = false
@@ -570,6 +577,48 @@ func set_visual_scale_multiplier(multiplier: float) -> void:
 		animated_body_sprite.scale = visual_base_scale * visual_scale_multiplier
 
 
+## 让地面碰撞与辅助轮廓使用地图投影；人物贴图保持独立二维显示。
+func set_ground_projection_scale(depth_scale: float, billboard_enabled: bool = true) -> void:
+	ground_projection_scale = clampf(depth_scale, 0.01, 1.0)
+	billboard_projection_enabled = billboard_enabled
+	_update_ground_collision_projection()
+	_update_collision_debug_ring()
+	_update_body_debug_ring(true)
+	_update_attack_range_debug_ring(true)
+
+
+## 设置独立二维人物贴图相对逻辑地面中心的屏幕偏移。
+func set_billboard_screen_offset(screen_offset: Vector2) -> void:
+	if billboard_screen_offset.is_equal_approx(screen_offset):
+		return
+	billboard_screen_offset = screen_offset
+	_refresh_billboard_layout()
+
+
+func get_billboard_screen_center() -> Vector2:
+	return global_position + billboard_screen_offset
+
+
+func _refresh_billboard_layout() -> void:
+	var bar_height := 6.0
+	var body_top := -unit_radius + billboard_screen_offset.y
+	var bar_y := -unit_radius - bar_height - 4.0 + billboard_screen_offset.y
+	if hp_bar_bg:
+		hp_bar_bg.position = Vector2(-unit_radius + billboard_screen_offset.x, bar_y)
+	if hp_bar_fill:
+		hp_bar_fill.position = Vector2(-unit_radius + billboard_screen_offset.x, bar_y)
+	if body_placeholder:
+		body_placeholder.position = Vector2(-unit_radius + billboard_screen_offset.x, body_top)
+	if unit_name_label:
+		unit_name_label.position = Vector2(-unit_radius, unit_radius + 4.0) + billboard_screen_offset
+	if body_sprite:
+		body_sprite.offset = Vector2.ZERO
+		body_sprite.position = body_sprite_authored_position + billboard_screen_offset
+	if animated_body_sprite:
+		animated_body_sprite.offset = Vector2.ZERO
+		animated_body_sprite.position = animated_sprite_authored_position + billboard_screen_offset
+
+
 ## Refresh every visual and collision element that depends on unit geometry.
 func refresh_unit_geometry() -> void:
 	var bar_height := 6.0
@@ -587,6 +636,7 @@ func refresh_unit_geometry() -> void:
 		unit_name_label.position = Vector2(-unit_radius, unit_radius + 4.0)
 	refresh_ground_collision()
 	_update_hp_bar(current_hp, max_hp)
+	_refresh_billboard_layout()
 
 
 ## 初始化AI。
@@ -621,9 +671,36 @@ func refresh_ground_collision() -> void:
 	if circle:
 		circle.radius = get_collision_radius()
 	_configure_collision_layers()
+	_update_ground_collision_projection()
 	_update_body_debug_ring(true)
 	_update_collision_debug_ring()
 	_update_attack_range_debug_ring(true)
+
+
+## 用投影点附近的 X/Z 基向量近似变换实际碰撞形状。
+func _update_ground_collision_projection() -> void:
+	if not ground_collision_area:
+		return
+	var grid: GridSystem = BattleManager.grid
+	if billboard_projection_enabled and grid:
+		var basis := grid.get_ground_projection_basis(get_ground_position())
+		ground_collision_area.transform = Transform2D(basis.x, basis.y, ground_anchor_offset)
+	else:
+		ground_collision_area.transform = Transform2D(0.0, ground_anchor_offset)
+
+
+## 将逻辑地面圆的每个点转换到与地图一致的屏幕坐标。
+func _build_projected_ground_circle(radius: float, segments: int) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	var grid: GridSystem = BattleManager.grid
+	var screen_ground := get_ground_position()
+	for i in range(segments):
+		var angle := TAU * float(i) / float(segments)
+		var ground_offset := Vector2(cos(angle), sin(angle)) * radius
+		var screen_offset := grid.project_ground_offset(screen_ground, ground_offset) \
+			if billboard_projection_enabled and grid else ground_offset
+		points.append(ground_anchor_offset + screen_offset)
+	return points
 
 
 ## 处理configure碰撞layers逻辑。
@@ -655,15 +732,10 @@ func _update_collision_debug_ring() -> void:
 	if not collision_debug_ring:
 		return
 	collision_debug_ring.visible = show_collision_debug_ring
-	collision_debug_ring.position = ground_anchor_offset
+	collision_debug_ring.position = Vector2.ZERO
 	collision_debug_ring.default_color = _get_collision_debug_ring_color()
 	var radius := get_collision_radius()
-	var points := PackedVector2Array()
-	var segments := 64
-	for i in range(segments):
-		var angle := TAU * float(i) / float(segments)
-		points.append(Vector2(cos(angle), sin(angle)) * radius)
-	collision_debug_ring.points = points
+	collision_debug_ring.points = _build_projected_ground_circle(radius, 64)
 
 
 ## 获取碰撞调试圆环color。
@@ -694,19 +766,14 @@ func _update_body_debug_ring(force_rebuild: bool = false) -> void:
 	if not visible:
 		return
 
-	body_debug_ring.position = ground_anchor_offset
+	body_debug_ring.position = Vector2.ZERO
 	body_debug_ring.default_color = _get_body_debug_ring_color()
 	var radius := get_body_radius()
 	if not force_rebuild and is_equal_approx(radius, body_debug_ring_radius):
 		return
 
 	body_debug_ring_radius = radius
-	var points := PackedVector2Array()
-	var segments := 64
-	for i in range(segments):
-		var angle := TAU * float(i) / float(segments)
-		points.append(Vector2(cos(angle), sin(angle)) * radius)
-	body_debug_ring.points = points
+	body_debug_ring.points = _build_projected_ground_circle(radius, 64)
 
 
 ## 判断是否显示角色本体半径调试圆环。
@@ -743,19 +810,14 @@ func _update_attack_range_debug_ring(force_rebuild: bool = false) -> void:
 	if not visible:
 		return
 
-	attack_range_debug_ring.position = ground_anchor_offset
+	attack_range_debug_ring.position = Vector2.ZERO
 	attack_range_debug_ring.default_color = _get_attack_range_debug_ring_color()
 	var radius := get_attack_range_world_radius()
 	if not force_rebuild and is_equal_approx(radius, attack_range_debug_ring_radius):
 		return
 
 	attack_range_debug_ring_radius = radius
-	var points := PackedVector2Array()
-	var segments := 96
-	for i in range(segments):
-		var angle := TAU * float(i) / float(segments)
-		points.append(Vector2(cos(angle), sin(angle)) * radius)
-	attack_range_debug_ring.points = points
+	attack_range_debug_ring.points = _build_projected_ground_circle(radius, 96)
 
 
 ## 判断是否需要攻击范围调试圆环。
