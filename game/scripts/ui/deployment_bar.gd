@@ -1,5 +1,5 @@
-# deployment_bar.gd — 底部部署卡牌栏
-# 显示手牌，支持点击选中部署与按住/拖动部署
+# deployment_bar.gd — 战场延伸备战区
+# 在透视备战槽位显示英雄战斗形象，保留点击、拖动部署与出售交互
 class_name DeploymentBar
 extends Control
 
@@ -7,27 +7,24 @@ const M = "DeployBar"
 const SHOP_PANEL_HEIGHT := 136.0
 const SHOP_BOTTOM_MARGIN := 8.0
 const HAND_GAP_ABOVE_SHOP := 8.0
-const HAND_FRAME_HORIZONTAL_MARGIN := 48.0
 const LAYOUT_TWEEN_TIME := 0.22
 
 signal card_clicked(card_index: int, class_id: String)
 
-@export var card_size: Vector2 = Vector2(78, 88)
+@export var card_size: Vector2 = Vector2(68, 74)
 @export var spacing: float = 8.0
-@export var bar_height: float = 116.0
+@export var bar_height: float = 96.0
 @export var selected_raise_ratio: float = 0.25
 @export var drag_hold_time: float = 0.18
 @export var drag_distance_threshold: float = 16.0
 
 var cards: Array = []                # 卡牌按钮节点
 var card_base_positions: Array = []  # 卡牌未选中时的位置
-var card_shades: Array = []          # DP不足时覆盖在卡牌上方的暗色遮罩
-var card_labels: Array = []          # 卡牌文字节点，用于刷新DP进度
 var card_slots: Array = []           # HBox中的卡牌槽位
+var card_visuals: Array = []         # 处于备战状态的 UnitBase 展示实例
 var deployment_system: DeploymentSystem = null
-var hand_frame: Panel = null
 var hand_center: CenterContainer = null
-var hand_row: HBoxContainer = null
+var hand_row: Control = null
 
 ## 拖拽状态视觉提示
 var drag_highlight_index: int = -1
@@ -69,61 +66,22 @@ func _setup_layout() -> void:
 	"""设置阶段感知的手牌栏布局"""
 	cached_viewport_size = get_viewport_rect().size
 	anchor_left = 0.0
-	anchor_right = 0.0
+	anchor_right = 1.0
 	anchor_top = 0.0
-	anchor_bottom = 0.0
+	anchor_bottom = 1.0
 	offset_left = 0.0
-	offset_right = cached_viewport_size.x
+	offset_right = 0.0
 	offset_top = 0.0
 	offset_bottom = 0.0
-	size = Vector2(cached_viewport_size.x, bar_height)
-	position = Vector2(0.0, _prepare_y())
+	position = Vector2.ZERO
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	z_index = 80
 
-	_build_hand_frame()
-
-	hand_center = CenterContainer.new()
-	hand_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_fill_parent(hand_center)
-	add_child(hand_center)
-
-	hand_row = HBoxContainer.new()
-	hand_row.add_theme_constant_override("separation", int(spacing))
+	hand_row = Control.new()
+	hand_row.name = "ReserveHeroSlots"
 	hand_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hand_center.add_child(hand_row)
-
-
-## 为备战手牌区绘制临时外框，明确它与战场的视觉边界。
-func _build_hand_frame() -> void:
-	hand_frame = Panel.new()
-	hand_frame.name = "PreparationAreaFrame"
-	hand_frame.anchor_left = 0.0
-	hand_frame.anchor_top = 0.0
-	hand_frame.anchor_right = 1.0
-	hand_frame.anchor_bottom = 1.0
-	hand_frame.offset_left = HAND_FRAME_HORIZONTAL_MARGIN
-	hand_frame.offset_top = 0.0
-	hand_frame.offset_right = -HAND_FRAME_HORIZONTAL_MARGIN
-	hand_frame.offset_bottom = 0.0
-	hand_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	var frame_style := StyleBoxFlat.new()
-	frame_style.bg_color = Color(0.025, 0.035, 0.055, 0.68)
-	frame_style.border_color = Color(0.32, 0.55, 0.86, 0.92)
-	frame_style.set_border_width_all(2)
-	frame_style.set_corner_radius_all(10)
-	hand_frame.add_theme_stylebox_override("panel", frame_style)
-	add_child(hand_frame)
-
-	var title := Label.new()
-	title.name = "PreparationAreaTitle"
-	title.text = "备战区"
-	title.position = Vector2(14.0, 4.0)
-	title.add_theme_font_size_override("font_size", 14)
-	title.add_theme_color_override("font_color", Color(0.68, 0.83, 1.0, 1.0))
-	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hand_frame.add_child(title)
-
+	_fill_parent(hand_row)
+	add_child(hand_row)
 
 ## 重建卡牌按钮
 func _refresh_ui() -> void:
@@ -133,32 +91,30 @@ func _refresh_ui() -> void:
 			child.queue_free()
 	cards.clear()
 	card_base_positions.clear()
-	card_shades.clear()
-	card_labels.clear()
 	card_slots.clear()
+	card_visuals.clear()
 	drag_highlight_index = -1
 
 	if not deployment_system or not hand_row:
 		return
 
 	var hand := deployment_system.hand_cards
-	var raise_height := card_size.y * selected_raise_ratio
-
 	for i in range(hand.size()):
 		var card_data = hand[i]
 		var ct := ClassDefinitions.get_template(card_data["class_id"])
 
 		var slot := Control.new()
-		slot.custom_minimum_size = Vector2(card_size.x, card_size.y + raise_height)
+		slot.name = "ReserveSlot%d" % i
+		slot.size = card_size
 		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		hand_row.add_child(slot)
 
 		var btn := Button.new()
 		btn.size = card_size
-		btn.clip_contents = true
-		btn.position = Vector2(0.0, raise_height)
+		btn.clip_contents = false
+		btn.position = Vector2.ZERO
 		btn.flat = false
-		_apply_card_style(btn, bool(card_data.get("is_golden", false)))
+		_apply_reserve_hero_style(btn, bool(card_data.get("is_golden", false)))
 		var trait_names: Array[String] = []
 		for trait_id in ct.auto_trait_ids:
 			trait_names.append(str(DataRegistry.get_auto_trait(trait_id).get("display_name", trait_id)))
@@ -167,49 +123,7 @@ func _refresh_ui() -> void:
 			1,
 		]
 
-		var card_margin := MarginContainer.new()
-		card_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_fill_parent(card_margin)
-		card_margin.add_theme_constant_override("margin_left", 6)
-		card_margin.add_theme_constant_override("margin_top", 6)
-		card_margin.add_theme_constant_override("margin_right", 6)
-		card_margin.add_theme_constant_override("margin_bottom", 6)
-		btn.add_child(card_margin)
-
-		var card_stack := VBoxContainer.new()
-		card_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		card_stack.add_theme_constant_override("separation", 4)
-		card_margin.add_child(card_stack)
-
-		var icon_center := CenterContainer.new()
-		icon_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		icon_center.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		card_stack.add_child(icon_center)
-
-		var icon := ColorRect.new()
-		icon.custom_minimum_size = Vector2(44, 38)
-		icon.color = _get_class_icon_color(card_data["class_id"])
-		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		icon_center.add_child(icon)
-
-		var label := Label.new()
-		label.custom_minimum_size = Vector2(0, 32)
-		label.text = _get_card_text(ct, card_data)
-		label.add_theme_font_size_override("font_size", 11)
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		card_stack.add_child(label)
-
-		# 遮罩从顶部向下覆盖卡牌；DP增加时高度变小，露出底部正常颜色
-		var shade := ColorRect.new()
-		shade.size = card_size
-		shade.position = Vector2.ZERO
-		shade.color = Color(0.05, 0.05, 0.06, 0.68)
-		shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		shade.z_index = 4
-		btn.add_child(shade)
+		_add_battle_hero_visual(btn, ct)
 
 		var idx := i
 		# 左键短按为选中；按住一定时间或拖动一定距离后才开始拖拽
@@ -217,11 +131,10 @@ func _refresh_ui() -> void:
 
 		slot.add_child(btn)
 		cards.append(btn)
-		card_base_positions.append(Vector2(0.0, raise_height))
-		card_shades.append(shade)
-		card_labels.append(label)
+		card_base_positions.append(Vector2.ZERO)
 		card_slots.append(slot)
 
+	_layout_reserve_slots()
 	_update_button_states()
 
 
@@ -264,9 +177,45 @@ func _update_card_selection_visual(index: int, is_selected: bool) -> void:
 
 	var btn := cards[index] as Button
 	var base_position: Vector2 = card_base_positions[index]
-	var raise_height := card_size.y * selected_raise_ratio
-	btn.position = base_position + Vector2(0.0, -raise_height if is_selected else 0.0)
+	btn.position = base_position
 	btn.z_index = 20 if is_selected else 0
+
+
+## 使用 UnitBase 的完整战斗外观，但进入备战状态，不运行 AI、碰撞或战斗逻辑。
+func _add_battle_hero_visual(parent: Control, ct: ClassTemplate) -> void:
+	var preview := UnitBase.new()
+	preview.name = "BattleHeroVisual"
+	preview.position = card_size * 0.5
+	preview.team = "player"
+	preview.unit_name = ""
+	preview.visual_id = ct.visual_id
+	preview.color = _get_class_icon_color(ct.class_id)
+	preview.show_body_debug_ring = false
+	preview.show_collision_debug_ring = false
+	preview.show_attack_range_debug_ring = false
+	parent.add_child(preview)
+	preview.set_meta("class_id", ct.class_id)
+	preview.enter_reserve_preview_state(_reserve_grid_cell_size())
+	card_visuals.append(preview)
+
+
+## 与 HeroUnit.sync_geometry_to_grid 保持同一个 0.4 格本体半径和参考倍率。
+func _sync_battle_hero_visual_scale(preview: UnitBase, grid: GridSystem) -> void:
+	if not preview or not grid:
+		return
+	preview.sync_reserve_preview_geometry(grid.cell_size)
+
+
+func _reserve_grid_cell_size() -> float:
+	var grid := BattleManager.grid as GridSystem
+	return grid.cell_size if grid else 64.0
+
+
+func _apply_reserve_hero_style(btn: Button, _is_golden: bool) -> void:
+	btn.flat = true
+	btn.focus_mode = Control.FOCUS_NONE
+	for state in ["normal", "hover", "pressed", "disabled", "focus"]:
+		btn.add_theme_stylebox_override(state, StyleBoxEmpty.new())
 
 
 ## 应用卡牌样式。
@@ -381,24 +330,12 @@ func _get_deploy_progress(deploy_cost: int) -> float:
 ## 更新单张手牌的暗色遮罩与文字状态
 func _update_card_progress_visual(index: int, progress: float, can_afford: bool) -> void:
 	"""更新单张手牌的暗色遮罩与文字状态"""
-	if index < 0 or index >= card_shades.size():
+	if index < 0 or index >= card_visuals.size():
 		return
-	if index >= card_labels.size() or index >= deployment_system.hand_cards.size():
-		return
-
-	var card_data = deployment_system.hand_cards[index]
-	var ct := ClassDefinitions.get_template(card_data["class_id"])
-	var shade := card_shades[index] as ColorRect
-	var label := card_labels[index] as Label
-	var shade_height := card_size.y * (1.0 - progress)
-
-	shade.position = Vector2.ZERO
-	shade.size = Vector2(card_size.x, shade_height)
-	shade.visible = shade_height > 0.5
-	shade.color = Color(0.05, 0.05, 0.06, 0.68) if not can_afford else Color(0.05, 0.05, 0.06, 0.0)
-
-	label.text = _get_card_text(ct, card_data)
-	label.modulate = Color.WHITE if can_afford else Color(0.72, 0.72, 0.72, 1.0)
+	var preview := card_visuals[index] as UnitBase
+	if preview:
+		var brightness := 1.0 if can_afford else lerpf(0.45, 0.72, progress)
+		preview.modulate = Color(brightness, brightness, brightness, 1.0)
 
 
 ## 处理单张卡牌上的鼠标输入
@@ -571,8 +508,6 @@ func _update_stage_layout() -> void:
 	var viewport_size := get_viewport_rect().size
 	if viewport_size != cached_viewport_size:
 		cached_viewport_size = viewport_size
-		size = Vector2(viewport_size.x, bar_height)
-		offset_right = viewport_size.x
 		_refresh_ui()
 		_apply_stage_layout(false)
 
@@ -580,6 +515,7 @@ func _update_stage_layout() -> void:
 	if wants_prepare != last_prepare_layout:
 		last_prepare_layout = wants_prepare
 		_apply_stage_layout(true)
+	_layout_reserve_slots()
 
 
 ## 判断布局状态。
@@ -589,24 +525,53 @@ func _is_prepare_layout() -> bool:
 
 ## 应用阶段布局。
 func _apply_stage_layout(animated: bool) -> void:
-	var target_y := _prepare_y() if _is_prepare_layout() else _battle_y()
 	if layout_tween and layout_tween.is_valid():
 		layout_tween.kill()
-	if animated and is_inside_tree():
-		layout_tween = create_tween()
-		layout_tween.tween_property(self, "position:y", target_y, LAYOUT_TWEEN_TIME).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	else:
-		position.y = target_y
+	position = Vector2.ZERO
+	_layout_reserve_slots()
+
+
+## 将每个英雄 UI 对齐到 GridSystem 的透视备战槽位。
+func _layout_reserve_slots() -> void:
+	var grid := BattleManager.grid as GridSystem
+	if not grid or not hand_row:
+		return
+	var slot_count := maxi(grid.reserve_slot_count, maxi(card_slots.size(), GameManager.get_roguelike_max_hand_cards()))
+	if grid.reserve_slot_count != slot_count:
+		grid.reserve_slot_count = slot_count
+		grid.queue_redraw()
+	for index in range(card_slots.size()):
+		var slot := card_slots[index] as Control
+		if not slot:
+			continue
+		var local_center := grid.reserve_slot_to_world(index, slot_count)
+		var screen_center := grid.get_global_transform_with_canvas() * local_center
+		slot.position = screen_center - card_size * 0.5
+		if index < card_visuals.size():
+			var preview := card_visuals[index] as UnitBase
+			_sync_battle_hero_visual_scale(preview, grid)
+			var local_anchor := grid.reserve_slot_visual_anchor(index, slot_count)
+			var screen_anchor := grid.get_global_transform_with_canvas() * local_anchor
+			preview.set_billboard_screen_offset(screen_anchor - screen_center)
+
+
+## 拖拽预览用：检测鼠标是否位于透视备战延伸区。
+func is_point_over_reserve_area(screen_point: Vector2) -> bool:
+	var grid := BattleManager.grid as GridSystem
+	if not grid:
+		return false
+	var local_point := grid.get_global_transform_with_canvas().affine_inverse() * screen_point
+	return grid.is_world_point_inside_reserve(local_point)
 
 
 ## 准备Y 坐标。
 func _prepare_y() -> float:
-	return get_viewport_rect().size.y - SHOP_PANEL_HEIGHT - SHOP_BOTTOM_MARGIN - bar_height - HAND_GAP_ABOVE_SHOP
+	return 0.0
 
 
 ## 处理战斗Y 坐标逻辑。
 func _battle_y() -> float:
-	return get_viewport_rect().size.y - SHOP_PANEL_HEIGHT - SHOP_BOTTOM_MARGIN + (SHOP_PANEL_HEIGHT - bar_height) * 0.5
+	return 0.0
 
 
 ## 处理fill父节点逻辑。

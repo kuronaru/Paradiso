@@ -73,30 +73,58 @@ func _test_life_display() -> void:
 func _test_deployment_hand_frame() -> void:
 	GameManager.is_roguelike_run = true
 	BattleManager.state = BattleManager.BattleState.PREPARING
+	var grid := GridSystem.new()
+	add_child(grid)
+	await get_tree().process_frame
+	var deployment := DeploymentSystem.new()
+	add_child(deployment)
+	deployment.hand_cards = [{"class_id": "fighter_champion", "level": 1, "star_level": 1}]
+	var player_unit_count_before_preview := BattleManager.player_units.size()
 	var deployment_bar := DeploymentBar.new()
 	add_child(deployment_bar)
 	await get_tree().process_frame
 
-	t.assert_true(deployment_bar.hand_frame != null, "deployment hand area exposes an outer frame")
-	t.assert_eq(deployment_bar.hand_frame.name, "PreparationAreaFrame", "hand frame has a stable UI node name")
-	t.assert_eq(deployment_bar.bar_height, 116.0, "hand area height contains raised cards inside its frame")
-	t.assert_true(
-		deployment_bar.position.y >= GridSystem.PREP_GRID_RECT.end.y,
-		"preparation hand area sits below the reduced battlefield at any viewport height"
-	)
+	t.assert_true(deployment_bar.get_node_or_null("PreparationAreaFrame") == null, "reserve area has no text-label frame")
+	t.assert_eq(deployment_bar.hand_row.name, "ReserveHeroSlots", "reserve area exposes battle-visual hero slots")
+	t.assert_eq(deployment_bar.cards.size(), 1, "one reserve hero control is built for one hand hero")
+	if not deployment_bar.cards.is_empty():
+		var reserve_button := deployment_bar.cards[0] as Button
+		t.assert_true(reserve_button.get_theme_stylebox("normal") is StyleBoxEmpty, "reserve hero has no card frame")
+		var reserve_visual := deployment_bar.cards[0].find_child("BattleHeroVisual", true, false) as UnitBase
+		t.assert_true(reserve_visual != null, "reserve hero exposes a battle-art visual node")
+		if reserve_visual:
+			t.assert_true(reserve_visual.is_reserve_preview, "reserve hero uses the explicit UnitBase reserve state")
+			t.assert_false(reserve_visual.ai_enabled, "reserve hero does not call character AI")
+			t.assert_false(reserve_visual.is_processing(), "reserve hero does not run combat process updates")
+			t.assert_true(reserve_visual.ai_controller != null, "reserve hero remains a complete UnitBase instance")
+			t.assert_eq(reserve_visual.ground_collision_area.collision_layer, 0, "reserve hero has no combat collision layer")
+			t.assert_near(
+				float(reserve_visual.get_meta("combat_visual_multiplier", 0.0)),
+				grid.cell_size * 0.4 / 24.0,
+				0.001,
+				"reserve hero uses the same visual multiplier as a deployed hero"
+			)
+			t.assert_false(reserve_visual in grid.all_units, "reserve hero is not inserted into battlefield cells")
+			var expected_anchor := grid.get_global_transform_with_canvas() * grid.reserve_slot_visual_anchor(0, grid.reserve_slot_count)
+			t.assert_near(reserve_visual.get_billboard_screen_center().x, expected_anchor.x, 0.001, "reserve hero anchor matches the battlefield X baseline")
+			t.assert_near(reserve_visual.get_billboard_screen_center().y, expected_anchor.y, 0.001, "reserve hero anchor sits one fifth below the slot screen top")
+	t.assert_eq(BattleManager.player_units.size(), player_unit_count_before_preview, "building reserve visuals does not register combat units")
+	t.assert_eq(deployment_bar.position, Vector2.ZERO, "reserve hero UI shares the battlefield canvas origin")
+	var reserve_center := grid.reserve_slot_to_world(0, grid.reserve_slot_count)
+	var reserve_screen_center := grid.get_global_transform_with_canvas() * reserve_center
+	t.assert_true(deployment_bar.is_point_over_reserve_area(reserve_screen_center), "projected reserve slot is inside the interactive preparation area")
 	BattleManager.state = BattleManager.BattleState.IN_PROGRESS
 	deployment_bar._apply_stage_layout(false)
-	t.assert_true(
-		deployment_bar.position.y >= GridSystem.BATTLE_GRID_RECT.end.y,
-		"battle hand area stays below the expanded battlefield"
-	)
-	var title := deployment_bar.hand_frame.get_node_or_null("PreparationAreaTitle") as Label
-	t.assert_true(title != null, "hand frame includes a preparation-area label")
-	if title:
-		t.assert_eq(title.text, "备战区", "hand frame label is localized")
+	t.assert_eq(deployment_bar.position, Vector2.ZERO, "battle reserve remains an extension of the battlefield")
+	t.assert_true(deployment_bar.find_child("PreparationAreaTitle", true, false) == null, "reserve area has no text label")
 
 	remove_child(deployment_bar)
 	deployment_bar.queue_free()
+	remove_child(deployment)
+	deployment.queue_free()
+	remove_child(grid)
+	grid.queue_free()
+	BattleManager.grid = null
 	BattleManager.state = BattleManager.BattleState.PREPARING
 	await get_tree().process_frame
 

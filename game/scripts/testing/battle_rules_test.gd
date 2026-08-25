@@ -29,6 +29,7 @@ func _run() -> void:
 	_test_grid_and_bases(grid)
 	_test_projection_round_trip(grid)
 	_test_hero_grid_scale(grid)
+	await _test_retreat_to_reserve_cleanup(grid)
 	_test_enemy_grid_scale_and_advance(grid)
 	_test_spawn_sequence(grid)
 	_test_life_and_breach(grid)
@@ -48,10 +49,11 @@ func _test_grid_and_bases(grid: GridSystem) -> void:
 	t.assert_false(grid.can_place_at(Vector2i(5, 3)), "blocked terrain is not deployable")
 	t.assert_false(grid.can_place_at(Vector2i(0, 2)), "player base is not manually deployable")
 	t.assert_false(grid.can_place_at(Vector2i(8, 2)), "enemy base is not manually deployable")
-	t.assert_true(
-		grid.world_to_screen(Vector3(0.0, 0.0, 0.0)).y <= 432.0,
-		"preparation battlefield reserves vertical space for the hand area"
-	)
+	t.assert_near(grid.get_reserve_bottom_left().y, grid.get_recruit_panel_top_y(), 0.001, "reserve bottom-left aligns with the recruit panel top border")
+	var battlefield_front_bottom := grid.world_to_screen(Vector3(0.0, -grid.board_thickness, 0.0))
+	var reserve_far_edge := grid.get_reserve_polygon()[0]
+	t.assert_true(reserve_far_edge.y > battlefield_front_bottom.y, "reserve extension keeps a visible gap below the battlefield")
+	t.assert_true(grid.is_world_point_inside_reserve(grid.reserve_slot_to_world(0)), "reserve slot center belongs to the projected reserve extension")
 
 	var blocker := Node.new()
 	grid.occupy_cell(Vector2i(7, 3), blocker)
@@ -121,6 +123,29 @@ func _test_hero_grid_scale(grid: GridSystem) -> void:
 	grid.remove_unit(hero)
 	hero.queue_free()
 	grid._apply_stage_layout(false)
+
+
+func _test_retreat_to_reserve_cleanup(grid: GridSystem) -> void:
+	var was_roguelike := GameManager.is_roguelike_run
+	GameManager.is_roguelike_run = false
+	BattleManager.state = BattleManager.BattleState.PREPARING
+	var deployment := DeploymentSystem.new()
+	add_child(deployment)
+	var hero := HeroUnit.new()
+	var card_data := {"class_id": "fighter_champion", "level": 1, "star_level": 1}
+	hero.setup(ClassDefinitions.get_template("fighter_champion"), 1)
+	hero.mark_deployed(card_data, Vector2i(4, 0))
+	t.assert_true(grid.place_unit(hero, Vector2i(4, 0)), "retreat regression hero is deployed")
+	deployment.selected_unit = hero
+	deployment.retreat_selected()
+	t.assert_false(hero in grid.all_units, "retreat removes the live hero from grid tracking immediately")
+	t.assert_false(hero in BattleManager.player_units, "retreat unregisters the live hero from battle tracking")
+	t.assert_eq(deployment.hand_cards.size(), 1, "retreat returns exactly one reserve entry")
+	await get_tree().process_frame
+	t.assert_false(is_instance_valid(hero), "retreated live hero is freed instead of moving on the battlefield")
+	remove_child(deployment)
+	deployment.queue_free()
+	GameManager.is_roguelike_run = was_roguelike
 
 
 func _test_enemy_grid_scale_and_advance(grid: GridSystem) -> void:

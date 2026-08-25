@@ -79,6 +79,8 @@ var airborne: bool = false
 var ai_controller: UnitAI = null
 ## AI是否启用（静态部署时为false，波次开始后激活）
 var ai_enabled: bool = true
+## 备战区展示状态：保留 UnitBase 战斗外观，但不参与任何战斗逻辑。
+var is_reserve_preview: bool = false
 
 ## 可视化（占位）
 @export var color: Color = Color.WHITE
@@ -141,6 +143,8 @@ func _ready() -> void:
 
 ## 每帧更新运行状态。
 func _process(delta: float) -> void:
+	if is_reserve_preview:
+		return
 	if not is_alive:
 		return
 	_update_combat_statuses(delta)
@@ -637,6 +641,57 @@ func refresh_unit_geometry() -> void:
 	refresh_ground_collision()
 	_update_hp_bar(current_hp, max_hp)
 	_refresh_billboard_layout()
+
+
+## 将 UnitBase 切换为备战区展示状态，不运行 AI、碰撞或战斗逻辑。
+func enter_reserve_preview_state(grid_cell_size: float) -> void:
+	is_reserve_preview = true
+	movement_state = MovementState.STANDING
+	target = null
+	show_body_debug_ring = false
+	show_collision_debug_ring = false
+	show_attack_range_debug_ring = false
+	deactivate_ai()
+	set_process(false)
+	sync_reserve_preview_geometry(grid_cell_size)
+
+
+## 备战单位沿用 HeroUnit 的 0.4 格本体半径与 24px 美术参考半径。
+func sync_reserve_preview_geometry(grid_cell_size: float) -> void:
+	if not is_reserve_preview:
+		return
+	unit_radius = maxf(grid_cell_size, 1.0) * 0.4
+	var visual_multiplier := unit_radius / 24.0
+	set_visual_scale_multiplier(visual_multiplier)
+	set_meta("combat_visual_multiplier", visual_multiplier)
+	refresh_unit_geometry()
+	_apply_reserve_preview_runtime_guards()
+
+
+func _apply_reserve_preview_runtime_guards() -> void:
+	if not is_reserve_preview:
+		return
+	ai_enabled = false
+	set_process(false)
+	if ground_collision_area:
+		ground_collision_area.monitoring = false
+		ground_collision_area.monitorable = false
+		ground_collision_area.collision_layer = 0
+		ground_collision_area.collision_mask = 0
+	if ground_collision_shape:
+		ground_collision_shape.set_deferred("disabled", true)
+	if hp_bar_bg:
+		hp_bar_bg.hide()
+	if hp_bar_fill:
+		hp_bar_fill.hide()
+	if unit_name_label:
+		unit_name_label.hide()
+	if body_debug_ring:
+		body_debug_ring.hide()
+	if collision_debug_ring:
+		collision_debug_ring.hide()
+	if attack_range_debug_ring:
+		attack_range_debug_ring.hide()
 
 
 ## 初始化AI。
@@ -1457,6 +1512,9 @@ func _die() -> void:
 ## 激活AI行为（波次开始/实时部署时调用）
 func activate_ai() -> void:
 	"""激活AI行为（波次开始/实时部署时调用）"""
+	if is_reserve_preview:
+		ai_enabled = false
+		return
 	ai_enabled = true
 
 

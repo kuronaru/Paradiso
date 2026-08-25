@@ -924,7 +924,7 @@ func _get_card_preview_size() -> Vector2:
 func _is_mouse_over_hand_area(mouse_pos: Vector2) -> bool:
 	"""检查鼠标是否位于底部手牌区域"""
 	var bar := _get_deployment_bar()
-	return bar != null and bar.is_visible_in_tree() and bar.get_global_rect().has_point(mouse_pos)
+	return bar != null and bar.is_visible_in_tree() and bar.is_point_over_reserve_area(mouse_pos)
 
 
 ## 获取手牌栏节点
