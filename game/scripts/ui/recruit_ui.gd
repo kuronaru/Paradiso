@@ -20,6 +20,8 @@ var option_synergy_labels: Array[Label] = []
 var option_price_labels: Array[Label] = []
 var option_blink_tweens: Array = []
 var option_blink_active: Array[bool] = []
+var option_info_hover_index: int = -1
+var option_info_hover_serial: int = 0
 var skip_btn: Button
 var freeze_btn: Button
 var refresh_btn: Button
@@ -145,6 +147,9 @@ func _create_option_card(index: int) -> void:
 	button.text = ""
 	button.clip_contents = true
 	button.pressed.connect(func(): _on_purchase(index))
+	button.mouse_entered.connect(func(): _on_option_info_mouse_entered(index))
+	button.mouse_exited.connect(func(): _on_option_info_mouse_exited(index))
+	button.gui_input.connect(func(event: InputEvent): _on_option_info_gui_input(event, index))
 	_apply_button_style(button, Color(0.10, 0.11, 0.15, 0.98), Color(0.30, 0.34, 0.44, 1.0))
 	shop_row.add_child(button)
 	option_buttons.append(button)
@@ -314,6 +319,8 @@ func _refresh_option_card(index: int, option, active_gold: int) -> void:
 
 
 func _refresh_empty_option_card(index: int) -> void:
+	if option_info_hover_index == index:
+		_hide_option_info(index)
 	_set_option_owned_blink(index, false)
 	option_icons[index].color = Color(0.08, 0.08, 0.09, 0.85)
 	option_name_labels[index].text = "空"
@@ -323,6 +330,51 @@ func _refresh_empty_option_card(index: int) -> void:
 	option_buttons[index].disabled = true
 	option_buttons[index].visible = true
 	option_buttons[index].modulate = Color(0.82, 0.82, 0.82, 1.0)
+
+
+func _on_option_info_mouse_entered(index: int) -> void:
+	option_info_hover_index = index
+	option_info_hover_serial += 1
+	var hover_serial := option_info_hover_serial
+	await get_tree().create_timer(UnitBase.INFO_HOVER_DELAY).timeout
+	if option_info_hover_index == index and hover_serial == option_info_hover_serial:
+		_show_option_info(index)
+
+
+func _on_option_info_mouse_exited(index: int) -> void:
+	if option_info_hover_index == index:
+		option_info_hover_index = -1
+	option_info_hover_serial += 1
+	_hide_option_info(index)
+
+
+func _on_option_info_gui_input(event: InputEvent, index: int) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		_show_option_info(index)
+
+
+func _show_option_info(index: int) -> void:
+	if not roguelike_manager or index < 0 or index >= option_buttons.size():
+		return
+	var options := roguelike_manager.recruit_system.get_current_options()
+	if index >= options.size():
+		return
+	var option = options[index]
+	var overlay := get_node_or_null("/root/UnitInfoOverlay")
+	if overlay and overlay.has_method("show_for_recruit_option"):
+		overlay.show_for_recruit_option(
+			ClassDefinitions.get_template(option.class_id),
+			option.level,
+			option_buttons[index]
+		)
+
+
+func _hide_option_info(index: int = -1) -> void:
+	var overlay := get_node_or_null("/root/UnitInfoOverlay")
+	if not overlay or not overlay.has_method("hide_recruit_preview"):
+		return
+	var source := option_buttons[index] as Control if index >= 0 and index < option_buttons.size() else null
+	overlay.hide_recruit_preview(source)
 
 
 func _player_owns_recruit_class(class_id: String) -> bool:
@@ -447,6 +499,7 @@ func _trait_label(tag: String) -> String:
 
 
 func _on_purchase(index: int) -> void:
+	_hide_option_info(index)
 	if roguelike_manager:
 		if roguelike_manager.purchase_recruit(index):
 			_refresh()
@@ -460,6 +513,7 @@ func _on_freeze_pressed() -> void:
 
 
 func _on_refresh_pressed() -> void:
+	_hide_option_info()
 	if roguelike_manager and roguelike_manager.refresh_recruit_options():
 		_refresh()
 
@@ -492,6 +546,8 @@ func _is_prepare_layout() -> bool:
 
 
 func _apply_stage_layout(animated: bool) -> void:
+	if not _is_prepare_layout():
+		_hide_option_info()
 	var target_y := _prepare_y() if _is_prepare_layout() else _hidden_y()
 	if layout_tween and layout_tween.is_valid():
 		layout_tween.kill()

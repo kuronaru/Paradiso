@@ -22,6 +22,7 @@ func _run() -> void:
 	await _test_relic_selection_tracks_online_session()
 	await _test_life_display()
 	await _test_deployment_hand_frame()
+	await _test_recruit_option_info_panel()
 	await _test_run_result_overlay()
 	coordinator._reset_runtime_state()
 	t.finish(get_tree())
@@ -94,6 +95,7 @@ func _test_deployment_hand_frame() -> void:
 		t.assert_true(reserve_visual != null, "reserve hero exposes a battle-art visual node")
 		if reserve_visual:
 			t.assert_true(reserve_visual.is_reserve_preview, "reserve hero uses the explicit UnitBase reserve state")
+			t.assert_true(reserve_visual.info_hitbox != null, "UnitBase exposes an image interaction hitbox")
 			t.assert_false(reserve_visual.ai_enabled, "reserve hero does not call character AI")
 			t.assert_false(reserve_visual.is_processing(), "reserve hero does not run combat process updates")
 			t.assert_true(reserve_visual.ai_controller != null, "reserve hero remains a complete UnitBase instance")
@@ -108,6 +110,7 @@ func _test_deployment_hand_frame() -> void:
 			var expected_anchor := grid.get_global_transform_with_canvas() * grid.reserve_slot_visual_anchor(0, grid.reserve_slot_count)
 			t.assert_near(reserve_visual.get_billboard_screen_center().x, expected_anchor.x, 0.001, "reserve hero anchor matches the battlefield X baseline")
 			t.assert_near(reserve_visual.get_billboard_screen_center().y, expected_anchor.y, 0.001, "reserve hero anchor sits one fifth below the slot screen top")
+			await _test_unit_info_panel(reserve_visual, grid)
 	t.assert_eq(BattleManager.player_units.size(), player_unit_count_before_preview, "building reserve visuals does not register combat units")
 	t.assert_eq(deployment_bar.position, Vector2.ZERO, "reserve hero UI shares the battlefield canvas origin")
 	var reserve_center := grid.reserve_slot_to_world(0, grid.reserve_slot_count)
@@ -126,6 +129,102 @@ func _test_deployment_hand_frame() -> void:
 	grid.queue_free()
 	BattleManager.grid = null
 	BattleManager.state = BattleManager.BattleState.PREPARING
+	await get_tree().process_frame
+
+
+func _test_unit_info_panel(unit: UnitBase, grid: GridSystem) -> void:
+	var overlay := get_tree().root.get_node_or_null("UnitInfoOverlay") as UnitInfoPanel
+	t.assert_true(overlay != null, "unit information overlay autoload exists")
+	if not overlay:
+		return
+
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	unit.set_meta("equipment_ids", ["dragon_scale", "polymorph"])
+	unit._on_info_gui_input(click)
+	await get_tree().process_frame
+	t.assert_true(overlay.is_showing_unit(unit), "clicking a unit image opens its information panel")
+	t.assert_eq(overlay.panel.size, Vector2(280.0, 480.0), "unit information panel uses the requested approximate size")
+	t.assert_true(overlay.panel.find_child("OverviewSection", true, false) != null, "unit information panel has the portrait and stats section")
+	var synergy_column := overlay.panel.find_child("SynergyColumn", true, false) as PanelContainer
+	t.assert_true(synergy_column != null, "unit information overview exposes a third synergy column")
+	if synergy_column:
+		t.assert_true(synergy_column.get_theme_stylebox("panel") is StyleBoxEmpty, "synergy column has no outer frame")
+	t.assert_true(overlay.synergy_items.get_child_count() > 0, "unit information panel renders owned synergy icons")
+	var traits_section := overlay.panel.find_child("TraitsSection", true, false) as Control
+	t.assert_true(traits_section != null, "unit information panel has the autochess trait section")
+	if traits_section:
+		t.assert_near(traits_section.size.y, 100.0, 0.001, "autochess trait section has the requested fixed height")
+	var skills_section := overlay.panel.find_child("SkillsSection", true, false) as Control
+	t.assert_true(skills_section != null, "unit information panel has the skill section")
+	var equipment_section := overlay.panel.find_child("EquipmentSection", true, false) as Control
+	t.assert_true(equipment_section != null, "equipment is rendered as an independent bordered section")
+	t.assert_true(overlay.panel.find_child("EquipmentTitle", true, false) != null, "independent equipment section has an equipment title")
+	if skills_section:
+		t.assert_true(skills_section.find_child("EquipmentRow1", true, false) == null, "equipment rows are outside the skill section")
+	t.assert_true(overlay.panel.find_child("EquipmentRow1", true, false) != null, "equipment section reserves the first equipment row")
+	t.assert_true(overlay.panel.find_child("EquipmentRow2", true, false) != null, "equipment section reserves the second equipment row")
+	t.assert_true("龙焰鳞片" in overlay.equipment_description_labels[0].text, "equipment row displays equipment name and description")
+	var expected_y := grid.get_recruit_panel_top_y() - UnitInfoPanel.PANEL_SIZE.y - UnitInfoPanel.PANEL_MARGIN
+	t.assert_near(overlay.panel.position.y, expected_y, 0.001, "unit information panel has a fixed Y above the recruit panel")
+	t.assert_near(overlay.panel.position.y + overlay.panel.size.y, grid.get_recruit_panel_top_y() - UnitInfoPanel.PANEL_MARGIN, 0.001, "unit information panel bottom stays above the recruit panel")
+	var unit_screen := unit.get_global_transform_with_canvas() * unit.billboard_screen_offset
+	t.assert_true(overlay.panel.position.x > unit_screen.x, "a left-side unit opens its information panel on the right")
+	var original_global_position := unit.global_position
+	var original_billboard_offset := unit.billboard_screen_offset
+	unit.global_position = Vector2(get_viewport().get_visible_rect().size.x - 40.0, unit.global_position.y)
+	unit.set_billboard_screen_offset(Vector2.ZERO)
+	overlay.show_for_unit(unit)
+	t.assert_true(overlay.panel.position.x < unit.global_position.x, "a right-side unit opens its information panel on the left")
+	unit.global_position = original_global_position
+	unit.set_billboard_screen_offset(original_billboard_offset)
+	t.assert_true(overlay.traits_text.text != "", "unit information panel renders autochess trait descriptions")
+	t.assert_true(overlay.skills_text.text != "", "unit information panel renders skill descriptions")
+
+	unit._on_info_mouse_exited()
+	t.assert_false(overlay.panel.visible, "leaving the unit image hides its information panel")
+	unit._on_info_mouse_entered()
+	await get_tree().create_timer(UnitBase.INFO_HOVER_DELAY + 0.05).timeout
+	t.assert_true(overlay.is_showing_unit(unit), "hovering a unit image for 0.5 seconds opens its information panel")
+	unit._on_info_mouse_exited()
+
+
+func _test_recruit_option_info_panel() -> void:
+	GameManager.is_roguelike_run = true
+	BattleManager.state = BattleManager.BattleState.PREPARING
+	var manager := RoguelikeManager.new()
+	add_child(manager)
+	await get_tree().process_frame
+	manager.recruit_system.current_options = [
+		RecruitSystem.RecruitOption.new("fighter_champion", 1, 2, 1, "测试招募被动")
+	]
+	var recruit_ui := RecruitUI.new()
+	add_child(recruit_ui)
+	await get_tree().process_frame
+	recruit_ui._show()
+	await get_tree().process_frame
+
+	var overlay := get_tree().root.get_node_or_null("UnitInfoOverlay") as UnitInfoPanel
+	var option_button := recruit_ui.option_buttons[0] as Button
+	recruit_ui._show_option_info(0)
+	await get_tree().process_frame
+	t.assert_true(overlay.is_showing_recruit_option(option_button), "recruit option opens the shared unit information panel")
+	var option_center_x := option_button.get_global_rect().get_center().x
+	t.assert_near(overlay.panel.position.x + overlay.panel.size.x * 0.5, option_center_x, 0.001, "recruit information panel center aligns with the option center")
+	t.assert_near(overlay.panel.position.y + overlay.panel.size.y, get_viewport().get_visible_rect().size.y - RecruitUI.PANEL_HEIGHT - 16.0, 0.001, "recruit information panel stays above the recruit bar")
+	t.assert_true(overlay.synergy_items.get_child_count() > 0, "recruit preview includes the option hero synergies")
+	recruit_ui._on_option_info_mouse_exited(0)
+	t.assert_false(overlay.panel.visible, "leaving a recruit option hides its information panel")
+	recruit_ui._on_option_info_mouse_entered(0)
+	await get_tree().create_timer(UnitBase.INFO_HOVER_DELAY + 0.05).timeout
+	t.assert_true(overlay.is_showing_recruit_option(option_button), "hovering a recruit option for 0.5 seconds opens its information panel")
+	recruit_ui._on_option_info_mouse_exited(0)
+
+	remove_child(recruit_ui)
+	recruit_ui.queue_free()
+	remove_child(manager)
+	manager.queue_free()
 	await get_tree().process_frame
 
 

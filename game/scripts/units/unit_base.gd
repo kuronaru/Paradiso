@@ -6,6 +6,7 @@ extends Node2D
 const M = "Unit"
 const COLLISION_LAYER_PLAYER := 1
 const COLLISION_LAYER_ENEMY := 2
+const INFO_HOVER_DELAY := 0.5
 
 signal died(unit: Node)
 signal hp_changed(current: int, max_hp: int)
@@ -126,6 +127,9 @@ var attack_range_debug_ring: Line2D = null
 var attack_range_debug_ring_radius: float = -1.0
 var ground_projection_scale: float = 1.0
 var billboard_projection_enabled: bool = false
+var info_hitbox: Control = null
+var info_pointer_inside: bool = false
+var info_hover_serial: int = 0
 
 
 ## 初始化节点状态并连接必要依赖。
@@ -136,6 +140,7 @@ func _ready() -> void:
 	_setup_collision_debug_ring()
 	_setup_attack_range_debug_ring()
 	_setup_ai()
+	_setup_info_interaction()
 	last_visual_position = global_position
 	hp_changed.connect(_update_hp_bar)
 	_update_hp_bar(current_hp, max_hp)
@@ -621,6 +626,7 @@ func _refresh_billboard_layout() -> void:
 	if animated_body_sprite:
 		animated_body_sprite.offset = Vector2.ZERO
 		animated_body_sprite.position = animated_sprite_authored_position + billboard_screen_offset
+	_refresh_info_hitbox()
 
 
 ## Refresh every visual and collision element that depends on unit geometry.
@@ -641,6 +647,62 @@ func refresh_unit_geometry() -> void:
 	refresh_ground_collision()
 	_update_hp_bar(current_hp, max_hp)
 	_refresh_billboard_layout()
+
+
+## 创建覆盖人物形象的透明交互区，用于单击与悬停信息面板。
+func _setup_info_interaction() -> void:
+	info_hitbox = Control.new()
+	info_hitbox.name = "UnitInfoHitbox"
+	info_hitbox.mouse_filter = Control.MOUSE_FILTER_PASS
+	info_hitbox.z_index = 100
+	info_hitbox.mouse_entered.connect(_on_info_mouse_entered)
+	info_hitbox.mouse_exited.connect(_on_info_mouse_exited)
+	info_hitbox.gui_input.connect(_on_info_gui_input)
+	add_child(info_hitbox)
+	_refresh_info_hitbox()
+
+
+func _refresh_info_hitbox() -> void:
+	if not info_hitbox:
+		return
+	var hit_size := Vector2.ONE * maxf(unit_radius * 2.2, 32.0)
+	info_hitbox.size = hit_size
+	info_hitbox.position = billboard_screen_offset - hit_size * 0.5
+
+
+func _on_info_mouse_entered() -> void:
+	info_pointer_inside = true
+	info_hover_serial += 1
+	var hover_serial := info_hover_serial
+	var tree := get_tree()
+	if not tree:
+		return
+	await tree.create_timer(INFO_HOVER_DELAY).timeout
+	if info_pointer_inside and hover_serial == info_hover_serial and is_inside_tree():
+		_show_unit_info()
+
+
+func _on_info_mouse_exited() -> void:
+	info_pointer_inside = false
+	info_hover_serial += 1
+	_hide_unit_info()
+
+
+func _on_info_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		_show_unit_info()
+
+
+func _show_unit_info() -> void:
+	var overlay := get_node_or_null("/root/UnitInfoOverlay")
+	if overlay and overlay.has_method("show_for_unit"):
+		overlay.show_for_unit(self)
+
+
+func _hide_unit_info() -> void:
+	var overlay := get_node_or_null("/root/UnitInfoOverlay")
+	if overlay and overlay.has_method("hide_for_unit"):
+		overlay.hide_for_unit(self)
 
 
 ## 将 UnitBase 切换为备战区展示状态，不运行 AI、碰撞或战斗逻辑。

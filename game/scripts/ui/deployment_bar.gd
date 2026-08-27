@@ -123,7 +123,7 @@ func _refresh_ui() -> void:
 			1,
 		]
 
-		_add_battle_hero_visual(btn, ct)
+		_add_battle_hero_visual(btn, ct, card_data)
 
 		var idx := i
 		# 左键短按为选中；按住一定时间或拖动一定距离后才开始拖拽
@@ -182,7 +182,7 @@ func _update_card_selection_visual(index: int, is_selected: bool) -> void:
 
 
 ## 使用 UnitBase 的完整战斗外观，但进入备战状态，不运行 AI、碰撞或战斗逻辑。
-func _add_battle_hero_visual(parent: Control, ct: ClassTemplate) -> void:
+func _add_battle_hero_visual(parent: Control, ct: ClassTemplate, card_data: Dictionary) -> void:
 	var preview := UnitBase.new()
 	preview.name = "BattleHeroVisual"
 	preview.position = card_size * 0.5
@@ -194,7 +194,10 @@ func _add_battle_hero_visual(parent: Control, ct: ClassTemplate) -> void:
 	preview.show_collision_debug_ring = false
 	preview.show_attack_range_debug_ring = false
 	parent.add_child(preview)
+	preview.setup(ct, int(card_data.get("level", 1)))
 	preview.set_meta("class_id", ct.class_id)
+	preview.set_meta("star_level", int(card_data.get("star_level", 1)))
+	preview.set_meta("equipment_ids", (card_data.get("equipment_ids", []) as Array).duplicate())
 	preview.enter_reserve_preview_state(_reserve_grid_cell_size())
 	card_visuals.append(preview)
 
