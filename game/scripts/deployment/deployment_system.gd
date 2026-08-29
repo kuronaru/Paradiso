@@ -7,6 +7,12 @@ const M = "Deploy"
 const RUN_SELL_GOLD_VALUE := 1
 const UNIT_DRAG_GESTURE_TIME := 0.3
 const UNIT_DRAG_MIN_DISTANCE := 4.0
+const DRAG_RANGE_FLASH_DURATION := 1.0
+const DRAG_RANGE_FLASH_PERIOD := 1.5
+const DRAG_RANGE_SEGMENTS := 96
+const DRAG_RANGE_BASE_ALPHA := 0.14
+const DRAG_RANGE_FLASH_ALPHA := 0.32
+const DRAG_RANGE_OUTLINE_WIDTH := 2.5
 
 signal unit_selected(unit: HeroUnit)
 signal unit_deselected
@@ -22,6 +28,9 @@ var drag_original_index: int = -1     # 拖拽卡牌在手牌中的原始位置
 var drag_card_data: Dictionary = {}   # 正在拖拽的卡牌数据
 var drag_preview: Control = null      # 当前拖拽预览节点
 var drag_preview_mode: String = ""    # "card" / "unit"，避免重复重建预览
+var drag_range_mask: Polygon2D = null # 战场拖拽时显示的透视攻击范围遮罩
+var drag_range_outline: Line2D = null # 攻击范围的不透明白色描边
+var drag_range_effect_elapsed: float = 0.0
 var drag_grid_pos: Vector2i = Vector2i.ZERO
 var drag_over_grid: bool = false
 var drag_source_unit: HeroUnit = null
@@ -44,10 +53,12 @@ func _ready() -> void:
 
 
 ## 拖拽中持续刷新预览位置
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	"""拖拽中持续刷新预览位置"""
 	if is_dragging:
+		drag_range_effect_elapsed = fmod(drag_range_effect_elapsed + delta, DRAG_RANGE_FLASH_PERIOD)
 		_update_drag_preview()
+		_update_drag_range_mask_alpha()
 
 
 ## 处理拖拽释放与右键取消
@@ -322,6 +333,7 @@ func begin_drag(card_index: int) -> bool:
 	is_dragging = true
 	drag_over_grid = false
 	drag_preview_mode = ""
+	drag_range_effect_elapsed = 0.0
 	drag_source_unit = null
 
 	# 拖拽期间手牌栏不显示这张卡；取消或部署失败时再插回原位置
@@ -359,6 +371,7 @@ func begin_unit_drag(unit: HeroUnit) -> bool:
 	is_dragging = true
 	drag_over_grid = false
 	drag_preview_mode = ""
+	drag_range_effect_elapsed = 0.0
 	unit.visible = false
 	if selected_unit == unit:
 		selected_unit.is_selected = false
@@ -911,6 +924,9 @@ func _clear_drag_state() -> void:
 	drag_card_data = {}
 	drag_over_grid = false
 	drag_preview_mode = ""
+	drag_range_mask = null
+	drag_range_outline = null
+	drag_range_effect_elapsed = 0.0
 	drag_source_unit = null
 	drag_original_grid_pos = Vector2i.ZERO
 	_clear_pending_unit_press()
@@ -963,7 +979,11 @@ func _show_unit_drag_preview(grid_pos: Vector2i) -> void:
 
 	var center := _grid_cell_to_screen(grid_pos)
 	drag_preview.global_position = center - drag_preview.size * 0.5
-	drag_preview.modulate = Color(1, 1, 1, 0.85) if _can_drop_drag_at(grid_pos) else Color(1, 0.35, 0.35, 0.75)
+	drag_preview.modulate = Color.WHITE
+	var body_preview := drag_preview.get_node_or_null("UnitBodyPreview") as CanvasItem
+	if body_preview:
+		body_preview.modulate = Color(1, 1, 1, 0.85) if _can_drop_drag_at(grid_pos) else Color(1, 0.35, 0.35, 0.75)
+	_update_drag_range_mask(grid_pos, center)
 
 
 ## 替换当前拖拽预览节点
@@ -971,10 +991,14 @@ func _replace_drag_preview(new_preview: Control) -> void:
 	"""替换当前拖拽预览节点"""
 	if drag_preview and is_instance_valid(drag_preview):
 		drag_preview.queue_free()
+	drag_range_mask = null
+	drag_range_outline = null
 	drag_preview = new_preview
 	drag_preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	drag_preview.z_index = 4096
 	_get_drag_preview_parent().add_child(drag_preview)
+	drag_range_mask = drag_preview.get_node_or_null("AttackRangeMask") as Polygon2D
+	drag_range_outline = drag_preview.get_node_or_null("AttackRangeOutline") as Line2D
 
 
 ## 创建卡牌形态的拖拽预览
@@ -1011,11 +1035,77 @@ func _create_unit_preview() -> Control:
 	root.custom_minimum_size = size
 
 	var rect := ColorRect.new()
+	rect.name = "UnitBodyPreview"
 	rect.size = size
 	rect.color = ClassDefinitions.get_template_color(str(drag_card_data.get("class_id", "fighter_champion")))
 	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(rect)
+
+	var range_mask := Polygon2D.new()
+	range_mask.name = "AttackRangeMask"
+	range_mask.position = size * 0.5
+	range_mask.color = Color(1.0, 1.0, 1.0, DRAG_RANGE_BASE_ALPHA)
+	range_mask.z_index = -2
+	root.add_child(range_mask)
+
+	var range_outline := Line2D.new()
+	range_outline.name = "AttackRangeOutline"
+	range_outline.position = size * 0.5
+	range_outline.width = DRAG_RANGE_OUTLINE_WIDTH
+	range_outline.default_color = Color.WHITE
+	range_outline.antialiased = true
+	range_outline.z_index = -1
+	root.add_child(range_outline)
 	return root
+
+
+## 按当前落点生成与棋盘相同透视规则的攻击范围白色遮罩。
+func _update_drag_range_mask(grid_pos: Vector2i, screen_center: Vector2) -> void:
+	if not drag_range_mask or not drag_range_outline or not grid:
+		return
+	var radius := _get_drag_attack_range_world_radius()
+	if radius <= 0.0:
+		drag_range_mask.visible = false
+		drag_range_outline.visible = false
+		return
+
+	drag_range_mask.visible = true
+	drag_range_outline.visible = true
+	var grid_center := grid.grid_to_world(grid_pos)
+	var grid_to_screen := grid.get_global_transform_with_canvas()
+	var points := PackedVector2Array()
+	for index in range(DRAG_RANGE_SEGMENTS):
+		var angle := TAU * float(index) / float(DRAG_RANGE_SEGMENTS)
+		var ground_offset := Vector2(cos(angle), sin(angle)) * radius
+		var projected_offset := grid.project_ground_offset(grid_center, ground_offset)
+		var projected_screen_point := grid_to_screen * (grid_center + projected_offset)
+		points.append(projected_screen_point - screen_center)
+	drag_range_mask.polygon = points
+	var outline_points := points.duplicate()
+	outline_points.append(points[0])
+	drag_range_outline.points = outline_points
+	_update_drag_range_mask_alpha()
+
+
+## 获取手牌模板或场上角色经过属性修正后的实际攻击范围。
+func _get_drag_attack_range_world_radius() -> float:
+	if drag_source_unit and is_instance_valid(drag_source_unit):
+		return drag_source_unit.get_attack_range_world_radius()
+	if drag_card_data.is_empty() or not grid:
+		return 0.0
+	var class_template = ClassDefinitions.get_template(str(drag_card_data.get("class_id", "fighter_champion")))
+	return float(class_template.attack_range) * grid.cell_size
+
+
+## 每1.5秒进行一次1秒的柔和明暗闪烁，其余时间维持低透明度。
+func _update_drag_range_mask_alpha() -> void:
+	if not drag_range_mask or not is_instance_valid(drag_range_mask):
+		return
+	var pulse := 0.0
+	if drag_range_effect_elapsed < DRAG_RANGE_FLASH_DURATION:
+		pulse = sin(PI * drag_range_effect_elapsed / DRAG_RANGE_FLASH_DURATION)
+	var alpha := lerpf(DRAG_RANGE_BASE_ALPHA, DRAG_RANGE_FLASH_ALPHA, pulse)
+	drag_range_mask.color = Color(1.0, 1.0, 1.0, alpha)
 
 
 ## 获取拖拽预览挂载节点，优先放到UI画布上

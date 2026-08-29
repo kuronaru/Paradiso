@@ -13,7 +13,7 @@ config_version=5
 config/name="Paradiso"
 config/description="DND风格冒险小队 · 网格放置型自走棋 · PVE肉鸽策略RPG"
 config/version="0.1.0"
-run/main_scene="res://scenes/start_menu.tscn"
+run/main_scene="uid://main"
 config/features=PackedStringArray("4.5")
 
 [autoload]

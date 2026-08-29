@@ -260,6 +260,33 @@ func _test_drag_only_deployment(grid: GridSystem) -> void:
 	t.assert_true(deployment.is_dragging and deployment.drag_source_unit == first_hero, "mouse displacement inside the gesture window starts unit dragging")
 	t.assert_false(first_hero.visible, "source hero is hidden while its drag preview is active")
 	var moved_pos := Vector2i(4, 1)
+	deployment._show_unit_drag_preview(moved_pos)
+	t.assert_true(deployment.drag_range_mask != null, "dragging a hero over the battlefield creates an attack-range mask")
+	t.assert_eq(deployment.drag_range_mask.polygon.size(), DeploymentSystem.DRAG_RANGE_SEGMENTS, "drag range uses a smooth projected polygon")
+	t.assert_true(deployment.drag_range_outline != null, "drag range creates a separate white outline")
+	t.assert_eq(deployment.drag_range_outline.points.size(), DeploymentSystem.DRAG_RANGE_SEGMENTS + 1, "drag range outline closes around the projected mask")
+	t.assert_eq(deployment.drag_range_outline.points[0], deployment.drag_range_outline.points[-1], "drag range outline is closed")
+	t.assert_eq(deployment.drag_range_outline.default_color, Color.WHITE, "drag range outline remains opaque white")
+	var range_color := deployment.drag_range_mask.color
+	t.assert_near(range_color.r, 1.0, 0.001, "drag range mask remains white")
+	t.assert_near(range_color.g, 1.0, 0.001, "drag range mask remains white")
+	t.assert_near(range_color.b, 1.0, 0.001, "drag range mask remains white")
+	var expected_range_offset := grid.project_ground_offset(
+		grid.grid_to_world(moved_pos),
+		Vector2.RIGHT * first_hero.get_attack_range_world_radius()
+	)
+	var grid_to_screen := grid.get_global_transform_with_canvas()
+	var expected_range_point := grid_to_screen * (grid.grid_to_world(moved_pos) + expected_range_offset) - deployment._grid_cell_to_screen(moved_pos)
+	t.assert_near(deployment.drag_range_mask.polygon[0].x, expected_range_point.x, 0.001, "drag range follows the battlefield perspective on X")
+	t.assert_near(deployment.drag_range_mask.polygon[0].y, expected_range_point.y, 0.001, "drag range follows the battlefield perspective on Y")
+	deployment.drag_range_effect_elapsed = DeploymentSystem.DRAG_RANGE_FLASH_DURATION * 0.5
+	deployment._update_drag_range_mask_alpha()
+	var flash_alpha := deployment.drag_range_mask.color.a
+	deployment.drag_range_effect_elapsed = DeploymentSystem.DRAG_RANGE_FLASH_DURATION + 0.1
+	deployment._update_drag_range_mask_alpha()
+	t.assert_true(flash_alpha > deployment.drag_range_mask.color.a, "drag range softly flashes for 1 second then returns to its resting opacity")
+	t.assert_near(DeploymentSystem.DRAG_RANGE_FLASH_DURATION, 1.0, 0.001, "drag range flash lasts 1 second")
+	t.assert_near(DeploymentSystem.DRAG_RANGE_FLASH_PERIOD, 1.5, 0.001, "drag range flash repeats every 1.5 seconds")
 	deployment._finish_drag_at(moved_pos)
 	t.assert_eq(first_hero.grid_position, moved_pos, "battlefield hero can be dragged to an arbitrary empty legal cell")
 	t.assert_true(first_hero.visible, "battlefield hero is restored after drag release")
