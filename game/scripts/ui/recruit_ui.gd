@@ -8,6 +8,11 @@ const CELL_SPACING := 8.0
 const CELL_MARGIN := 7
 const OPTION_SLOT_COUNT := 5
 const LAYOUT_TWEEN_TIME := 0.22
+const OPTION_BG_COLOR := Color(0.10, 0.11, 0.15, 0.98)
+const OPTION_BORDER_COLOR := Color(0.30, 0.34, 0.44, 1.0)
+const OPTION_SELECTED_BG_COLOR := Color(0.18, 0.15, 0.075, 1.0)
+const OPTION_SELECTED_BORDER_COLOR := Color(1.0, 0.78, 0.20, 1.0)
+const OPTION_SELECTED_BORDER_WIDTH := 4
 
 signal recruit_purchased
 signal recruit_skipped
@@ -22,6 +27,7 @@ var option_blink_tweens: Array = []
 var option_blink_active: Array[bool] = []
 var option_info_hover_index: int = -1
 var option_info_hover_serial: int = 0
+var selected_option_index: int = -1
 var skip_btn: Button
 var freeze_btn: Button
 var refresh_btn: Button
@@ -57,6 +63,26 @@ func _ready() -> void:
 
 	_setup_ui()
 	hide()
+
+
+## 点击当前选中招募选项以外的任意区域时清除选择。
+func _input(event: InputEvent) -> void:
+	if not visible or selected_option_index < 0:
+		return
+	if not (event is InputEventMouseButton):
+		return
+	var mouse_event := event as InputEventMouseButton
+	if mouse_event.button_index != MOUSE_BUTTON_LEFT or not mouse_event.pressed:
+		return
+	if selected_option_index >= option_buttons.size():
+		_set_selected_option(-1)
+		return
+	var selected_button := option_buttons[selected_option_index]
+	if selected_button.get_global_rect().has_point(mouse_event.position):
+		return
+	var previous_index := selected_option_index
+	_set_selected_option(-1)
+	_hide_option_info(previous_index)
 
 
 func _setup_ui() -> void:
@@ -150,7 +176,7 @@ func _create_option_card(index: int) -> void:
 	button.mouse_entered.connect(func(): _on_option_info_mouse_entered(index))
 	button.mouse_exited.connect(func(): _on_option_info_mouse_exited(index))
 	button.gui_input.connect(func(event: InputEvent): _on_option_info_gui_input(event, index))
-	_apply_button_style(button, Color(0.10, 0.11, 0.15, 0.98), Color(0.30, 0.34, 0.44, 1.0))
+	_apply_button_style(button, OPTION_BG_COLOR, OPTION_BORDER_COLOR)
 	shop_row.add_child(button)
 	option_buttons.append(button)
 
@@ -258,6 +284,7 @@ func _create_card_label(font_size: int) -> Label:
 
 
 func _show() -> void:
+	_set_selected_option(-1)
 	_refresh()
 	show()
 	last_prepare_layout = _is_prepare_layout()
@@ -270,6 +297,8 @@ func _refresh() -> void:
 
 	var recruit_system := roguelike_manager.recruit_system
 	var options := recruit_system.get_current_options()
+	if selected_option_index >= options.size():
+		_set_selected_option(-1)
 	var active_gold := GameManager.get_active_gold()
 	title_label.text = "酒馆等级 Lv.%d" % recruit_system.tavern_level
 	gold_label.text = "金币 %d" % active_gold
@@ -316,6 +345,7 @@ func _refresh_option_card(index: int, option, active_gold: int) -> void:
 	)
 	option_buttons[index].visible = true
 	_set_option_owned_blink(index, has_owned_copy)
+	_apply_option_selection_style(index)
 
 
 func _refresh_empty_option_card(index: int) -> void:
@@ -330,6 +360,7 @@ func _refresh_empty_option_card(index: int) -> void:
 	option_buttons[index].disabled = true
 	option_buttons[index].visible = true
 	option_buttons[index].modulate = Color(0.82, 0.82, 0.82, 1.0)
+	_apply_option_selection_style(index)
 
 
 func _on_option_info_mouse_entered(index: int) -> void:
@@ -499,11 +530,26 @@ func _trait_label(tag: String) -> String:
 
 
 func _on_purchase(index: int) -> void:
-	_hide_option_info(index)
-	if roguelike_manager:
-		if roguelike_manager.purchase_recruit(index):
-			_refresh()
-			recruit_purchased.emit()
+	if not roguelike_manager:
+		return
+	var options := roguelike_manager.recruit_system.get_current_options()
+	if index < 0 or index >= options.size():
+		_set_selected_option(-1)
+		return
+
+	if selected_option_index != index:
+		_set_selected_option(index)
+		_show_option_info(index)
+		return
+
+	# 第二次点击当前选中项才确认购买；购买失败时保留选择，便于玩家处理后重试。
+	_set_selected_option(-1)
+	if roguelike_manager.purchase_recruit(index):
+		_hide_option_info(index)
+		_refresh()
+		recruit_purchased.emit()
+	else:
+		_set_selected_option(index)
 
 
 func _on_freeze_pressed() -> void:
@@ -515,15 +561,18 @@ func _on_freeze_pressed() -> void:
 func _on_refresh_pressed() -> void:
 	_hide_option_info()
 	if roguelike_manager and roguelike_manager.refresh_recruit_options():
+		_set_selected_option(-1)
 		_refresh()
 
 
 func _on_upgrade_pressed() -> void:
 	if roguelike_manager and roguelike_manager.upgrade_tavern():
+		_set_selected_option(-1)
 		_refresh()
 
 
 func _on_skip() -> void:
+	_set_selected_option(-1)
 	if roguelike_manager:
 		roguelike_manager.skip_recruit()
 	recruit_skipped.emit()
@@ -548,6 +597,7 @@ func _is_prepare_layout() -> bool:
 func _apply_stage_layout(animated: bool) -> void:
 	if not _is_prepare_layout():
 		_hide_option_info()
+		_set_selected_option(-1)
 	var target_y := _prepare_y() if _is_prepare_layout() else _hidden_y()
 	if layout_tween and layout_tween.is_valid():
 		layout_tween.kill()
@@ -596,18 +646,42 @@ func _setup_equal_cell(control: Control) -> void:
 	control.size_flags_vertical = Control.SIZE_EXPAND_FILL
 
 
-func _apply_button_style(button: Button, bg_color: Color, border_color: Color) -> void:
-	button.add_theme_stylebox_override("normal", _make_panel_style(bg_color, border_color))
-	button.add_theme_stylebox_override("hover", _make_panel_style(bg_color.lightened(0.08), border_color.lightened(0.10)))
-	button.add_theme_stylebox_override("pressed", _make_panel_style(bg_color.darkened(0.08), border_color))
-	button.add_theme_stylebox_override("disabled", _make_panel_style(bg_color.darkened(0.18), border_color.darkened(0.16)))
+func _set_selected_option(index: int) -> void:
+	var previous_index := selected_option_index
+	selected_option_index = index if index >= 0 and index < option_buttons.size() else -1
+	if previous_index >= 0 and previous_index < option_buttons.size():
+		_apply_option_selection_style(previous_index)
+	if selected_option_index >= 0:
+		_apply_option_selection_style(selected_option_index)
 
 
-func _make_panel_style(bg_color: Color, border_color: Color) -> StyleBoxFlat:
+func _apply_option_selection_style(index: int) -> void:
+	if index < 0 or index >= option_buttons.size():
+		return
+	var button := option_buttons[index]
+	if index == selected_option_index:
+		_apply_button_style(
+			button,
+			OPTION_SELECTED_BG_COLOR,
+			OPTION_SELECTED_BORDER_COLOR,
+			OPTION_SELECTED_BORDER_WIDTH
+		)
+	else:
+		_apply_button_style(button, OPTION_BG_COLOR, OPTION_BORDER_COLOR)
+
+
+func _apply_button_style(button: Button, bg_color: Color, border_color: Color, border_width: int = 2) -> void:
+	button.add_theme_stylebox_override("normal", _make_panel_style(bg_color, border_color, border_width))
+	button.add_theme_stylebox_override("hover", _make_panel_style(bg_color.lightened(0.08), border_color.lightened(0.10), border_width))
+	button.add_theme_stylebox_override("pressed", _make_panel_style(bg_color.darkened(0.08), border_color, border_width))
+	button.add_theme_stylebox_override("disabled", _make_panel_style(bg_color.darkened(0.18), border_color.darkened(0.16), border_width))
+
+
+func _make_panel_style(bg_color: Color, border_color: Color, border_width: int = 2) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = bg_color
 	style.border_color = border_color
-	style.set_border_width_all(2)
+	style.set_border_width_all(border_width)
 	style.corner_radius_top_left = 6
 	style.corner_radius_top_right = 6
 	style.corner_radius_bottom_left = 6

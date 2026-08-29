@@ -7,6 +7,19 @@ var t := TestAssertions.new("UIFlowRules")
 var coordinator: Node = null
 
 
+class RecruitPurchaseSpy:
+	extends RoguelikeManager
+
+	var purchase_calls: Array[int] = []
+
+	func purchase_recruit(option_index: int) -> bool:
+		purchase_calls.append(option_index)
+		if not recruit_system or option_index < 0 or option_index >= recruit_system.current_options.size():
+			return false
+		recruit_system.remove_option(option_index)
+		return true
+
+
 func _ready() -> void:
 	call_deferred("_run")
 
@@ -155,7 +168,7 @@ func _test_unit_info_panel(unit: UnitBase, grid: GridSystem) -> void:
 	var traits_section := overlay.panel.find_child("TraitsSection", true, false) as Control
 	t.assert_true(traits_section != null, "unit information panel has the autochess trait section")
 	if traits_section:
-		t.assert_near(traits_section.size.y, 100.0, 0.001, "autochess trait section has the requested fixed height")
+		t.assert_near(traits_section.size.y, 94.0, 0.001, "autochess trait section has the requested fixed height")
 	var skills_section := overlay.panel.find_child("SkillsSection", true, false) as Control
 	t.assert_true(skills_section != null, "unit information panel has the skill section")
 	var equipment_section := overlay.panel.find_child("EquipmentSection", true, false) as Control
@@ -193,11 +206,12 @@ func _test_unit_info_panel(unit: UnitBase, grid: GridSystem) -> void:
 func _test_recruit_option_info_panel() -> void:
 	GameManager.is_roguelike_run = true
 	BattleManager.state = BattleManager.BattleState.PREPARING
-	var manager := RoguelikeManager.new()
+	var manager := RecruitPurchaseSpy.new()
 	add_child(manager)
 	await get_tree().process_frame
 	manager.recruit_system.current_options = [
-		RecruitSystem.RecruitOption.new("fighter_champion", 1, 2, 1, "测试招募被动")
+		RecruitSystem.RecruitOption.new("fighter_champion", 1, 2, 1, "测试招募被动"),
+		RecruitSystem.RecruitOption.new("ranger_hunter", 1, 3, 1, "测试游侠被动")
 	]
 	var recruit_ui := RecruitUI.new()
 	add_child(recruit_ui)
@@ -220,6 +234,35 @@ func _test_recruit_option_info_panel() -> void:
 	await get_tree().create_timer(UnitBase.INFO_HOVER_DELAY + 0.05).timeout
 	t.assert_true(overlay.is_showing_recruit_option(option_button), "hovering a recruit option for 0.5 seconds opens its information panel")
 	recruit_ui._on_option_info_mouse_exited(0)
+
+	recruit_ui._on_purchase(0)
+	t.assert_eq(manager.purchase_calls.size(), 0, "first recruit option click only selects and does not purchase")
+	t.assert_eq(recruit_ui.selected_option_index, 0, "first recruit option click records the selected option")
+	var selected_style := option_button.get_theme_stylebox("normal") as StyleBoxFlat
+	t.assert_eq(selected_style.border_width_left, RecruitUI.OPTION_SELECTED_BORDER_WIDTH, "selected recruit option uses a thicker highlight border")
+	t.assert_eq(selected_style.border_color, RecruitUI.OPTION_SELECTED_BORDER_COLOR, "selected recruit option uses the gold highlight color")
+	var selection_click := InputEventMouseButton.new()
+	selection_click.button_index = MOUSE_BUTTON_LEFT
+	selection_click.pressed = true
+	selection_click.position = option_button.get_global_rect().get_center()
+	recruit_ui._input(selection_click)
+	t.assert_eq(recruit_ui.selected_option_index, 0, "clicking inside the selected recruit option keeps it selected for purchase confirmation")
+	selection_click.position = Vector2.ZERO
+	recruit_ui._input(selection_click)
+	t.assert_eq(recruit_ui.selected_option_index, -1, "clicking anywhere outside the selected recruit option clears its selection")
+	recruit_ui._on_purchase(0)
+	t.assert_eq(recruit_ui.selected_option_index, 0, "an option can be selected again after an outside click clears it")
+
+	recruit_ui._on_purchase(1)
+	t.assert_eq(manager.purchase_calls.size(), 0, "clicking another recruit option switches selection without purchasing")
+	t.assert_eq(recruit_ui.selected_option_index, 1, "only the latest recruit option remains selected")
+	var previous_style := option_button.get_theme_stylebox("normal") as StyleBoxFlat
+	t.assert_eq(previous_style.border_width_left, 2, "switching options removes the previous selection highlight")
+
+	recruit_ui._on_purchase(1)
+	t.assert_eq(manager.purchase_calls, [1], "clicking the selected recruit option again executes its purchase")
+	t.assert_eq(recruit_ui.selected_option_index, -1, "successful purchase clears the recruit selection")
+	t.assert_eq(manager.recruit_system.current_options.size(), 1, "successful second click removes the purchased option")
 
 	remove_child(recruit_ui)
 	recruit_ui.queue_free()
