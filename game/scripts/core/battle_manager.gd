@@ -16,6 +16,7 @@ signal unit_died(unit: Node)
 signal enemy_breached(payload: Dictionary)
 signal joint_defense_started(stage_index: int)
 signal joint_defense_cleared(stage_index: int)
+signal next_wave_preview_changed(enemies: Array)
 
 enum BattleState {
 	PREPARING,
@@ -39,6 +40,8 @@ var current_wave: int = 0
 var total_waves: int = 3
 var enemy_pool: Array = []
 var wave_enemies: Array = []
+var next_wave_preview_enemies: Array[Dictionary] = []
+var _next_wave_preview_index: int = -1
 
 ## 单位追踪
 var player_units: Array = []
@@ -79,6 +82,7 @@ func setup_battle(_party_data: Array, enemies: Array, wave_count: int = 3, prese
 	joint_input_open = false
 	_joint_seen_enemy_uids.clear()
 	state = BattleState.PREPARING
+	_prepare_next_wave_preview()
 
 	Log.i(M, "战斗初始化: %d 波敌人" % total_waves)
 	battle_started.emit()
@@ -92,6 +96,7 @@ func prepare_player_units_for_next_round() -> void:
 	joint_stage_index = -1
 	joint_input_open = false
 	state = BattleState.PREPARING
+	_prepare_next_wave_preview()
 
 
 ## 清理敌人单位和待出生队列。
@@ -176,24 +181,57 @@ func start_next_wave() -> bool:
 ## 将一波模板交给 GridSystem 的依次出生队列。
 func _spawn_wave_enemies(wave_index: int) -> void:
 	wave_enemies.clear()
-	var count: int = _cfg_int("battle_base_wave_enemy_count", 2) + wave_index * _cfg_int("battle_enemy_count_per_wave", 2)
-	var available_enemies = enemy_pool.duplicate(true)
-	for _i in range(count):
-		if available_enemies.is_empty():
-			break
-		var idx: int = randi() % available_enemies.size()
-		var enemy_data: Dictionary = available_enemies[idx].duplicate(true)
+	var templates: Array[Dictionary] = []
+	if _next_wave_preview_index == wave_index:
+		templates = next_wave_preview_enemies.duplicate(true)
+	else:
+		templates = _build_wave_enemy_templates(wave_index)
+	for template in templates:
+		var enemy_data: Dictionary = template.duplicate(true)
 		enemy_data["enemy_uid"] = _make_enemy_uid()
 		enemy_data["source_player_id"] = _local_player_id()
 		enemy_data["transfer_count"] = 0
 		enemy_data["base_damage"] = int(enemy_data.get("base_damage", _cfg_int("enemy_base_damage", 1)))
 		wave_enemies.append(enemy_data)
+	next_wave_preview_enemies.clear()
+	_next_wave_preview_index = -1
+	next_wave_preview_changed.emit([])
 
 	if grid and grid.has_method("spawn_enemy_wave"):
 		grid.spawn_enemy_wave(wave_enemies, enemy_spawn_points)
 	wave_enemies.clear()
-	if count <= 0 or available_enemies.is_empty():
+	if templates.is_empty():
 		call_deferred("check_battle_end")
+
+
+## 提前生成并缓存下一波阵容，使准备阶段预览与真正出生的敌人完全一致。
+func _prepare_next_wave_preview() -> void:
+	var preview_wave := current_wave + 1
+	if phase != BattlePhase.LOCAL or preview_wave > total_waves:
+		next_wave_preview_enemies.clear()
+		_next_wave_preview_index = -1
+	else:
+		next_wave_preview_enemies = _build_wave_enemy_templates(preview_wave)
+		_next_wave_preview_index = preview_wave
+	next_wave_preview_changed.emit(get_next_wave_preview_enemies())
+
+
+## 随机抽取指定波次的敌人模板；模板尚未获得运行时 UID，也不会注册为战斗单位。
+func _build_wave_enemy_templates(wave_index: int) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var count: int = _cfg_int("battle_base_wave_enemy_count", 2) + wave_index * _cfg_int("battle_enemy_count_per_wave", 2)
+	var available_enemies := enemy_pool.duplicate(true)
+	for _i in range(count):
+		if available_enemies.is_empty():
+			break
+		var idx: int = randi() % available_enemies.size()
+		result.append((available_enemies[idx] as Dictionary).duplicate(true))
+	return result
+
+
+## 返回只读副本，避免预览 UI 改写实际下一波阵容。
+func get_next_wave_preview_enemies() -> Array[Dictionary]:
+	return next_wave_preview_enemies.duplicate(true)
 
 
 ## 检查当前阶段是否完成。

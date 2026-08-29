@@ -28,6 +28,8 @@ func _run() -> void:
 
 	_test_grid_and_bases(grid)
 	_test_projection_round_trip(grid)
+	await _test_battle_button_layout(grid)
+	_test_enemy_preview_layout(grid)
 	_test_hero_grid_scale(grid)
 	await _test_retreat_to_reserve_cleanup(grid)
 	_test_enemy_grid_scale_and_advance(grid)
@@ -49,7 +51,13 @@ func _test_grid_and_bases(grid: GridSystem) -> void:
 	t.assert_false(grid.can_place_at(Vector2i(5, 3)), "blocked terrain is not deployable")
 	t.assert_false(grid.can_place_at(Vector2i(0, 2)), "player base is not manually deployable")
 	t.assert_false(grid.can_place_at(Vector2i(8, 2)), "enemy base is not manually deployable")
-	t.assert_near(grid.get_reserve_bottom_left().y, grid.get_recruit_panel_top_y(), 0.001, "reserve bottom-left aligns with the recruit panel top border")
+	t.assert_near(grid.get_reserve_bottom_left().x, grid.get_recruit_panel_left_x(), 0.001, "reserve bottom-left aligns with the recruit panel left border")
+	t.assert_near(grid.get_reserve_bottom_left().y, grid.get_recruit_panel_top_y() - grid.reserve_recruit_gap, 0.001, "reserve shadow keeps the requested gap above the recruit panel")
+	var reserve_polygon := grid.get_reserve_polygon()
+	var reserve_far_world := grid.screen_to_world(reserve_polygon[0], 0.0)
+	var reserve_near_world := grid.screen_to_world(reserve_polygon[3], 0.0)
+	var reserve_slot_width := float(grid.grid_width) * grid.cell_size / float(grid.reserve_slot_count)
+	t.assert_near(absf(reserve_near_world.z - reserve_far_world.z), reserve_slot_width, 0.001, "reserve depth equals one slot width")
 	var battlefield_front_bottom := grid.world_to_screen(Vector3(0.0, -grid.board_thickness, 0.0))
 	var reserve_far_edge := grid.get_reserve_polygon()[0]
 	t.assert_true(reserve_far_edge.y > battlefield_front_bottom.y, "reserve extension keeps a visible gap below the battlefield")
@@ -91,6 +99,74 @@ func _test_projection_round_trip(grid: GridSystem) -> void:
 	t.assert_true(far_height < near_height, "larger Z shrinks projected Y distances")
 
 
+func _test_battle_button_layout(grid: GridSystem) -> void:
+	BattleManager.state = BattleManager.BattleState.PREPARING
+	var resource_bar := ResourceBar.new()
+	add_child(resource_bar)
+	await get_tree().process_frame
+	resource_bar._process(0.0)
+	var preview_rect := resource_bar.preview_button_margin.get_rect()
+	var start_rect := resource_bar.start_button_margin.get_rect()
+	var reserve_right := grid.get_reserve_screen_bounds().end.x
+	t.assert_true(preview_rect.position.x >= reserve_right + ResourceBar.BATTLE_BUTTON_SIDE_GAP - 0.001, "enemy preview button sits to the right of the reserve area (button %.1f, reserve %.1f)" % [preview_rect.position.x, reserve_right])
+	t.assert_near(start_rect.position.x, preview_rect.position.x, 0.001, "enemy preview and battle buttons share one vertical column")
+	t.assert_near(start_rect.position.y - preview_rect.end.y, ResourceBar.BATTLE_BUTTON_VERTICAL_GAP, 0.001, "battle buttons keep the requested vertical gap")
+	t.assert_true(start_rect.end.y <= grid.get_recruit_panel_top_y() - ResourceBar.BATTLE_BUTTON_RECRUIT_GAP + 0.001, "battle buttons stay above the recruit panel")
+	remove_child(resource_bar)
+	resource_bar.queue_free()
+	await get_tree().process_frame
+
+
+func _test_enemy_preview_layout(grid: GridSystem) -> void:
+	var enemy_pool := [_enemy_template("preview_melee"), _enemy_template("preview_ranged")]
+	enemy_pool[1]["type"] = EnemyUnit.EnemyType.RANGED
+	battle_manager.setup_battle([], enemy_pool, 1, false)
+	grid._apply_stage_layout(false)
+	var planned: Array[Dictionary] = battle_manager.get_next_wave_preview_enemies()
+	t.assert_eq(planned.size(), 4, "preparation caches every enemy in the next wave")
+	t.assert_eq(grid.enemy_preview_units.size(), planned.size(), "enemy preview creates one non-combat UnitBase per planned enemy")
+	t.assert_near(grid.get_reserve_bottom_left().x, grid.get_recruit_panel_left_x(), 0.001, "preparation layout uses the reserve bottom-left as its horizontal anchor")
+	var visible_columns := grid.get_enemy_preview_visible_column_count()
+	t.assert_true(visible_columns >= 2 and visible_columns <= 3, "default preparation view exposes about two enemy-board columns (actual %d)" % visible_columns)
+
+	var unique_cells: Dictionary = {}
+	for index in range(grid.enemy_preview_units.size()):
+		var preview := grid.enemy_preview_units[index]
+		unique_cells[grid.enemy_preview_cells[index]] = true
+		t.assert_true(preview.is_reserve_preview and not preview.ai_enabled, "enemy preview unit stays in non-combat display state: %d" % index)
+		t.assert_false(preview in battle_manager.enemy_units, "enemy preview unit is not registered as a live enemy: %d" % index)
+		t.assert_false(preview in grid.all_units, "enemy preview unit is excluded from battlefield occupancy: %d" % index)
+	t.assert_eq(unique_cells.size(), planned.size(), "preview enemies occupy random distinct cells when space is available")
+
+	var reserve_before := grid.get_reserve_polygon()
+	var battlefield_before := grid.get_main_battlefield_screen_bounds()
+	grid.set_enemy_preview_view(true, false)
+	var battlefield_after := grid.get_main_battlefield_screen_bounds()
+	var preview_after := grid.get_enemy_preview_board_screen_bounds()
+	t.assert_true(battlefield_before.position.x - battlefield_after.position.x >= grid.cell_size * 3.0 - 0.001, "full enemy preview shifts the battlefield left by at least three columns")
+	t.assert_true(preview_after.end.x <= grid.get_viewport_rect().size.x - RecruitUI.PANEL_MARGIN + 0.001, "full enemy preview reveals the complete 5-column enemy board")
+	var reserve_after := grid.get_reserve_polygon()
+	for index in range(reserve_before.size()):
+		t.assert_near(reserve_after[index].x, reserve_before[index].x, 0.001, "enemy preview does not shift reserve X: %d" % index)
+		t.assert_near(reserve_after[index].y, reserve_before[index].y, 0.001, "enemy preview does not shift reserve Y: %d" % index)
+
+	var planned_ids: Array[String] = []
+	for template in planned:
+		planned_ids.append(str(template.get("enemy_id", "")))
+	planned_ids.sort()
+	grid.set_enemy_preview_view(false, false)
+	t.assert_true(battle_manager.start_next_wave(), "cached preview wave can start normally")
+	var spawned_ids: Array[String] = []
+	for enemy in battle_manager.enemy_units:
+		spawned_ids.append(str((enemy as EnemyUnit).spawn_template.get("enemy_id", "")))
+	for entry in grid.enemy_spawn_queue:
+		spawned_ids.append(str((entry as Dictionary)["template"].get("enemy_id", "")))
+	spawned_ids.sort()
+	t.assert_eq(spawned_ids, planned_ids, "battle consumes the same randomized enemy templates that were previewed")
+	battle_manager.setup_battle([], [], 1, false)
+	grid._apply_stage_layout(false)
+
+
 func _test_hero_grid_scale(grid: GridSystem) -> void:
 	var melee_template := ClassDefinitions.get_template("fighter_champion")
 	var ranged_template := ClassDefinitions.get_template("ranger_hunter")
@@ -115,6 +191,18 @@ func _test_hero_grid_scale(grid: GridSystem) -> void:
 	var actual_collision_point := hero.collision_debug_ring.points[0]
 	t.assert_near(actual_collision_point.x, expected_collision_point.x, 0.001, "collision debug X uses battlefield projection")
 	t.assert_near(actual_collision_point.y, expected_collision_point.y, 0.001, "collision debug Y uses battlefield projection")
+
+	# 第 3/4 圆周点会从第一行单位向近景跨过 Z=0；切换预览时也必须随单位整体平移。
+	var crossing_point_index := 72
+	var attack_point_before := hero.attack_range_debug_ring.points[crossing_point_index]
+	var hero_position_before := hero.global_position
+	grid.set_enemy_preview_view(true, false)
+	var attack_point_after := hero.attack_range_debug_ring.points[crossing_point_index]
+	var hero_shift := hero.global_position - hero_position_before
+	t.assert_near(attack_point_after.x, attack_point_before.x, 0.001, "attack-range point crossing Z=0 keeps its local X in enemy preview")
+	t.assert_near(attack_point_after.y, attack_point_before.y, 0.001, "attack-range point crossing Z=0 keeps its local Y in enemy preview")
+	t.assert_true(hero_shift.x <= -grid.cell_size * 3.0 + 0.001, "enemy preview still shifts the owning combat unit left")
+	grid.set_enemy_preview_view(false, false)
 
 	grid.cell_size = 128.0
 	grid._sync_unit_positions()

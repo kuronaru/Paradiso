@@ -541,8 +541,7 @@ func _layout_reserve_slots() -> void:
 		return
 	var slot_count := maxi(grid.reserve_slot_count, maxi(card_slots.size(), GameManager.get_roguelike_max_hand_cards()))
 	if grid.reserve_slot_count != slot_count:
-		grid.reserve_slot_count = slot_count
-		grid.queue_redraw()
+		grid.set_reserve_slot_count(slot_count, false)
 	for index in range(card_slots.size()):
 		var slot := card_slots[index] as Control
 		if not slot:

@@ -10,6 +10,7 @@ const BATTLE_GRID_RECT := Rect2(64, 32, 1152, 512)
 const LAYOUT_TWEEN_TIME := 0.22
 const UNIT_DEPTH_Z_RANGE := 64
 const INVALID_GRID_POS := Vector2i(-9999, -9999)
+const ENEMY_PREVIEW_MIN_SHIFT_COLUMNS := 3.0
 const PATH_DIRS_8 := [
 	Vector2i(1, 0),
 	Vector2i(-1, 0),
@@ -31,6 +32,7 @@ enum TerrainType {
 signal cell_clicked(grid_pos: Vector2i)
 signal unit_clicked(unit: Node)
 signal unit_placed(unit: Node, grid_pos: Vector2i)
+signal enemy_preview_view_changed(enabled: bool)
 
 ## 网格配置
 @export var grid_width: int = 9          # 格子列数
@@ -44,11 +46,19 @@ signal unit_placed(unit: Node, grid_pos: Vector2i)
 @export_range(0.0, 0.25, 0.01) var perspective_strength: float = 0.12
 @export_range(0.0, 1.0, 0.05) var unit_visual_y_anchor: float = 0.2
 @export_range(0, 3, 1) var reserve_rows: int = 1
-@export_range(0.0, 1.0, 0.02) var reserve_gap_cells: float = 0.28
+@export_range(0.0, 1.0, 0.02) var reserve_gap_cells: float = 0.2
 @export_range(1, 16, 1) var reserve_slot_count: int = 10
+@export_range(0.0, 24.0, 1.0) var reserve_recruit_gap: float = 6.0
 @export var board_thickness: float = 18.0
 @export var board_front_side_color: Color = Color(0.09, 0.11, 0.15, 0.92)
 @export var board_right_side_color: Color = Color(0.07, 0.09, 0.12, 0.92)
+
+## 准备阶段右侧的下一波敌人预览棋盘。
+@export_range(1, 8, 1) var enemy_preview_columns: int = 5
+@export_range(1, 8, 1) var enemy_preview_rows: int = 4
+@export_range(0.0, 3.0, 0.05) var enemy_preview_gap_cells: float = 0.4
+@export var enemy_preview_zone_color: Color = Color(0.38, 0.10, 0.12, 0.58)
+@export var enemy_preview_line_color: Color = Color(0.92, 0.34, 0.30, 0.78)
 
 ## 旧版部署行范围，仅保留给外部旧代码读取；部署与寻路不再依赖它
 @export var deploy_rows: Vector2i = Vector2i(0, 3)
@@ -100,6 +110,10 @@ var collision_debug_entries: Dictionary = {}
 var enemy_spawn_queue: Array[Dictionary] = []
 var enemy_spawn_time_remaining: float = 0.0
 var enemy_spawn_cycle_cursor: int = 0
+var combat_view_shift_x: float = 0.0
+var enemy_preview_view_enabled: bool = false
+var enemy_preview_units: Array[UnitBase] = []
+var enemy_preview_cells: Array[Vector2i] = []
 
 
 ## 初始化节点状态并连接必要依赖。
@@ -109,9 +123,18 @@ func _ready() -> void:
 		for cell in enemy_base_cells:
 			spawn_points.append(cell)
 	BattleManager.grid = self
+	if BattleManager.next_wave_preview_changed and not BattleManager.next_wave_preview_changed.is_connected(_on_next_wave_preview_changed):
+		BattleManager.next_wave_preview_changed.connect(_on_next_wave_preview_changed)
 	last_prepare_layout = _is_prepare_layout()
 	_apply_stage_layout(false)
+	_rebuild_enemy_preview(BattleManager.get_next_wave_preview_enemies())
 	queue_redraw()
+
+
+func _exit_tree() -> void:
+	if BattleManager.next_wave_preview_changed and BattleManager.next_wave_preview_changed.is_connected(_on_next_wave_preview_changed):
+		BattleManager.next_wave_preview_changed.disconnect(_on_next_wave_preview_changed)
+	_clear_enemy_preview_units()
 
 
 ## 初始化地形和左右两侧的默认两格据点。
@@ -169,11 +192,18 @@ func _process(delta: float) -> void:
 	var wants_prepare := _is_prepare_layout()
 	if wants_prepare != last_prepare_layout:
 		last_prepare_layout = wants_prepare
+		if not wants_prepare:
+			enemy_preview_view_enabled = false
+			combat_view_shift_x = 0.0
+			_clear_enemy_preview_units()
+		elif enemy_preview_units.is_empty():
+			_rebuild_enemy_preview(BattleManager.get_next_wave_preview_enemies())
 		_apply_stage_layout(true)
 
 	var needs_redraw := false
 	if layout_animating:
 		_sync_unit_positions()
+		_sync_enemy_preview_positions()
 		needs_redraw = true
 	if _update_collision_debug_entries(delta):
 		needs_redraw = true
@@ -208,8 +238,15 @@ func _apply_stage_layout(animated: bool) -> void:
 	projected_thickness = _get_front_projected_thickness(next_cell_size)
 	var next_offset := Vector2(
 		target_rect.position.x + target_rect.size.x * 0.5 - active_grid_width * 0.5,
-		recruit_top - projected_thickness - next_grid_size.y
+		recruit_top - reserve_recruit_gap - projected_thickness - next_grid_size.y
 	)
+	if _is_prepare_layout():
+		# 以透视后的备战区左下角为锚点，而不是直接使用主战场原点。
+		var reserve_bottom_left_local := _get_reserve_bottom_left_with_cell_size(next_cell_size)
+		next_offset.x = get_recruit_panel_left_x() - reserve_bottom_left_local.x
+	var next_combat_shift := 0.0
+	if _is_prepare_layout() and enemy_preview_view_enabled:
+		next_combat_shift = _get_enemy_preview_shift_for_layout(next_offset, next_cell_size)
 
 	if layout_tween and layout_tween.is_valid():
 		layout_tween.kill()
@@ -221,22 +258,26 @@ func _apply_stage_layout(animated: bool) -> void:
 		layout_tween.set_parallel(true)
 		layout_tween.tween_property(self, "grid_offset", next_offset, LAYOUT_TWEEN_TIME).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		layout_tween.tween_property(self, "cell_size", next_cell_size, LAYOUT_TWEEN_TIME).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		layout_tween.tween_property(self, "combat_view_shift_x", next_combat_shift, LAYOUT_TWEEN_TIME).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		layout_tween.finished.connect(func():
 			layout_animating = false
 			_sync_unit_positions()
+			_sync_enemy_preview_positions()
 			queue_redraw()
 		)
 	else:
 		grid_offset = next_offset
 		cell_size = next_cell_size
+		combat_view_shift_x = next_combat_shift
 		_sync_unit_positions()
+		_sync_enemy_preview_positions()
 		queue_redraw()
 
 
 ## 计算包含近景备战延伸区后的单位尺寸占用。
 func _get_projected_layout_factors() -> Vector2:
 	var safe_height := maxf(float(grid_height), 1.0)
-	var reserve_depth := float(maxi(reserve_rows, 0)) + (maxf(reserve_gap_cells, 0.0) if reserve_rows > 0 else 0.0)
+	var reserve_depth := _get_reserve_depth_for_cell_size(1.0) + (maxf(reserve_gap_cells, 0.0) if reserve_rows > 0 else 0.0)
 	if not projection_enabled:
 		return Vector2(float(grid_width), safe_height + reserve_depth)
 	var near_scale := BattlefieldProjectionScript.perspective_scale(-reserve_depth, safe_height, perspective_strength)
@@ -252,13 +293,53 @@ func get_recruit_panel_top_y() -> float:
 	return get_viewport_rect().size.y - RecruitUI.PANEL_HEIGHT - 8.0
 
 
+## 招募栏左边框；准备阶段以备战区左下角对齐此处。
+func get_recruit_panel_left_x() -> float:
+	return RecruitUI.PANEL_MARGIN
+
+
+## 槽位数量会改变槽宽与备战区纵深，因此必须同时重算整体布局。
+func set_reserve_slot_count(next_count: int, animated: bool = false) -> void:
+	var resolved_count := maxi(next_count, 1)
+	if reserve_slot_count == resolved_count:
+		return
+	reserve_slot_count = resolved_count
+	_apply_stage_layout(animated)
+
+
+func _get_enemy_preview_shift_for_layout(next_offset: Vector2, next_cell_size: float) -> float:
+	var right_world := (float(grid_width) + maxf(enemy_preview_gap_cells, 0.0) + float(enemy_preview_columns)) * next_cell_size
+	var right_edge := -INF
+	for row in [0.0, float(enemy_preview_rows)]:
+		var point := next_offset + _project_with_cell_size(Vector3(right_world, 0.0, row * next_cell_size), next_cell_size)
+		right_edge = maxf(right_edge, point.x)
+	var required_shift := maxf(right_edge - (get_viewport_rect().size.x - RecruitUI.PANEL_MARGIN), 0.0)
+	return -maxf(required_shift, ENEMY_PREVIEW_MIN_SHIFT_COLUMNS * next_cell_size)
+
+
 func _get_front_projected_thickness(for_cell_size: float = -1.0) -> float:
 	var resolved_cell_size := for_cell_size if for_cell_size > 0.0 else self.cell_size
-	var total_reserve_depth := float(maxi(reserve_rows, 0)) + (maxf(reserve_gap_cells, 0.0) if reserve_rows > 0 else 0.0)
-	var front_z := -total_reserve_depth * resolved_cell_size
+	var total_reserve_depth := _get_reserve_depth_for_cell_size(resolved_cell_size) \
+		+ (maxf(reserve_gap_cells, 0.0) * resolved_cell_size if reserve_rows > 0 else 0.0)
+	var front_z := -total_reserve_depth
 	var top := _project_with_cell_size(Vector3(0.0, 0.0, front_z), resolved_cell_size)
 	var bottom := _project_with_cell_size(Vector3(0.0, -board_thickness, front_z), resolved_cell_size)
 	return maxf(bottom.y - top.y, 0.0)
+
+
+func _get_reserve_bottom_left_with_cell_size(for_cell_size: float) -> Vector2:
+	var near_depth := -(maxf(reserve_gap_cells, 0.0) * for_cell_size + _get_reserve_depth_for_cell_size(for_cell_size))
+	return _project_with_cell_size(Vector3(0.0, -board_thickness, near_depth), for_cell_size)
+
+
+## 每个备战槽在地面上保持正方形：纵深等于该槽的横向宽度。
+func _get_reserve_depth_for_cell_size(for_cell_size: float, slot_count: int = -1) -> float:
+	if reserve_rows <= 0:
+		return 0.0
+	var count := reserve_slot_count if slot_count <= 0 else slot_count
+	count = maxi(count, 1)
+	var slot_width := float(grid_width) * for_cell_size / float(count)
+	return slot_width * float(reserve_rows)
 
 
 func _project_with_cell_size(world_position: Vector3, projection_cell_size: float) -> Vector2:
@@ -284,6 +365,7 @@ func _sync_unit_positions() -> void:
 		if _uses_grid_occupancy(unit) and not (unit as UnitBase).is_moving():
 			unit.global_position = grid_to_world(unit.grid_position)
 		_sync_unit_projection(unit)
+	_sync_enemy_preview_positions()
 
 
 ## 绘制调试或界面可视元素。
@@ -291,6 +373,7 @@ func _draw() -> void:
 	if draw_grid:
 		_draw_board_sides()
 		_draw_reserve_zone()
+		_draw_enemy_preview_board()
 		# 逐格绘制可部署普通地形、阻挡地形和双方据点。
 		for x in range(grid_width):
 			for y in range(grid_height):
@@ -325,7 +408,7 @@ func _draw_reserve_zone() -> void:
 	if reserve_rows <= 0 or reserve_slot_count <= 0:
 		return
 	var width := float(grid_width) * cell_size
-	var reserve_depth := float(reserve_rows) * cell_size
+	var reserve_depth := _get_reserve_depth_for_cell_size(cell_size)
 	var gap_depth := maxf(reserve_gap_cells, 0.0) * cell_size
 	var far_depth := -gap_depth
 	var near_depth := -(gap_depth + reserve_depth)
@@ -357,11 +440,18 @@ func grid_to_world(grid_pos: Vector2i) -> Vector2:
 
 ## 三维战场坐标转到当前二维画布。
 func world_to_screen(world_position: Vector3) -> Vector2:
+	var projection_origin := grid_offset
+	if world_position.z >= 0.0:
+		projection_origin.x += combat_view_shift_x
+	return _world_to_screen_with_origin(world_position, projection_origin)
+
+
+func _world_to_screen_with_origin(world_position: Vector3, projection_origin: Vector2) -> Vector2:
 	if not projection_enabled:
-		return grid_offset + Vector2(world_position.x, world_position.z - world_position.y)
+		return projection_origin + Vector2(world_position.x, world_position.z - world_position.y)
 	return BattlefieldProjectionScript.world_to_screen(
 		world_position,
-		grid_offset,
+		projection_origin,
 		camera_pitch_degrees,
 		float(grid_width) * cell_size * 0.5,
 		float(grid_height) * cell_size,
@@ -371,13 +461,24 @@ func world_to_screen(world_position: Vector3) -> Vector2:
 
 ## 二维画布点反算到指定高度的三维战场平面。
 func screen_to_world(screen_position: Vector2, world_height: float = 0.0) -> Vector3:
+	var combat_origin := grid_offset + Vector2(combat_view_shift_x, 0.0)
+	var combat_world := _screen_to_world_with_origin(screen_position, world_height, combat_origin)
+	if combat_world.z >= 0.0:
+		return combat_world
+	var reserve_world := _screen_to_world_with_origin(screen_position, world_height, grid_offset)
+	if reserve_world.z < 0.0:
+		return reserve_world
+	return combat_world
+
+
+func _screen_to_world_with_origin(screen_position: Vector2, world_height: float, origin: Vector2) -> Vector3:
 	if not projection_enabled:
-		var local := screen_position - grid_offset
+		var local := screen_position - origin
 		return Vector3(local.x, world_height, local.y + world_height)
 	return BattlefieldProjectionScript.screen_to_world(
 		screen_position,
 		world_height,
-		grid_offset,
+		origin,
 		camera_pitch_degrees,
 		float(grid_width) * cell_size * 0.5,
 		float(grid_height) * cell_size,
@@ -401,7 +502,12 @@ func project_ground_offset(screen_ground_position: Vector2, ground_offset: Vecto
 		return ground_offset
 	var center_world := screen_to_world(screen_ground_position, 0.0)
 	var offset_world := center_world + Vector3(ground_offset.x, 0.0, ground_offset.y)
-	return world_to_screen(offset_world) - screen_ground_position
+	# 整个辅助轮廓继承中心点所属的投影空间。即使某个圆周采样点跨入 Z<0，
+	# 也不能中途切换为未平移的备战区原点。
+	var projection_origin := grid_offset
+	if center_world.z >= 0.0:
+		projection_origin.x += combat_view_shift_x
+	return _world_to_screen_with_origin(offset_world, projection_origin) - screen_ground_position
 
 
 ## 当前地面点附近的局部投影基，用于让 CollisionShape2D 近似匹配透视平面。
@@ -431,6 +537,33 @@ func _get_cell_polygon(grid_pos: Vector2i) -> PackedVector2Array:
 	])
 
 
+## 绘制准备阶段右侧 4x5 下一波敌人棋盘。
+func _draw_enemy_preview_board() -> void:
+	if not _is_prepare_layout() or enemy_preview_columns <= 0 or enemy_preview_rows <= 0:
+		return
+	for column in range(enemy_preview_columns):
+		for row in range(enemy_preview_rows):
+			var polygon := _get_enemy_preview_cell_polygon(Vector2i(column, row))
+			var fill := enemy_preview_zone_color.lightened(0.035) if (column + row) % 2 == 0 else enemy_preview_zone_color
+			draw_colored_polygon(polygon, fill)
+			for point_index in range(polygon.size()):
+				draw_line(polygon[point_index], polygon[(point_index + 1) % polygon.size()], enemy_preview_line_color, 1.0)
+
+
+func _get_enemy_preview_cell_polygon(preview_cell: Vector2i) -> PackedVector2Array:
+	var start_column := float(grid_width) + maxf(enemy_preview_gap_cells, 0.0)
+	var left := (start_column + float(preview_cell.x)) * cell_size
+	var right := left + cell_size
+	var far_depth := float(preview_cell.y) * cell_size
+	var near_depth := float(preview_cell.y + 1) * cell_size
+	return PackedVector2Array([
+		world_to_screen(Vector3(left, 0.0, far_depth)),
+		world_to_screen(Vector3(right, 0.0, far_depth)),
+		world_to_screen(Vector3(right, 0.0, near_depth)),
+		world_to_screen(Vector3(left, 0.0, near_depth)),
+	])
+
+
 ## 绘制棋盘前沿和右侧厚度，让平面获得稳定的 3D 轮廓。
 func _draw_board_sides() -> void:
 	if not projection_enabled or board_thickness <= 0.0:
@@ -451,9 +584,26 @@ func _draw_board_sides() -> void:
 		far_right, battle_front_right, battle_front_right_bottom, far_right_bottom
 	]), board_right_side_color)
 
+	if _is_prepare_layout() and enemy_preview_columns > 0 and enemy_preview_rows > 0:
+		var preview_left_x := (float(grid_width) + maxf(enemy_preview_gap_cells, 0.0)) * cell_size
+		var preview_right_x := preview_left_x + float(enemy_preview_columns) * cell_size
+		var preview_depth := float(enemy_preview_rows) * cell_size
+		var preview_front_left := world_to_screen(Vector3(preview_left_x, 0.0, 0.0))
+		var preview_front_right := world_to_screen(Vector3(preview_right_x, 0.0, 0.0))
+		var preview_front_left_bottom := world_to_screen(Vector3(preview_left_x, -board_thickness, 0.0))
+		var preview_front_right_bottom := world_to_screen(Vector3(preview_right_x, -board_thickness, 0.0))
+		draw_colored_polygon(PackedVector2Array([
+			preview_front_left, preview_front_right, preview_front_right_bottom, preview_front_left_bottom
+		]), board_front_side_color)
+		var preview_far_right := world_to_screen(Vector3(preview_right_x, 0.0, preview_depth))
+		var preview_far_right_bottom := world_to_screen(Vector3(preview_right_x, -board_thickness, preview_depth))
+		draw_colored_polygon(PackedVector2Array([
+			preview_far_right, preview_front_right, preview_front_right_bottom, preview_far_right_bottom
+		]), board_right_side_color)
+
 	if reserve_rows > 0:
 		var reserve_far := -maxf(reserve_gap_cells, 0.0) * cell_size
-		var reserve_near := -(maxf(reserve_gap_cells, 0.0) + float(reserve_rows)) * cell_size
+		var reserve_near := -(maxf(reserve_gap_cells, 0.0) * cell_size + _get_reserve_depth_for_cell_size(cell_size))
 		var reserve_front_left := world_to_screen(Vector3(0.0, 0.0, reserve_near))
 		var reserve_front_right := world_to_screen(Vector3(width, 0.0, reserve_near))
 		var reserve_front_left_bottom := world_to_screen(Vector3(0.0, -board_thickness, reserve_near))
@@ -475,7 +625,7 @@ func reserve_slot_to_world(slot_index: int, slot_count: int = -1) -> Vector2:
 	var index := clampi(slot_index, 0, count - 1)
 	var width := float(grid_width) * cell_size
 	var x := width * (float(index) + 0.5) / float(count)
-	var z := -(maxf(reserve_gap_cells, 0.0) + float(maxi(reserve_rows, 1)) * 0.5) * cell_size
+	var z := -(maxf(reserve_gap_cells, 0.0) * cell_size + _get_reserve_depth_for_cell_size(cell_size, count) * 0.5)
 	return world_to_screen(Vector3(x, 0.0, z))
 
 
@@ -487,7 +637,7 @@ func reserve_slot_visual_anchor(slot_index: int, slot_count: int = -1) -> Vector
 	var width := float(grid_width) * cell_size
 	var x := width * (float(index) + 0.5) / float(count)
 	var far_depth := -maxf(reserve_gap_cells, 0.0) * cell_size
-	var near_depth := -(maxf(reserve_gap_cells, 0.0) + float(maxi(reserve_rows, 1))) * cell_size
+	var near_depth := -(maxf(reserve_gap_cells, 0.0) * cell_size + _get_reserve_depth_for_cell_size(cell_size, count))
 	var screen_top := world_to_screen(Vector3(x, 0.0, far_depth))
 	var screen_bottom := world_to_screen(Vector3(x, 0.0, near_depth))
 	return screen_top.lerp(screen_bottom, unit_visual_y_anchor)
@@ -496,7 +646,7 @@ func reserve_slot_visual_anchor(slot_index: int, slot_count: int = -1) -> Vector
 ## 获取备战延伸区四边形。
 func get_reserve_polygon() -> PackedVector2Array:
 	var width := float(grid_width) * cell_size
-	var depth := float(maxi(reserve_rows, 0)) * cell_size
+	var depth := _get_reserve_depth_for_cell_size(cell_size)
 	var gap_depth := maxf(reserve_gap_cells, 0.0) * cell_size
 	return PackedVector2Array([
 		world_to_screen(Vector3(0.0, 0.0, -gap_depth)),
@@ -516,8 +666,153 @@ func get_reserve_screen_bounds() -> Rect2:
 
 ## 备战区厚度外轮廓的左下角，用于和招募栏上边框对齐。
 func get_reserve_bottom_left() -> Vector2:
-	var near_depth := -(maxf(reserve_gap_cells, 0.0) + float(maxi(reserve_rows, 0))) * cell_size
+	var near_depth := -(maxf(reserve_gap_cells, 0.0) * cell_size + _get_reserve_depth_for_cell_size(cell_size))
 	return world_to_screen(Vector3(0.0, -board_thickness, near_depth))
+
+
+## 切换完整敌人预览。只平移 Z>=0 的战场和敌方棋盘，备战区保持原位。
+func set_enemy_preview_view(enabled: bool, animated: bool = true) -> void:
+	var resolved_enabled := enabled and _is_prepare_layout()
+	if enemy_preview_view_enabled == resolved_enabled and not layout_animating:
+		return
+	enemy_preview_view_enabled = resolved_enabled
+	_apply_stage_layout(animated)
+	enemy_preview_view_changed.emit(enemy_preview_view_enabled)
+
+
+func toggle_enemy_preview_view() -> void:
+	set_enemy_preview_view(not enemy_preview_view_enabled, true)
+
+
+## 主战场和敌方预览棋盘的投影包围盒，供 UI 布局与回归测试使用。
+func get_main_battlefield_screen_bounds() -> Rect2:
+	return _screen_bounds_from_polygon(PackedVector2Array([
+		world_to_screen(Vector3(0.0, 0.0, 0.0)),
+		world_to_screen(Vector3(float(grid_width) * cell_size, 0.0, 0.0)),
+		world_to_screen(Vector3(float(grid_width) * cell_size, 0.0, float(grid_height) * cell_size)),
+		world_to_screen(Vector3(0.0, 0.0, float(grid_height) * cell_size)),
+	]))
+
+
+func get_enemy_preview_board_screen_bounds() -> Rect2:
+	var left := (float(grid_width) + maxf(enemy_preview_gap_cells, 0.0)) * cell_size
+	var right := left + float(enemy_preview_columns) * cell_size
+	var depth := float(enemy_preview_rows) * cell_size
+	return _screen_bounds_from_polygon(PackedVector2Array([
+		world_to_screen(Vector3(left, 0.0, 0.0)),
+		world_to_screen(Vector3(right, 0.0, 0.0)),
+		world_to_screen(Vector3(right, 0.0, depth)),
+		world_to_screen(Vector3(left, 0.0, depth)),
+	]))
+
+
+func get_enemy_preview_visible_column_count() -> int:
+	var viewport_width := get_viewport_rect().size.x
+	var visible_count := 0
+	for column in range(enemy_preview_columns):
+		var column_bounds := _screen_bounds_from_polygon(PackedVector2Array([
+			_get_enemy_preview_cell_polygon(Vector2i(column, 0))[0],
+			_get_enemy_preview_cell_polygon(Vector2i(column, 0))[1],
+			_get_enemy_preview_cell_polygon(Vector2i(column, enemy_preview_rows - 1))[2],
+			_get_enemy_preview_cell_polygon(Vector2i(column, enemy_preview_rows - 1))[3],
+		]))
+		if column_bounds.position.x < viewport_width and column_bounds.end.x > 0.0:
+			visible_count += 1
+	return visible_count
+
+
+func _screen_bounds_from_polygon(polygon: PackedVector2Array) -> Rect2:
+	if polygon.is_empty():
+		return Rect2()
+	var bounds := Rect2(polygon[0], Vector2.ZERO)
+	for point in polygon:
+		bounds = bounds.expand(point)
+	return bounds
+
+
+func _on_next_wave_preview_changed(enemies: Array) -> void:
+	_rebuild_enemy_preview(enemies)
+
+
+func _rebuild_enemy_preview(enemies: Array) -> void:
+	_clear_enemy_preview_units()
+	if not _is_prepare_layout() or enemies.is_empty():
+		queue_redraw()
+		return
+	var available_cells: Array[Vector2i] = []
+	for column in range(enemy_preview_columns):
+		for row in range(enemy_preview_rows):
+			available_cells.append(Vector2i(column, row))
+	var layout_rng := RandomNumberGenerator.new()
+	layout_rng.randomize()
+	for index in range(available_cells.size() - 1, 0, -1):
+		var swap_index := layout_rng.randi_range(0, index)
+		var swap_cell := available_cells[index]
+		available_cells[index] = available_cells[swap_index]
+		available_cells[swap_index] = swap_cell
+	for index in range(enemies.size()):
+		var template := enemies[index] as Dictionary
+		var preview := _create_enemy_preview_unit(template)
+		var preview_cell := available_cells[index % available_cells.size()]
+		enemy_preview_units.append(preview)
+		enemy_preview_cells.append(preview_cell)
+	_sync_enemy_preview_positions()
+	queue_redraw()
+
+
+func _create_enemy_preview_unit(template: Dictionary) -> UnitBase:
+	var preview := UnitBase.new()
+	preview.name = "EnemyPreview_%s" % str(template.get("enemy_id", enemy_preview_units.size()))
+	preview.team = "enemy"
+	preview.ai_enabled = false
+	preview.unit_name = str(template.get("name", "敌人"))
+	preview.visual_id = str(template.get("visual_id", ""))
+	preview.max_hp = int(template.get("max_hp", template.get("hp", 80)))
+	preview.current_hp = preview.max_hp
+	preview.attack = int(template.get("atk", 10))
+	preview.defense = int(template.get("def", 3))
+	preview.attack_speed = float(template.get("attack_speed", 1.0))
+	preview.move_speed = float(template.get("move_speed", 1.5))
+	preview.attack_range = float(template.get("attack_range", 1.5))
+	preview.search_range = float(template.get("search_range", 5.0))
+	preview.color = _enemy_preview_color(template.get("type", template.get("enemy_type", 0)))
+	preview.set_base_stats_from_current()
+	preview.set_meta("enemy_preview_template", template.duplicate(true))
+	add_child(preview)
+	preview.enter_reserve_preview_state(cell_size)
+	return preview
+
+
+func _enemy_preview_color(type_value: Variant) -> Color:
+	var text_value := str(type_value).to_lower()
+	if text_value in ["1", "ranged"]:
+		return Color(1.0, 0.6, 0.2)
+	if text_value in ["2", "brute"]:
+		return Color(0.8, 0.2, 0.2)
+	if text_value in ["3", "boss"]:
+		return Color(0.8, 0.1, 0.5)
+	return Color(1.0, 0.3, 0.3)
+
+
+func _sync_enemy_preview_positions() -> void:
+	for index in range(enemy_preview_units.size()):
+		var preview := enemy_preview_units[index]
+		if not is_instance_valid(preview) or index >= enemy_preview_cells.size():
+			continue
+		var preview_cell := enemy_preview_cells[index]
+		var world_x := (float(grid_width) + maxf(enemy_preview_gap_cells, 0.0) + float(preview_cell.x) + 0.5) * cell_size
+		var world_z := (float(preview_cell.y) + 0.5) * cell_size
+		preview.sync_reserve_preview_geometry(cell_size)
+		preview.global_position = world_to_screen(Vector3(world_x, 0.0, world_z))
+		_sync_unit_projection(preview)
+
+
+func _clear_enemy_preview_units() -> void:
+	for preview in enemy_preview_units:
+		if is_instance_valid(preview):
+			preview.queue_free()
+	enemy_preview_units.clear()
+	enemy_preview_cells.clear()
 
 
 ## 判断二维战场点是否位于备战延伸区。
@@ -526,7 +821,7 @@ func is_world_point_inside_reserve(world_pos: Vector2) -> bool:
 		return false
 	var ground := screen_to_world(world_pos, 0.0)
 	var far_depth := -maxf(reserve_gap_cells, 0.0) * cell_size
-	var near_depth := -(maxf(reserve_gap_cells, 0.0) + float(reserve_rows)) * cell_size
+	var near_depth := -(maxf(reserve_gap_cells, 0.0) * cell_size + _get_reserve_depth_for_cell_size(cell_size))
 	return ground.x >= 0.0 and ground.x < float(grid_width) * cell_size \
 		and ground.z <= far_depth and ground.z >= near_depth
 
