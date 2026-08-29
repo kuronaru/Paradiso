@@ -6,7 +6,6 @@ extends Node2D
 const M = "Grid"
 const BattlefieldProjectionScript = preload("res://scripts/grid/battlefield_projection.gd")
 const PREP_GRID_RECT := Rect2(64, 32, 1152, 400)
-const BATTLE_GRID_RECT := Rect2(64, 32, 1152, 512)
 const LAYOUT_TWEEN_TIME := 0.22
 const UNIT_DEPTH_Z_RANGE := 64
 const INVALID_GRID_POS := Vector2i(-9999, -9999)
@@ -52,6 +51,11 @@ signal enemy_preview_view_changed(enabled: bool)
 @export var board_thickness: float = 18.0
 @export var board_front_side_color: Color = Color(0.09, 0.11, 0.15, 0.92)
 @export var board_right_side_color: Color = Color(0.07, 0.09, 0.12, 0.92)
+
+## 战斗开始后招募栏隐藏，棋盘改为贴近屏幕边缘的独立布局。
+@export_range(0.0, 128.0, 1.0) var combat_horizontal_margin: float = 16.0
+@export_range(0.0, 128.0, 1.0) var combat_top_margin: float = 24.0
+@export_range(0.0, 128.0, 1.0) var combat_bottom_margin: float = 12.0
 
 ## 准备阶段右侧的下一波敌人预览棋盘。
 @export_range(1, 8, 1) var enemy_preview_columns: int = 5
@@ -218,11 +222,23 @@ func _is_prepare_layout() -> bool:
 
 ## 应用阶段布局。
 func _apply_stage_layout(animated: bool) -> void:
-	var base_rect := PREP_GRID_RECT if _is_prepare_layout() else BATTLE_GRID_RECT
-	var recruit_top := get_recruit_panel_top_y()
+	var preparing := _is_prepare_layout()
+	var viewport_size := get_viewport_rect().size
+	var base_rect := PREP_GRID_RECT
+	var layout_bottom := get_recruit_panel_top_y() - reserve_recruit_gap
+	var sizing_bottom := get_recruit_panel_top_y()
+	if not preparing:
+		var horizontal_margin := clampf(combat_horizontal_margin, 0.0, viewport_size.x * 0.5)
+		var top_margin := clampf(combat_top_margin, 0.0, viewport_size.y)
+		layout_bottom = viewport_size.y - clampf(combat_bottom_margin, 0.0, viewport_size.y)
+		sizing_bottom = layout_bottom
+		base_rect = Rect2(
+			Vector2(horizontal_margin, top_margin),
+			Vector2(maxf(viewport_size.x - horizontal_margin * 2.0, 1.0), maxf(layout_bottom - top_margin, 1.0))
+		)
 	var target_rect := Rect2(
 		base_rect.position,
-		Vector2(base_rect.size.x, maxf(recruit_top - base_rect.position.y, 1.0))
+		Vector2(base_rect.size.x, maxf(sizing_bottom - base_rect.position.y, 1.0))
 	)
 	var layout_factors := _get_projected_layout_factors()
 	var projected_thickness := _get_front_projected_thickness(1.0)
@@ -238,14 +254,14 @@ func _apply_stage_layout(animated: bool) -> void:
 	projected_thickness = _get_front_projected_thickness(next_cell_size)
 	var next_offset := Vector2(
 		target_rect.position.x + target_rect.size.x * 0.5 - active_grid_width * 0.5,
-		recruit_top - reserve_recruit_gap - projected_thickness - next_grid_size.y
+		layout_bottom - projected_thickness - next_grid_size.y
 	)
-	if _is_prepare_layout():
+	if preparing:
 		# 以透视后的备战区左下角为锚点，而不是直接使用主战场原点。
 		var reserve_bottom_left_local := _get_reserve_bottom_left_with_cell_size(next_cell_size)
 		next_offset.x = get_recruit_panel_left_x() - reserve_bottom_left_local.x
 	var next_combat_shift := 0.0
-	if _is_prepare_layout() and enemy_preview_view_enabled:
+	if preparing and enemy_preview_view_enabled:
 		next_combat_shift = _get_enemy_preview_shift_for_layout(next_offset, next_cell_size)
 
 	if layout_tween and layout_tween.is_valid():

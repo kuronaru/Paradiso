@@ -29,6 +29,7 @@ func _run() -> void:
 	_test_grid_and_bases(grid)
 	_test_projection_round_trip(grid)
 	await _test_battle_button_layout(grid)
+	_test_combat_stage_layout(grid)
 	_test_enemy_preview_layout(grid)
 	_test_hero_grid_scale(grid)
 	await _test_drag_only_deployment(grid)
@@ -116,6 +117,28 @@ func _test_battle_button_layout(grid: GridSystem) -> void:
 	remove_child(resource_bar)
 	resource_bar.queue_free()
 	await get_tree().process_frame
+
+
+func _test_combat_stage_layout(grid: GridSystem) -> void:
+	BattleManager.state = BattleManager.BattleState.PREPARING
+	grid._apply_stage_layout(false)
+	var preparation_cell_size := grid.cell_size
+
+	BattleManager.state = BattleManager.BattleState.IN_PROGRESS
+	grid._apply_stage_layout(false)
+	var viewport_size := grid.get_viewport_rect().size
+	var reserve_bounds := grid.get_reserve_screen_bounds()
+	var reserve_bottom := grid.get_reserve_bottom_left().y
+	t.assert_near(reserve_bottom, viewport_size.y - grid.combat_bottom_margin, 0.001, "combat reserve board moves down to the requested bottom screen margin")
+	t.assert_true(grid.cell_size > preparation_cell_size, "combat battlefield scales up after the recruit bar is hidden")
+	var left_gap := reserve_bounds.position.x
+	var right_gap := viewport_size.x - reserve_bounds.end.x
+	t.assert_near(left_gap, right_gap, 0.001, "combat battlefield stays horizontally centered")
+	t.assert_true(left_gap <= grid.combat_horizontal_margin + 12.0, "combat battlefield expands close to the left screen edge")
+	t.assert_true(right_gap <= grid.combat_horizontal_margin + 12.0, "combat battlefield expands close to the right screen edge")
+
+	BattleManager.state = BattleManager.BattleState.PREPARING
+	grid._apply_stage_layout(false)
 
 
 func _test_enemy_preview_layout(grid: GridSystem) -> void:
