@@ -690,6 +690,11 @@ func _on_info_mouse_exited() -> void:
 
 func _on_info_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		# 准备阶段的场上友方单位把短按交给 0.3 秒拖拽判定；提前释放时显示近身交互菜单。
+		# 备战预览、敌人和其他阶段仍保留单击打开详细信息面板。
+		if team == "player" and not is_reserve_preview \
+				and BattleManager.state == BattleManager.BattleState.PREPARING:
+			return
 		_show_unit_info()
 
 

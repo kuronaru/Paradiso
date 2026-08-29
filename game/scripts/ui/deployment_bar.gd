@@ -1,5 +1,5 @@
 # deployment_bar.gd — 战场延伸备战区
-# 在透视备战槽位显示英雄战斗形象，保留点击、拖动部署与出售交互
+# 在透视备战槽位显示英雄战斗形象，使用按住拖动部署与右键出售交互
 class_name DeploymentBar
 extends Control
 
@@ -15,8 +15,8 @@ signal card_clicked(card_index: int, class_id: String)
 @export var spacing: float = 8.0
 @export var bar_height: float = 96.0
 @export var selected_raise_ratio: float = 0.25
-@export var drag_hold_time: float = 0.18
-@export var drag_distance_threshold: float = 16.0
+@export var drag_gesture_time: float = 0.3
+@export var drag_distance_threshold: float = 4.0
 
 var cards: Array = []                # 卡牌按钮节点
 var card_base_positions: Array = []  # 卡牌未选中时的位置
@@ -29,7 +29,7 @@ var hand_row: Control = null
 ## 拖拽状态视觉提示
 var drag_highlight_index: int = -1
 
-## 鼠标按下后的待判定状态：短按为选中，长按/拖动为拖拽
+## 鼠标按压手势状态：识别窗口内必须发生位移才进入拖拽。
 var press_card_index: int = -1
 var press_started_at_msec: int = 0
 var press_start_mouse_pos: Vector2 = Vector2.ZERO
@@ -118,7 +118,7 @@ func _refresh_ui() -> void:
 		var trait_names: Array[String] = []
 		for trait_id in ct.auto_trait_ids:
 			trait_names.append(str(DataRegistry.get_auto_trait(trait_id).get("display_name", trait_id)))
-		btn.tooltip_text = "%s\n左键选择/拖拽部署；备战阶段右键出售（%d金币）" % [
+		btn.tooltip_text = "%s\n按住左键拖拽部署；备战阶段右键出售（%d金币）" % [
 			"特质：%s" % ("无" if trait_names.is_empty() else "、".join(trait_names)),
 			1,
 		]
@@ -126,7 +126,7 @@ func _refresh_ui() -> void:
 		_add_battle_hero_visual(btn, ct, card_data)
 
 		var idx := i
-		# 左键短按为选中；按住一定时间或拖动一定距离后才开始拖拽
+		# 按住左键立即进入拖拽，不再保留点击选卡部署。
 		btn.gui_input.connect(func(event: InputEvent): _on_card_gui_input(event, idx))
 
 		slot.add_child(btn)
@@ -358,12 +358,12 @@ func _on_card_gui_input(event: InputEvent, index: int) -> void:
 			_finish_card_press(index)
 			accept_event()
 	elif event is InputEventMouseMotion:
-		_update_pending_drag(index)
+		_update_pending_drag(get_viewport().get_mouse_position(), Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT))
 
 
-## 记录鼠标按下，暂不立即进入拖拽
+## 按下备战英雄后开启 0.3 秒“位移即拖拽”识别窗口。
 func _begin_card_press(index: int) -> void:
-	"""记录鼠标按下，暂不立即进入拖拽"""
+	"""按下备战英雄后开启拖拽手势识别窗口。"""
 	if not deployment_system or not deployment_system.can_deploy_now():
 		return
 	if index < 0 or index >= deployment_system.hand_cards.size():
@@ -375,46 +375,31 @@ func _begin_card_press(index: int) -> void:
 	press_started_drag = false
 
 
-## 鼠标短按释放时选中卡牌；拖拽释放交给部署系统处理
+## 拖拽释放由 DeploymentSystem 的全局输入处理。
 func _finish_card_press(index: int) -> void:
-	"""鼠标短按释放时选中卡牌；拖拽释放交给部署系统处理"""
+	"""拖拽释放由 DeploymentSystem 的全局输入处理。"""
 	if press_card_index != index:
 		_clear_pending_press()
 		return
-	if press_started_drag:
-		_clear_pending_press()
-		return
-
-	_select_card(index)
+	if not press_started_drag and index >= 0 and index < card_visuals.size():
+		var preview := card_visuals[index] as UnitBase
+		if preview:
+			preview._show_unit_info()
 	_clear_pending_press()
 
 
-## 鼠标移动超过阈值时将短按判定切换为拖拽
-func _update_pending_drag(index: int) -> void:
-	"""鼠标移动超过阈值时将短按判定切换为拖拽"""
-	if press_card_index != index or press_started_drag:
-		return
-	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
-		_clear_pending_press()
-		return
-
-	var mouse_pos := get_viewport().get_mouse_position()
-	if mouse_pos.distance_to(press_start_mouse_pos) >= drag_distance_threshold:
-		_start_drag_from_press()
-
-
-## 鼠标按住超过阈值时开始拖拽
-func _update_pending_hold() -> void:
-	"""鼠标按住超过阈值时开始拖拽"""
+## 0.3 秒识别窗口内必须发生明确位移；静止长按仍按单击处理。
+func _update_pending_drag(mouse_position: Vector2, left_button_pressed: bool = true) -> void:
 	if press_card_index < 0 or press_started_drag:
 		return
-	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
-		_clear_pending_press()
+	if not left_button_pressed:
 		return
-
 	var elapsed := float(Time.get_ticks_msec() - press_started_at_msec) / 1000.0
-	if elapsed >= drag_hold_time:
-		_start_drag_from_press()
+	if elapsed > drag_gesture_time:
+		return
+	if mouse_position.distance_to(press_start_mouse_pos) < drag_distance_threshold:
+		return
+	_start_drag_from_press()
 
 
 ## 从待判定按压状态进入拖拽部署
@@ -433,21 +418,6 @@ func _start_drag_from_press() -> void:
 		drag_highlight_index = -1
 		_update_button_states()
 		card_clicked.emit(press_card_index, class_id)
-
-
-## 短按卡牌时高亮选中，并将卡牌向上提起
-func _select_card(index: int) -> void:
-	"""短按卡牌时高亮选中，并将卡牌向上提起"""
-	if not deployment_system:
-		return
-	if index < 0 or index >= deployment_system.hand_cards.size():
-		return
-
-	var class_id: String = deployment_system.hand_cards[index]["class_id"]
-	if deployment_system.select_card(index):
-		drag_highlight_index = -1
-		_update_button_states()
-		card_clicked.emit(index, class_id)
 
 
 ## 清除鼠标按下待判定状态
@@ -500,9 +470,8 @@ func _on_dp_changed(_current: int, _max_val: int) -> void:
 
 ## 每帧更新运行状态。
 func _process(_delta: float) -> void:
-	# 持续更新按钮状态（DP变化、状态变化）并检测长按拖拽
+	# 持续更新按钮状态和阶段布局；拖拽由实际鼠标位移事件触发。
 	_update_stage_layout()
-	_update_pending_hold()
 	_update_button_states()
 
 

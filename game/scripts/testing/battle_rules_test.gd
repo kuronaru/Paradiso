@@ -31,6 +31,7 @@ func _run() -> void:
 	await _test_battle_button_layout(grid)
 	_test_enemy_preview_layout(grid)
 	_test_hero_grid_scale(grid)
+	await _test_drag_only_deployment(grid)
 	await _test_retreat_to_reserve_cleanup(grid)
 	_test_enemy_grid_scale_and_advance(grid)
 	_test_spawn_sequence(grid)
@@ -211,6 +212,84 @@ func _test_hero_grid_scale(grid: GridSystem) -> void:
 	grid.remove_unit(hero)
 	hero.queue_free()
 	grid._apply_stage_layout(false)
+
+
+func _test_drag_only_deployment(grid: GridSystem) -> void:
+	var was_roguelike := GameManager.is_roguelike_run
+	GameManager.is_roguelike_run = false
+	BattleManager.state = BattleManager.BattleState.PREPARING
+	var deployment := DeploymentSystem.new()
+	add_child(deployment)
+	var command_menu := CharacterCommandMenu.new()
+	add_child(command_menu)
+	deployment.setup_hand([{"class_id": "fighter_champion", "level": 1, "star_level": 1}])
+	var deployment_bar_defaults := DeploymentBar.new()
+	t.assert_near(deployment_bar_defaults.drag_gesture_time, 0.3, 0.001, "reserve hero drag uses the requested 0.3 second gesture window")
+	t.assert_true(deployment_bar_defaults.drag_distance_threshold > 0.0, "reserve hero drag requires actual mouse displacement")
+	deployment_bar_defaults.free()
+	var first_pos := Vector2i(3, 0)
+
+	deployment._on_cell_clicked(first_pos)
+	t.assert_eq(deployment.hand_cards.size(), 1, "clicking an empty battlefield cell no longer deploys a reserve hero")
+	t.assert_false(deployment.select_card(0), "legacy click-to-select deployment entry is disabled")
+	t.assert_true(deployment.begin_drag(0), "holding a reserve hero starts drag deployment")
+	deployment._finish_drag_at(first_pos)
+	t.assert_true(grid.occupancy.get(first_pos) is HeroUnit, "drag release deploys the reserve hero at any legal cell")
+	var first_hero := grid.occupancy[first_pos] as HeroUnit
+
+	deployment._on_unit_clicked(first_hero)
+	t.assert_false(deployment.is_dragging, "pressing a battlefield hero does not drag before the 0.3 second threshold")
+	t.assert_eq(deployment.pending_drag_unit, first_hero, "pressed battlefield hero waits in the drag threshold state")
+	deployment._finish_pending_unit_click()
+	t.assert_eq(deployment.selected_unit, first_hero, "releasing before the threshold selects the hero")
+	t.assert_true(command_menu.visible, "short click shows the hero interaction panel")
+	t.assert_eq(command_menu.menu_panel.get_child_count(), 2, "hero interaction panel only contains sell and retreat buttons")
+	var expected_menu_size := Vector2(command_menu.button_size.x * 2.0 + command_menu.button_gap, command_menu.button_size.y)
+	t.assert_eq(command_menu.menu_panel.size, expected_menu_size, "hero interaction panel is reduced to two square buttons")
+	var hero_screen_center := command_menu._get_unit_screen_position(first_hero)
+	t.assert_true(command_menu.menu_panel.position.y + command_menu.menu_panel.size.y <= hero_screen_center.y - first_hero.unit_radius - command_menu.unit_head_gap + 0.001, "hero interaction panel stays close above the current visual")
+	command_menu._clear_selection_and_hide()
+
+	deployment._on_unit_clicked(first_hero)
+	deployment._update_pending_unit_drag(deployment.pending_drag_start_mouse_pos, true)
+	t.assert_false(deployment.is_dragging, "stationary holding never starts battlefield dragging")
+	deployment._update_pending_unit_drag(
+		deployment.pending_drag_start_mouse_pos + Vector2(DeploymentSystem.UNIT_DRAG_MIN_DISTANCE + 1.0, 0.0),
+		true
+	)
+	t.assert_true(deployment.is_dragging and deployment.drag_source_unit == first_hero, "mouse displacement inside the gesture window starts unit dragging")
+	t.assert_false(first_hero.visible, "source hero is hidden while its drag preview is active")
+	var moved_pos := Vector2i(4, 1)
+	deployment._finish_drag_at(moved_pos)
+	t.assert_eq(first_hero.grid_position, moved_pos, "battlefield hero can be dragged to an arbitrary empty legal cell")
+	t.assert_true(first_hero.visible, "battlefield hero is restored after drag release")
+
+	var second_pos := Vector2i(6, 2)
+	var second_hero := HeroUnit.new()
+	second_hero.setup(ClassDefinitions.get_template("ranger_hunter"), 1)
+	t.assert_true(grid.place_unit(second_hero, second_pos), "swap regression target hero is placed")
+	second_hero.mark_deployed({"class_id": "ranger_hunter", "level": 1, "star_level": 1}, second_pos)
+	t.assert_true(deployment.begin_unit_drag(first_hero), "deployed hero can begin a second drag")
+	deployment._finish_drag_at(second_pos)
+	t.assert_eq(first_hero.grid_position, second_pos, "dragging onto a friendly hero moves the source to the target cell")
+	t.assert_eq(second_hero.grid_position, moved_pos, "dragging onto a friendly hero swaps the target into the source cell")
+
+	t.assert_true(deployment.begin_unit_drag(first_hero), "hero can begin an invalid-drop regression drag")
+	deployment._finish_drag_at(Vector2i(5, 3))
+	t.assert_eq(first_hero.grid_position, second_pos, "invalid drag release keeps the hero at its original cell")
+	t.assert_true(first_hero.visible, "invalid drag release restores the original hero visual")
+
+	for hero in [first_hero, second_hero]:
+		grid.remove_unit(hero)
+		BattleManager.unregister_player_unit(hero)
+		hero.queue_free()
+	command_menu._hide_menu(true)
+	remove_child(command_menu)
+	command_menu.queue_free()
+	remove_child(deployment)
+	deployment.queue_free()
+	GameManager.is_roguelike_run = was_roguelike
+	await get_tree().process_frame
 
 
 func _test_retreat_to_reserve_cleanup(grid: GridSystem) -> void:

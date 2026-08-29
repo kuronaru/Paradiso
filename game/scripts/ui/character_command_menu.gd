@@ -1,12 +1,13 @@
-# character_command_menu.gd — 战斗中角色菜单
-# 选中战斗区域角色时暂停游戏，并显示围绕角色UI的操作菜单。
+# character_command_menu.gd — 英雄近身交互菜单
+# 单击战场英雄后，在角色头顶附近显示出售与撤退两个方形按钮。
 class_name CharacterCommandMenu
 extends Control
 
 const M = "CharacterMenu"
 
-@export var menu_grid_size: int = 4
-@export var button_size: Vector2 = Vector2(58, 58)
+@export var button_size: Vector2 = Vector2(46, 46)
+@export var button_gap: float = 6.0
+@export var unit_head_gap: float = 6.0
 
 var deployment_system: DeploymentSystem = null
 var selected_unit: HeroUnit = null
@@ -15,8 +16,6 @@ var was_paused_before_open: bool = false
 var menu_panel: Control = null
 var sell_button: Button = null
 var retreat_button: Button = null
-var stance_button: Button = null
-var skill_button: Button = null
 
 
 ## 初始化角色菜单并连接部署系统
@@ -49,46 +48,19 @@ func _set_full_rect() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
 
-## 创建正方形角色菜单和四角按钮
+## 创建角色头顶的两个紧凑方形按钮。
 func _build_menu() -> void:
-	"""创建正方形角色菜单和四角按钮"""
+	"""创建角色头顶的两个紧凑方形按钮。"""
 	menu_panel = Control.new()
 	menu_panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	add_child(menu_panel)
 
-	var outline := Panel.new()
-	outline.name = "Outline"
-	outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	outline.add_theme_stylebox_override("panel", _create_outline_style())
-	menu_panel.add_child(outline)
-
-	sell_button = _create_corner_button("出售\n1金", _on_sell_pressed)
+	sell_button = _create_corner_button("出售", _on_sell_pressed)
 	retreat_button = _create_corner_button("撤退", _on_retreat_pressed)
-	stance_button = _create_corner_button("驻扎", _on_stance_pressed)
-	skill_button = _create_corner_button("技能", _on_skill_pressed)
 	menu_panel.add_child(sell_button)
 	menu_panel.add_child(retreat_button)
-	menu_panel.add_child(stance_button)
-	menu_panel.add_child(skill_button)
 
 	_layout_menu()
-
-
-## 创建仅有轮廓的菜单样式
-func _create_outline_style() -> StyleBoxFlat:
-	"""创建仅有轮廓的菜单样式"""
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.04, 0.045, 0.055, 0.18)
-	style.border_color = Color(0.95, 0.86, 0.48, 0.95)
-	style.border_width_left = 2
-	style.border_width_top = 2
-	style.border_width_right = 2
-	style.border_width_bottom = 2
-	style.corner_radius_top_left = 2
-	style.corner_radius_top_right = 2
-	style.corner_radius_bottom_left = 2
-	style.corner_radius_bottom_right = 2
-	return style
 
 
 ## 创建菜单四角的方形按钮
@@ -104,34 +76,33 @@ func _create_corner_button(text: String, callback: Callable) -> Button:
 	return button
 
 
-## 根据网格尺寸把菜单放在被选中角色的位置上
+## 根据英雄当前形象尺寸，把菜单紧贴在角色头顶上方。
 func _layout_menu() -> void:
-	"""根据网格尺寸把菜单放在被选中角色的位置上"""
-	if not BattleManager.grid:
-		return
-
-	var cell_size: float = BattleManager.grid.cell_size
-	var panel_size := Vector2(cell_size * menu_grid_size, cell_size * menu_grid_size)
+	"""根据英雄当前形象尺寸，把菜单紧贴在角色头顶上方。"""
+	var panel_size := Vector2(button_size.x * 2.0 + button_gap, button_size.y)
 	menu_panel.size = panel_size
 	var center_pos := get_viewport_rect().size * 0.5
+	var visual_radius := 24.0
 	if selected_unit and is_instance_valid(selected_unit):
 		center_pos = _get_unit_screen_position(selected_unit)
+		visual_radius = selected_unit.unit_radius
 	var viewport_size := get_viewport_rect().size
 	var max_position := (viewport_size - panel_size).max(Vector2.ZERO)
-	menu_panel.position = (center_pos - panel_size * 0.5).clamp(Vector2.ZERO, max_position)
-
-	var outline := menu_panel.get_node("Outline") as Panel
-	outline.size = panel_size
+	var desired_position := Vector2(
+		center_pos.x - panel_size.x * 0.5,
+		center_pos.y - visual_radius - unit_head_gap - panel_size.y
+	)
+	menu_panel.position = desired_position.clamp(Vector2.ZERO, max_position)
 
 	sell_button.position = Vector2.ZERO
-	retreat_button.position = Vector2(panel_size.x - button_size.x, 0)
-	stance_button.position = Vector2(0, panel_size.y - button_size.y)
-	skill_button.position = panel_size - button_size
+	retreat_button.position = Vector2(button_size.x + button_gap, 0.0)
 
 
 ## 获取角色在屏幕/UI坐标中的中心点，用于定位角色命令菜单
 func _get_unit_screen_position(unit: Node2D) -> Vector2:
 	"""获取角色在屏幕/UI坐标中的中心点，用于定位角色命令菜单"""
+	if unit is UnitBase:
+		return unit.get_global_transform_with_canvas() * (unit as UnitBase).billboard_screen_offset
 	return unit.get_global_transform_with_canvas().origin
 
 
@@ -170,9 +141,7 @@ func _update_unit_display() -> void:
 	if not selected_unit or not is_instance_valid(selected_unit):
 		return
 
-	stance_button.text = "驻扎" if selected_unit.stance == UnitBase.Stance.MARCH else "移动"
 	sell_button.disabled = not _can_sell_selected_unit()
-	skill_button.disabled = not _can_use_first_skill()
 
 
 ## 检查当前选中英雄是否可以被出售。
@@ -180,21 +149,6 @@ func _can_sell_selected_unit() -> bool:
 	if not selected_unit or not is_instance_valid(selected_unit):
 		return false
 	return GameManager.is_roguelike_run and BattleManager.state == BattleManager.BattleState.PREPARING
-
-
-## 检查当前角色是否有可释放的第一个技能
-func _can_use_first_skill() -> bool:
-	"""检查当前角色是否有可释放的第一个技能"""
-	if not selected_unit or not selected_unit.class_template:
-		return false
-	var skills: Array = selected_unit.class_template.skill_ids
-	if skills.is_empty():
-		return false
-	var skill_id: String = skills[0]
-	if selected_unit.skill_cooldowns.get(skill_id, 0.0) > 0.0:
-		return false
-	var sd := SkillData.get_skill(skill_id)
-	return sd != null and ResourceManager.can_afford(sd.dp_cost)
 
 
 ## 隐藏角色菜单，并按需恢复打开前的暂停状态
@@ -235,22 +189,6 @@ func _on_retreat_pressed() -> void:
 	if deployment_system:
 		deployment_system.retreat_selected()
 	_hide_menu(true)
-
-
-## 切换驻扎/移动状态
-func _on_stance_pressed() -> void:
-	"""切换驻扎/移动状态"""
-	if deployment_system:
-		deployment_system.toggle_selected_stance()
-	_update_unit_display()
-
-
-## 释放角色第一个技能
-func _on_skill_pressed() -> void:
-	"""释放角色第一个技能"""
-	if deployment_system:
-		deployment_system.use_selected_skill(0)
-	_update_unit_display()
 
 
 ## 点击角色菜单区域外时取消角色选中

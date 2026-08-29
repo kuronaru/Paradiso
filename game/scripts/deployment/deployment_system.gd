@@ -5,6 +5,8 @@ extends Node
 
 const M = "Deploy"
 const RUN_SELL_GOLD_VALUE := 1
+const UNIT_DRAG_GESTURE_TIME := 0.3
+const UNIT_DRAG_MIN_DISTANCE := 4.0
 
 signal unit_selected(unit: HeroUnit)
 signal unit_deselected
@@ -12,7 +14,7 @@ signal drag_ended
 signal hand_updated(cards: Array)
 
 var selected_unit: HeroUnit = null
-var selected_card_index: int = -1     # 当前高亮选中的手牌下标（点击网格部署）
+var selected_card_index: int = -1     # 旧接口兼容；部署交互不再使用点击选卡
 var hand_cards: Array = []            # 手牌 [{class_id, level}]
 var is_dragging: bool = false
 var drag_card_index: int = -1         # 兼容旧点击部署流程的当前拖拽下标
@@ -22,6 +24,11 @@ var drag_preview: Control = null      # 当前拖拽预览节点
 var drag_preview_mode: String = ""    # "card" / "unit"，避免重复重建预览
 var drag_grid_pos: Vector2i = Vector2i.ZERO
 var drag_over_grid: bool = false
+var drag_source_unit: HeroUnit = null
+var drag_original_grid_pos: Vector2i = Vector2i.ZERO
+var pending_drag_unit: HeroUnit = null
+var pending_drag_started_at_msec: int = 0
+var pending_drag_start_mouse_pos: Vector2 = Vector2.ZERO
 
 @onready var grid: GridSystem = null
 var _resolving_roster_promotions: bool = false
@@ -46,16 +53,21 @@ func _process(_delta: float) -> void:
 ## 处理拖拽释放与右键取消
 func _input(event: InputEvent) -> void:
 	"""处理拖拽释放与右键取消"""
-	if not is_dragging:
-		return
-
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
-			_finish_drag()
+			if is_dragging:
+				_finish_drag()
+			elif pending_drag_unit:
+				_finish_pending_unit_release()
 		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-			cancel_drag()
+			if is_dragging:
+				cancel_drag()
+			_clear_pending_unit_press()
 	elif event is InputEventMouseMotion:
-		_update_drag_preview()
+		if pending_drag_unit:
+			_update_pending_unit_drag(get_viewport().get_mouse_position(), Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT))
+		if is_dragging:
+			_update_drag_preview()
 
 
 ## 初始化手牌（从肉鸽队伍数据）
@@ -310,6 +322,7 @@ func begin_drag(card_index: int) -> bool:
 	is_dragging = true
 	drag_over_grid = false
 	drag_preview_mode = ""
+	drag_source_unit = null
 
 	# 拖拽期间手牌栏不显示这张卡；取消或部署失败时再插回原位置
 	hand_cards.remove_at(card_index)
@@ -318,18 +331,94 @@ func begin_drag(card_index: int) -> bool:
 	return true
 
 
+## 按住场上英雄后开始原单位拖拽；只允许在准备阶段调整站位。
+func begin_unit_drag(unit: HeroUnit) -> bool:
+	if BattleManager.state != BattleManager.BattleState.PREPARING:
+		return false
+	if not unit or not is_instance_valid(unit) or not unit.is_alive or unit.team != "player":
+		return false
+	if not grid:
+		grid = BattleManager.grid
+	if not grid or unit not in grid.all_units or not grid.occupancy.has(unit.grid_position):
+		return false
+	if grid.occupancy[unit.grid_position] != unit:
+		return false
+	if is_dragging:
+		cancel_drag()
+	_clear_pending_unit_press()
+
+	drag_source_unit = unit
+	drag_original_grid_pos = unit.grid_position
+	drag_card_data = _card_data_from_unit(unit)
+	if drag_card_data.is_empty():
+		drag_source_unit = null
+		return false
+	drag_original_index = -1
+	drag_card_index = -1
+	selected_card_index = -1
+	is_dragging = true
+	drag_over_grid = false
+	drag_preview_mode = ""
+	unit.visible = false
+	if selected_unit == unit:
+		selected_unit.is_selected = false
+		selected_unit = null
+		unit_deselected.emit()
+	_update_drag_preview()
+	return true
+
+
+## 记录场上英雄按压；只有识别窗口内发生鼠标位移才进入拖拽。
+func begin_unit_press(unit: HeroUnit) -> bool:
+	if BattleManager.state != BattleManager.BattleState.PREPARING:
+		_select_unit(unit)
+		return false
+	if not unit or not is_instance_valid(unit) or not unit.is_alive or unit.team != "player":
+		return false
+	pending_drag_unit = unit
+	pending_drag_started_at_msec = Time.get_ticks_msec()
+	pending_drag_start_mouse_pos = get_viewport().get_mouse_position()
+	return true
+
+
+func _update_pending_unit_drag(mouse_position: Vector2, left_button_pressed: bool = true) -> void:
+	if not pending_drag_unit or is_dragging:
+		return
+	if not is_instance_valid(pending_drag_unit) or not left_button_pressed:
+		return
+	var elapsed := float(Time.get_ticks_msec() - pending_drag_started_at_msec) / 1000.0
+	if elapsed > UNIT_DRAG_GESTURE_TIME:
+		return
+	if mouse_position.distance_to(pending_drag_start_mouse_pos) < UNIT_DRAG_MIN_DISTANCE:
+		return
+	var unit := pending_drag_unit
+	_clear_pending_unit_press()
+	begin_unit_drag(unit)
+
+
+func _finish_pending_unit_click() -> void:
+	var unit := pending_drag_unit
+	_clear_pending_unit_press()
+	if unit and is_instance_valid(unit):
+		_select_unit(unit)
+
+
+func _finish_pending_unit_release() -> void:
+	# 未通过“0.3 秒识别窗口 + 鼠标位移”判定，就始终作为单击处理。
+	_finish_pending_unit_click()
+
+
+func _clear_pending_unit_press() -> void:
+	pending_drag_unit = null
+	pending_drag_started_at_msec = 0
+	pending_drag_start_mouse_pos = Vector2.ZERO
+
+
 ## 高亮选中一张手牌，用于随后点击网格部署
 func select_card(card_index: int) -> bool:
-	"""高亮选中一张手牌，用于随后点击网格部署"""
-	if card_index < 0 or card_index >= hand_cards.size():
-		selected_card_index = -1
-		return false
-	if not can_deploy_now():
-		selected_card_index = -1
-		return false
-
-	selected_card_index = card_index
-	return true
+	"""旧点击选卡入口已停用；部署必须由拖拽完成。"""
+	selected_card_index = -1
+	return false
 
 
 ## 清除当前高亮选中的手牌
@@ -512,6 +601,13 @@ func _get_swappable_hero_at(grid_pos: Vector2i) -> HeroUnit:
 func _can_drop_drag_at(grid_pos: Vector2i) -> bool:
 	if not grid:
 		return false
+	if drag_source_unit and is_instance_valid(drag_source_unit):
+		if not grid.is_deploy_zone(grid_pos):
+			return false
+		if grid_pos == drag_original_grid_pos:
+			return true
+		var target := _get_swappable_hero_at(grid_pos)
+		return target != null or grid.can_place_at(grid_pos)
 	if _get_swappable_hero_at(grid_pos):
 		return true
 	return can_deploy_more() and grid.can_place_at(grid_pos)
@@ -609,11 +705,6 @@ func _on_unit_clicked(unit: Node) -> void:
 	var unit_type := unit.get_class() if unit_valid else "<invalid>"
 	Log.d(M, "收到战场单位点击信号: unit=%s valid=%s type=%s" % [unit, unit_valid, unit_type])
 
-	if selected_card_index >= 0 and unit is HeroUnit:
-		if deploy_card(selected_card_index, (unit as HeroUnit).grid_position):
-			clear_selected_card()
-		return
-
 	if selected_unit:
 		selected_unit.is_selected = false
 		selected_unit = null
@@ -625,34 +716,30 @@ func _on_unit_clicked(unit: Node) -> void:
 
 	var hero := unit as HeroUnit
 	if hero.is_alive:
-		Log.d(M, "发送角色选中信号: name=%s pos=%s" % [hero.unit_name, hero.global_position])
-		selected_unit = hero
-		hero.is_selected = true
-		unit_selected.emit(hero)
+		if BattleManager.state == BattleManager.BattleState.PREPARING:
+			begin_unit_press(hero)
+			return
+		_select_unit(hero)
 	else:
 		Log.d(M, "战场单位点击未选中角色: 角色已死亡 name=%s" % hero.unit_name)
+
+
+func _select_unit(hero: HeroUnit) -> void:
+	if not hero or not is_instance_valid(hero) or not hero.is_alive:
+		return
+	if selected_unit and selected_unit != hero:
+		selected_unit.is_selected = false
+	selected_unit = hero
+	hero.is_selected = true
+	Log.d(M, "发送角色选中信号: name=%s pos=%s" % [hero.unit_name, hero.global_position])
+	unit_selected.emit(hero)
 
 
 ## 网格点击处理
 func _on_cell_clicked(grid_pos: Vector2i) -> void:
 	"""网格点击处理"""
-	if is_dragging:
-		_finish_drag_at(grid_pos)
-	elif selected_card_index >= 0:
-		# 已经高亮选中手牌时，点击空格部署；点击已有英雄格时执行替换。
-		if _can_drop_drag_at(grid_pos) and deploy_card(selected_card_index, grid_pos):
-			clear_selected_card()
-	elif BattleManager.state == BattleManager.BattleState.PREPARING:
-		# 准备阶段：点击空地尝试部署第一张可部署的卡
-		if hand_cards.size() > 0 and grid.is_deploy_zone(grid_pos) and not grid.is_occupied(grid_pos):
-			# 找DP够用的第一张卡
-			for i in range(hand_cards.size()):
-				if can_deploy_card(hand_cards[i]["class_id"]):
-					deploy_card(i, grid_pos)
-					break
-		else:
-			select_unit_at(grid_pos)
-	else:
+	# 点击格子不再部署单位；拖拽释放由全局鼠标释放事件处理。
+	if not is_dragging:
 		select_unit_at(grid_pos)
 
 
@@ -744,7 +831,9 @@ func _finish_drag_at(grid_pos: Vector2i) -> void:
 		return
 
 	var deployed := false
-	if _get_swappable_hero_at(grid_pos):
+	if drag_source_unit and is_instance_valid(drag_source_unit):
+		deployed = _move_dragged_unit_to(grid_pos)
+	elif _get_swappable_hero_at(grid_pos):
 		var swapped_card := _swap_card_data_with_unit(drag_card_data, grid_pos)
 		if not swapped_card.is_empty():
 			if GameManager.is_roguelike_run:
@@ -764,9 +853,45 @@ func _finish_drag_at(grid_pos: Vector2i) -> void:
 	drag_ended.emit()
 
 
+## 将场上原单位移动到任意合法格；目标为友方英雄时交换双方站位。
+func _move_dragged_unit_to(grid_pos: Vector2i) -> bool:
+	var source := drag_source_unit
+	if not source or not is_instance_valid(source) or not grid:
+		return false
+	if not grid.is_deploy_zone(grid_pos):
+		return false
+	var source_pos := drag_original_grid_pos
+	if grid_pos == source_pos:
+		return true
+
+	var target := _get_swappable_hero_at(grid_pos)
+	if target == source:
+		return true
+	if not target and not grid.can_place_at(grid_pos):
+		return false
+
+	grid.free_cell(source_pos)
+	if target:
+		grid.free_cell(grid_pos)
+		grid.occupy_cell(source_pos, target)
+		_apply_deployed_unit_position(target, source_pos)
+	grid.occupy_cell(grid_pos, source)
+	_apply_deployed_unit_position(source, grid_pos)
+	return true
+
+
+func _apply_deployed_unit_position(unit: HeroUnit, grid_pos: Vector2i) -> void:
+	unit.finish_grid_move(grid_pos)
+	unit.deployed_grid_position = grid_pos
+	unit.global_position = grid.grid_to_world(grid_pos)
+	grid._sync_unit_projection(unit)
+
+
 ## 将正在拖拽的卡牌恢复到原手牌位置
 func _restore_dragged_card() -> void:
 	"""将正在拖拽的卡牌恢复到原手牌位置"""
+	if drag_source_unit and is_instance_valid(drag_source_unit):
+		return
 	if drag_card_data.is_empty():
 		return
 
@@ -778,12 +903,17 @@ func _restore_dragged_card() -> void:
 ## 清理拖拽状态和预览节点
 func _clear_drag_state() -> void:
 	"""清理拖拽状态和预览节点"""
+	if drag_source_unit and is_instance_valid(drag_source_unit):
+		drag_source_unit.visible = true
 	is_dragging = false
 	drag_card_index = -1
 	drag_original_index = -1
 	drag_card_data = {}
 	drag_over_grid = false
 	drag_preview_mode = ""
+	drag_source_unit = null
+	drag_original_grid_pos = Vector2i.ZERO
+	_clear_pending_unit_press()
 	if drag_preview and is_instance_valid(drag_preview):
 		drag_preview.queue_free()
 	drag_preview = null
