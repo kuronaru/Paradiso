@@ -177,6 +177,20 @@ func _test_synergies(registry: Node) -> void:
 		for modifier in _dictionary_array(data.get("fixed_modifiers", [])):
 			t.assert_true(str(modifier.get("stat", "")).strip_edges() != "", "synergy fixed modifier stat set: %s" % synergy_id)
 			t.assert_true(int(modifier.get("min_tier", 0)) >= 0, "synergy fixed modifier min_tier non-negative: %s" % synergy_id)
+		var detail_descriptions = data.get("detail_descriptions", [])
+		if detail_descriptions is Array:
+			for raw_detail in detail_descriptions:
+				t.assert_true(raw_detail is Dictionary, "synergy detail description is structured: %s" % synergy_id)
+				if not raw_detail is Dictionary:
+					continue
+				var detail: Dictionary = raw_detail
+				var detail_text := str(detail.get("text", ""))
+				var detail_values = detail.get("values", [])
+				t.assert_true(int(detail.get("threshold", 0)) in thresholds, "synergy detail references a configured threshold: %s" % synergy_id)
+				t.assert_true(detail_text.strip_edges() != "", "synergy detail stores a description template: %s" % synergy_id)
+				t.assert_true(detail_values is Array, "synergy detail values are an array: %s" % synergy_id)
+				if detail_values is Array:
+					t.assert_eq(detail_text.count("[X]") + detail_text.count("[+X]"), detail_values.size(), "synergy detail values match numeric placeholders: %s" % synergy_id)
 
 
 func _test_auto_traits(registry: Node) -> void:

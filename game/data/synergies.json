@@ -56,6 +56,18 @@
 		],
 		"order": 1,
 		"description": "主羁绊：拉费里达平原的扭曲生命。3人时攻击积累自然值，满值爆条并造成随层数成长的减速；6人时爆条额外造成基于最高攻击力的自然伤害。",
+		"detail_descriptions": [
+			{
+				"threshold": 3,
+				"text": "<在场[X]名不同【某羁绊】英雄>攻击积累相当于攻击力[X]%的自然值，自然值达到[X]后清空并使敌人减速[X]%，持续[X]秒",
+				"values": [3, {"source":"effect","key":"nature_gain_ratio","format":"percent"}, {"source":"effect","key":"nature_threshold"}, {"source":"modifier","key":"slow_percent","format":"percent"}, {"source":"effect","key":"slow_duration"}]
+			},
+			{
+				"threshold": 6,
+				"text": "<在场[X]名不同【某羁绊】英雄>自然值爆发额外造成最高攻击力[X]%的自然伤害",
+				"values": [6, {"source":"modifier","key":"nature_damage_multiplier","format":"percent"}]
+			}
+		],
 		"scalable_modifiers": [
 			{
 				"min_tier": 3,
@@ -109,6 +121,18 @@
 		],
 		"order": 2,
 		"description": "主羁绊：考特火山的龙焰吐息。3人时提升攻击并叠加灼烧值，满值点燃敌人；6人时对燃烧目标增伤，并有随层数成长的概率追加爆炸伤害。",
+		"detail_descriptions": [
+			{
+				"threshold": 3,
+				"text": "<在场[X]名不同【某羁绊】英雄>英雄攻击力提升[X]%，攻击附带相当于攻击力[X]%的灼烧值，灼烧值达到[X]后点燃敌人[X]秒",
+				"values": [3, {"source":"modifier","key":"attack_multiplier","format":"bonus_percent"}, {"source":"effect","key":"burn_gain_ratio","format":"percent"}, {"source":"effect","key":"burn_threshold"}, {"source":"effect","key":"burn_duration"}]
+			},
+			{
+				"threshold": 6,
+				"text": "<在场[X]名不同【某羁绊】英雄>对燃烧敌人造成的伤害提升[X]%，并有[X]%概率额外造成一次[X]%攻击力的范围爆炸",
+				"values": [6, {"source":"modifier","key":"burning_damage_multiplier","format":"bonus_percent"}, {"source":"modifier","key":"explosion_chance","format":"percent"}, {"source":"effect","key":"explosion_damage_multiplier","format":"percent"}]
+			}
+		],
 		"scalable_modifiers": [
 			{
 				"min_tier": 3,
@@ -220,6 +244,18 @@
 		],
 		"order": 4,
 		"description": "主羁绊：月神邪教的窥探禁忌。3人时敌人承受更多伤害，并在被攻击后3秒内死亡时爆发范围伤害；6人时被攻击敌人若在3秒内低于施术者攻击力阈值则被禁忌诅咒处决。",
+		"detail_descriptions": [
+			{
+				"threshold": 3,
+				"text": "<在场[X]名不同【某羁绊】英雄>敌人受到的伤害提升[X]%，如果敌人受到攻击[X]秒内死亡，对周围造成一次[X]%攻击力的范围伤害",
+				"values": [3, {"source":"modifier","key":"forbidden_damage_taken_multiplier","format":"bonus_percent"}, {"source":"effect","key":"forbidden_mark_duration"}, {"source":"modifier","key":"forbidden_death_burst_multiplier","format":"percent"}]
+			},
+			{
+				"threshold": 6,
+				"text": "<在场[X]名不同【某羁绊】英雄>敌人受到禁忌魔法的诅咒，如果敌人受到英雄攻击[X]秒内血量低于英雄[X]%攻击力，立即受到诅咒而死",
+				"values": [6, {"source":"effect","key":"forbidden_mark_duration"}, {"source":"modifier","key":"forbidden_execute_attack_ratio","format":"percent"}]
+			}
+		],
 		"scalable_modifiers": [
 			{
 				"min_tier": 3,

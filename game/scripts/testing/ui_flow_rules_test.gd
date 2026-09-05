@@ -35,6 +35,7 @@ func _run() -> void:
 
 	await _test_relic_selection_tracks_online_session()
 	await _test_life_display()
+	await _test_synergy_preview_panel()
 	await _test_deployment_hand_frame()
 	await _test_recruit_option_info_panel()
 	await _test_run_result_overlay()
@@ -82,6 +83,65 @@ func _test_life_display() -> void:
 
 	remove_child(resource_bar)
 	resource_bar.queue_free()
+	await get_tree().process_frame
+
+
+func _test_synergy_preview_panel() -> void:
+	var bar := SynergyBar.new()
+	add_child(bar)
+	await get_tree().process_frame
+	var synergy_data: Dictionary = DataRegistry.get_synergy("main_moon_cult")
+	bar._on_synergy_changed([{
+		"id": "main_moon_cult",
+		"display_name": "窥探禁忌",
+		"short_name": "禁",
+		"type": 0,
+		"count": 6,
+		"active_tier": 6,
+		"thresholds": [3, 6],
+		"activation_count": 3,
+		"next_threshold": 6,
+		"max_threshold": 6,
+		"layer": 40,
+		"is_active": true,
+		"description": synergy_data.get("description", ""),
+		"scalable_modifiers": synergy_data.get("scalable_modifiers", []),
+		"fixed_modifiers": synergy_data.get("fixed_modifiers", []),
+		"members": ["生命助祭"],
+		"order": 4,
+	}])
+	bar._toggle_detail("main_moon_cult")
+	await get_tree().process_frame
+
+	t.assert_true(bar.detail_panel.visible, "clicking a synergy icon opens its preview panel")
+	var outer_style := bar.detail_panel.get_theme_stylebox("panel") as StyleBoxFlat
+	t.assert_true(outer_style != null and outer_style.border_width_left == 2, "synergy preview has a colored outer border")
+	var inner_panel := bar.detail_panel.find_child("DetailInnerPanel", true, false) as PanelContainer
+	t.assert_true(inner_panel != null, "synergy preview has a nested visual layer")
+	if inner_panel:
+		var inner_style := inner_panel.get_theme_stylebox("panel") as StyleBoxFlat
+		t.assert_true(inner_style != null and inner_style.border_width_left == 1, "synergy preview has a second border color layer")
+	var text_margin := bar.detail_panel.find_child("DetailTextMargin", true, false) as MarginContainer
+	t.assert_true(text_margin != null and text_margin.get_theme_constant("margin_left") == 14, "synergy preview adds readable content padding")
+	var rich_text := bar.detail_label.text
+	t.assert_true(rich_text.begins_with("[left]"), "synergy preview content is explicitly left aligned")
+	t.assert_true("[font_size=22][b]窥探禁忌[/b][/font_size]" in rich_text, "synergy title uses a larger font size")
+	t.assert_true("已激活人数：[/color][b]6/3[/b]" in rich_text, "synergy preview shows active member count against activation threshold")
+	t.assert_false("[X]" in rich_text or "[+X]" in rich_text, "synergy preview replaces every numeric placeholder")
+	t.assert_true("[color=%s][b]55[/b][/color]%%" % SynergyBar.NUMBER_COLOR in rich_text, "layer-scaled values are inserted and highlighted inside descriptions")
+	t.assert_true("[color=%s][b]生命助祭[/b][/color]" % SynergyBar.ACTIVE_HERO_COLOR in rich_text, "currently contributing heroes are highlighted")
+	t.assert_true("塑能法师" in rich_text, "synergy preview horizontally lists inactive heroes that own the synergy")
+
+	var outside_click := InputEventMouseButton.new()
+	outside_click.button_index = MOUSE_BUTTON_LEFT
+	outside_click.pressed = true
+	outside_click.position = get_viewport().get_visible_rect().size - Vector2(4.0, 4.0)
+	bar._input(outside_click)
+	t.assert_false(bar.detail_panel.visible, "clicking outside the synergy preview hides it")
+	t.assert_eq(bar.selected_synergy_id, "", "outside click clears the selected synergy")
+
+	remove_child(bar)
+	bar.queue_free()
 	await get_tree().process_frame
 
 

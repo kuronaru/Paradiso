@@ -3,6 +3,10 @@ class_name SynergyBar
 extends Control
 
 const M = "SynergyBar"
+const NUMBER_COLOR := "#72d7ff"
+const SYNERGY_COLOR := "#f0bd55"
+const ACTIVE_HERO_COLOR := "#82e6aa"
+const INACTIVE_HERO_COLOR := "#8895a8"
 
 @export var panel_width: float = 560.0
 @export var icon_size: float = 50.0
@@ -17,11 +21,13 @@ var icon_items: Array[Control] = []
 var detail_panel: PanelContainer = null
 var detail_label: RichTextLabel = null
 var selected_synergy_id: String = ""
+var synergy_buttons: Dictionary = {}
 
 
 ## 初始化节点状态并连接必要依赖。
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	set_process_input(true)
 	z_index = 2000
 	size = Vector2(panel_width, 120.0)
 	_reposition()
@@ -46,28 +52,78 @@ func _reposition() -> void:
 ## 初始化详情panel。
 func _setup_detail_panel() -> void:
 	detail_panel = PanelContainer.new()
+	detail_panel.name = "SynergyDetailPanel"
 	detail_panel.visible = false
-	detail_panel.size = Vector2(panel_width, 176.0)
+	detail_panel.custom_minimum_size = Vector2(panel_width, 318.0)
+	detail_panel.size = Vector2(panel_width, 318.0)
 	detail_panel.position = Vector2(0, _get_item_height() + icon_spacing + 6.0)
 	detail_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	detail_panel.add_theme_stylebox_override("panel", _create_detail_outer_style())
 	add_child(detail_panel)
 
+	var outer_margin := MarginContainer.new()
+	outer_margin.name = "DetailOuterMargin"
+	outer_margin.add_theme_constant_override("margin_left", 8)
+	outer_margin.add_theme_constant_override("margin_top", 8)
+	outer_margin.add_theme_constant_override("margin_right", 8)
+	outer_margin.add_theme_constant_override("margin_bottom", 8)
+	detail_panel.add_child(outer_margin)
+
+	var inner_panel := PanelContainer.new()
+	inner_panel.name = "DetailInnerPanel"
+	inner_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inner_panel.add_theme_stylebox_override("panel", _create_detail_inner_style())
+	outer_margin.add_child(inner_panel)
+
+	var text_margin := MarginContainer.new()
+	text_margin.name = "DetailTextMargin"
+	text_margin.add_theme_constant_override("margin_left", 14)
+	text_margin.add_theme_constant_override("margin_top", 10)
+	text_margin.add_theme_constant_override("margin_right", 14)
+	text_margin.add_theme_constant_override("margin_bottom", 10)
+	inner_panel.add_child(text_margin)
+
 	detail_label = RichTextLabel.new()
+	detail_label.name = "SynergyDetailText"
 	detail_label.bbcode_enabled = true
-	detail_label.fit_content = true
-	detail_label.scroll_active = false
+	detail_label.fit_content = false
+	detail_label.scroll_active = true
+	detail_label.scroll_following = false
 	detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	detail_label.add_theme_font_size_override("normal_font_size", 13)
-	detail_label.add_theme_font_size_override("bold_font_size", 13)
+	detail_label.add_theme_font_size_override("normal_font_size", 14)
+	detail_label.add_theme_font_size_override("bold_font_size", 14)
 	detail_label.add_theme_color_override("default_color", Color(0.92, 0.96, 1.0))
-	detail_label.add_theme_constant_override("line_separation", 2)
-	detail_label.custom_minimum_size = Vector2(panel_width - 24.0, 154.0)
-	detail_panel.add_child(detail_label)
+	detail_label.add_theme_constant_override("line_separation", 5)
+	detail_label.custom_minimum_size = Vector2(panel_width - 60.0, 270.0)
+	text_margin.add_child(detail_label)
+
+
+func _create_detail_outer_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.035, 0.055, 0.085, 0.97)
+	style.border_color = Color(0.28, 0.70, 0.92, 0.95)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(9)
+	style.shadow_color = Color(0.0, 0.0, 0.0, 0.58)
+	style.shadow_size = 8
+	return style
+
+
+func _create_detail_inner_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.075, 0.095, 0.13, 0.94)
+	style.border_color = Color(0.76, 0.57, 0.25, 0.72)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(6)
+	return style
 
 
 ## 处理羁绊变化回调。
 func _on_synergy_changed(next_summaries: Array) -> void:
-	summaries = next_summaries.duplicate(true)
+	summaries.clear()
+	for raw_summary in next_summaries:
+		if raw_summary is Dictionary:
+			summaries.append(raw_summary.duplicate(true))
 	summaries.sort_custom(_sort_summaries_for_display)
 	_refresh_icons()
 	_refresh_detail()
@@ -79,6 +135,7 @@ func _refresh_icons() -> void:
 		if is_instance_valid(item):
 			item.queue_free()
 	icon_items.clear()
+	synergy_buttons.clear()
 
 	if summaries.is_empty():
 		detail_panel.visible = false
@@ -87,7 +144,7 @@ func _refresh_icons() -> void:
 	var item_height := _get_item_height()
 	var max_per_row: int = maxi(1, int(floor(panel_width / (icon_size + icon_spacing))))
 	var row_count: int = int(ceil(float(summaries.size()) / float(max_per_row)))
-	size.y = float(row_count) * (item_height + icon_spacing) + 194.0
+	size.y = float(row_count) * (item_height + icon_spacing) + detail_panel.size.y + 18.0
 
 	for i in range(summaries.size()):
 		var summary: Dictionary = summaries[i]
@@ -124,6 +181,7 @@ func _refresh_icons() -> void:
 		var synergy_id := str(summary.get("id", ""))
 		btn.pressed.connect(func(): _toggle_detail(synergy_id))
 		item.add_child(btn)
+		synergy_buttons[synergy_id] = btn
 
 	detail_panel.position.y = float(row_count) * (item_height + icon_spacing) + 6.0
 
@@ -209,6 +267,29 @@ func _toggle_detail(synergy_id: String) -> void:
 	_refresh_detail()
 
 
+func _input(event: InputEvent) -> void:
+	if not detail_panel or not detail_panel.visible:
+		return
+	if not (event is InputEventMouseButton):
+		return
+	var mouse_event := event as InputEventMouseButton
+	if mouse_event.button_index != MOUSE_BUTTON_LEFT or not mouse_event.pressed:
+		return
+	if detail_panel.get_global_rect().has_point(mouse_event.position):
+		return
+	var selected_button = synergy_buttons.get(selected_synergy_id)
+	if selected_button is Control and is_instance_valid(selected_button) \
+			and (selected_button as Control).get_global_rect().has_point(mouse_event.position):
+		return
+	_hide_detail()
+
+
+func _hide_detail() -> void:
+	selected_synergy_id = ""
+	if detail_panel:
+		detail_panel.visible = false
+
+
 ## 刷新详情。
 func _refresh_detail() -> void:
 	if selected_synergy_id == "":
@@ -225,28 +306,193 @@ func _refresh_detail() -> void:
 ## 格式化详情富文本。
 func _format_detail_rich(summary: Dictionary) -> String:
 	var count: int = int(summary.get("count", 0))
-	var max_threshold: int = int(summary.get("max_threshold", 0))
-	var next_threshold: int = int(summary.get("next_threshold", max_threshold))
-	var is_active: bool = bool(summary.get("is_active", false))
-	var threshold_target: int = max_threshold if is_active else next_threshold
-	var threshold_text: String = "%d/%d" % [count, threshold_target]
-	var members: Array = summary.get("members", [])
-	var member_text: String = "暂无"
-	if not members.is_empty():
-		var names: PackedStringArray = []
-		for member in members:
-			names.append(str(member))
-		member_text = "、".join(names)
-
-	var effect_text: String = _format_effect_lines(summary)
-	return "[b]%s[/b]  %s  [color=#7ed6ff]%d层[/color]\n%s\n%s\n角色：%s" % [
-		_bbcode_escape(str(summary.get("display_name", ""))),
-		threshold_text,
+	var activation_count: int = maxi(1, int(summary.get("activation_count", 1)))
+	var display_name := str(summary.get("display_name", ""))
+	return "[left][font_size=22][b]%s[/b][/font_size]   [color=%s][b]%d层[/b][/color]\n[color=#aab8ca]已激活人数：[/color][b]%d/%d[/b]\n[color=#44647e]━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/color]\n%s\n[color=#44647e]━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/color]\n[font_size=15][b]英雄：[/b][/font_size]\n%s[/left]" % [
+		_bbcode_escape(display_name),
+		NUMBER_COLOR,
 		int(summary.get("layer", 0)),
-		_bbcode_escape(str(summary.get("description", ""))),
-		effect_text,
-		_bbcode_escape(member_text)
+		count,
+		activation_count,
+		_format_effect_paragraphs(summary),
+		_format_hero_roster(summary)
 	]
+
+
+func _format_effect_paragraphs(summary: Dictionary) -> String:
+	var synergy_id := str(summary.get("id", ""))
+	var data: Dictionary = DataRegistry.get_synergy(synergy_id)
+	var templates = data.get("detail_descriptions", [])
+	if not templates is Array or templates.is_empty():
+		return _format_generic_description(summary)
+	var lines: PackedStringArray = []
+	for raw_template in templates:
+		if not raw_template is Dictionary:
+			continue
+		var template: Dictionary = raw_template
+		var text := str(template.get("text", ""))
+		text = text.replace("【某羁绊】", "[color=%s]【%s】[/color]" % [
+			SYNERGY_COLOR, _bbcode_escape(str(summary.get("display_name", "")))
+		])
+		text = _replace_detail_numeric_placeholders(
+			text, template.get("values", []), summary, data
+		)
+		var threshold := int(template.get("threshold", 0))
+		var line_color := "#edf5ff" if int(summary.get("count", 0)) >= threshold else "#8995a5"
+		lines.append("[color=%s]%s[/color]" % [line_color, text])
+	return "\n\n".join(lines)
+
+
+func _replace_detail_numeric_placeholders(
+	description: String,
+	value_specs: Variant,
+	summary: Dictionary,
+	data: Dictionary
+) -> String:
+	var pattern := RegEx.new()
+	pattern.compile("\\[\\+?X\\]")
+	var matches := pattern.search_all(description)
+	if matches.is_empty():
+		return description
+	var specs: Array = value_specs if value_specs is Array else []
+	var result := ""
+	var cursor := 0
+	for index in range(matches.size()):
+		var regex_match := matches[index] as RegExMatch
+		result += description.substr(cursor, regex_match.get_start() - cursor)
+		var token := regex_match.get_string()
+		var value := _resolve_detail_value(specs[index] if index < specs.size() else {}, summary, data)
+		var number_text := _format_number(value)
+		if token == "[+X]" and value >= 0.0:
+			number_text = "+" + number_text
+		result += "[color=%s][b]%s[/b][/color]" % [NUMBER_COLOR, number_text]
+		cursor = regex_match.get_end()
+	result += description.substr(cursor)
+	return result
+
+
+func _resolve_detail_value(spec: Variant, summary: Dictionary, data: Dictionary) -> float:
+	if spec is float or spec is int:
+		return float(spec)
+	if not spec is Dictionary:
+		return 0.0
+	var descriptor: Dictionary = spec
+	var value := 0.0
+	match str(descriptor.get("source", "fixed")):
+		"modifier":
+			value = _modifier_current_value(
+				data.get("scalable_modifiers", []), str(descriptor.get("key", "")), int(summary.get("layer", 0))
+			)
+		"effect":
+			value = _effect_current_value(
+				data.get("main_effect", {}), str(descriptor.get("key", "")), int(summary.get("layer", 0))
+			)
+		_:
+			value = float(descriptor.get("value", 0.0))
+	match str(descriptor.get("format", "number")):
+		"percent":
+			value *= 100.0
+		"bonus_percent":
+			value = (value - 1.0) * 100.0
+	return value
+
+
+func _modifier_current_value(modifiers: Variant, stat: String, layer: int) -> float:
+	if modifiers is Array:
+		for raw_modifier in modifiers:
+			if raw_modifier is Dictionary and str(raw_modifier.get("stat", "")) == stat:
+				return _scaled_value(raw_modifier, layer)
+	return 0.0
+
+
+func _effect_current_value(main_effect: Variant, key: String, layer: int) -> float:
+	if not main_effect is Dictionary:
+		return 0.0
+	var configured = main_effect.get(key, 0.0)
+	return _scaled_value(configured, layer) if configured is Dictionary else float(configured)
+
+
+func _scaled_value(configured: Dictionary, layer: int) -> float:
+	var value := float(configured.get("base", configured.get("value", configured.get("fallback", 0.0))))
+	value += float(layer) * float(configured.get("per_layer", 0.0))
+	if configured.has("max_value"):
+		value = minf(value, float(configured.get("max_value")))
+	if configured.has("min_value"):
+		value = maxf(value, float(configured.get("min_value")))
+	return value
+
+
+func _format_generic_description(summary: Dictionary) -> String:
+	var display_name := str(summary.get("display_name", ""))
+	var description := _highlight_literal_numbers(_bbcode_escape(str(summary.get("description", ""))))
+	var thresholds: Array = summary.get("thresholds", [])
+	for raw_threshold in thresholds:
+		var threshold := int(raw_threshold)
+		description = description.replace(
+			"%d人时" % threshold,
+			"<在场[color=%s][b]%d[/b][/color]名不同[color=%s]【%s】[/color]英雄>" % [
+				NUMBER_COLOR, threshold, SYNERGY_COLOR, _bbcode_escape(display_name)
+			]
+		)
+		description = description.replace(
+			"%d人：" % threshold,
+			"<在场[color=%s][b]%d[/b][/color]名不同[color=%s]【%s】[/color]英雄>" % [
+				NUMBER_COLOR, threshold, SYNERGY_COLOR, _bbcode_escape(display_name)
+			]
+		)
+	description = description.replace("；", "\n\n").replace("。", "。\n\n").strip_edges()
+	var current_values := _format_effect_lines(summary)
+	if "暂无数值项" not in current_values:
+		description += "\n\n[color=#aab8ca]当前效果：[/color]" + current_values.trim_prefix("当前层数数值：")
+	return description
+
+
+func _highlight_literal_numbers(value: String) -> String:
+	var pattern := RegEx.new()
+	pattern.compile("(?<![A-Za-z_])[-+]?\\d+(?:\\.\\d+)?%?")
+	var matches := pattern.search_all(value)
+	if matches.is_empty():
+		return value
+	var result := ""
+	var cursor := 0
+	for regex_match in matches:
+		result += value.substr(cursor, regex_match.get_start() - cursor)
+		result += "[color=%s][b]%s[/b][/color]" % [NUMBER_COLOR, regex_match.get_string()]
+		cursor = regex_match.get_end()
+	result += value.substr(cursor)
+	return result
+
+
+func _format_hero_roster(summary: Dictionary) -> String:
+	var synergy_id := str(summary.get("id", ""))
+	var active_names: Dictionary = {}
+	for member in summary.get("members", []):
+		active_names[str(member)] = true
+	var all_names: PackedStringArray = []
+	if DataRegistry and DataRegistry.has_method("get_all_autochess_hero_ids"):
+		for hero_id in DataRegistry.get_all_autochess_hero_ids():
+			var hero_data: Dictionary = DataRegistry.get_autochess_hero(str(hero_id))
+			var owned_synergies: Array = hero_data.get("autochess_synergy_ids", [])
+			if synergy_id != "trait_advanced" and synergy_id not in owned_synergies:
+				continue
+			var template := ClassDefinitions.get_template(str(hero_id))
+			var hero_name := template.job_name if template else str(hero_id)
+			if hero_name not in all_names:
+				all_names.append(hero_name)
+	for active_name in active_names.keys():
+		if str(active_name) not in all_names:
+			all_names.append(str(active_name))
+	if all_names.is_empty():
+		return "[color=%s]暂无[/color]" % INACTIVE_HERO_COLOR
+	var rendered: PackedStringArray = []
+	for hero_name in all_names:
+		var color := ACTIVE_HERO_COLOR if active_names.has(hero_name) else INACTIVE_HERO_COLOR
+		var weight_open := "[b]" if active_names.has(hero_name) else ""
+		var weight_close := "[/b]" if active_names.has(hero_name) else ""
+		rendered.append("[color=%s]%s%s%s[/color]" % [
+			color, weight_open, _bbcode_escape(hero_name), weight_close
+		])
+	return "  ·  ".join(rendered)
 
 
 ## 格式化effect文本行。
