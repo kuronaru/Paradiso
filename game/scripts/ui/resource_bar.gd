@@ -1,4 +1,4 @@
-# resource_bar.gd — DP资源显示条 + 开始波次按钮
+# resource_bar.gd — 关卡日程显示 + 战斗操作按钮
 class_name ResourceBar
 extends Control
 
@@ -30,15 +30,15 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	info_panel = PanelContainer.new()
-	info_panel.custom_minimum_size = Vector2(300, 116)
+	info_panel.custom_minimum_size = Vector2(240, 46)
 	info_panel.anchor_left = 0.0
 	info_panel.anchor_top = 0.0
 	info_panel.anchor_right = 0.0
 	info_panel.anchor_bottom = 0.0
 	info_panel.offset_left = 10.0
 	info_panel.offset_top = 10.0
-	info_panel.offset_right = 310.0
-	info_panel.offset_bottom = 126.0
+	info_panel.offset_right = 250.0
+	info_panel.offset_bottom = 56.0
 	info_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var info_style := StyleBoxFlat.new()
 	info_style.bg_color = Color(0.035, 0.04, 0.055, 0.82)
@@ -56,42 +56,14 @@ func _ready() -> void:
 	info_margin.add_theme_constant_override("margin_bottom", 8)
 	info_panel.add_child(info_margin)
 
-	var info_stack := VBoxContainer.new()
-	info_stack.add_theme_constant_override("separation", 4)
-	info_margin.add_child(info_stack)
-
-	# DP条
-	dp_label = Label.new()
-	dp_label.add_theme_font_size_override("font_size", 14)
-	dp_label.add_theme_color_override("font_color", Color.WHITE)
-	info_stack.add_child(dp_label)
-
-	dp_bar = ProgressBar.new()
-	dp_bar.custom_minimum_size = Vector2(bar_width, bar_height)
-	dp_bar.max_value = max(ResourceManager.max_dp, 1)
-	dp_bar.show_percentage = false
-	info_stack.add_child(dp_bar)
-
-	# 金币显示
-	gold_label = Label.new()
-	gold_label.name = "GoldLabel"
-	gold_label.add_theme_font_size_override("font_size", 12)
-	gold_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2))
-	info_stack.add_child(gold_label)
-
-	# 单局玩家生命
-	life_label = Label.new()
-	life_label.name = "LifeLabel"
-	life_label.add_theme_font_size_override("font_size", 12)
-	life_label.add_theme_color_override("font_color", Color(1.0, 0.42, 0.42))
-	info_stack.add_child(life_label)
-
-	# 波次
+	# 关卡日程只保留“天数 | 阶段”，其他资源移至各自操作区域。
 	wave_label = Label.new()
 	wave_label.name = "WaveLabel"
-	wave_label.add_theme_font_size_override("font_size", 12)
+	wave_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	wave_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	wave_label.add_theme_font_size_override("font_size", 16)
 	wave_label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
-	info_stack.add_child(wave_label)
+	info_margin.add_child(wave_label)
 
 	start_button_margin = MarginContainer.new()
 	start_button_margin.anchor_left = 0.0
@@ -124,8 +96,6 @@ func _ready() -> void:
 	enemy_preview_btn.pressed.connect(_on_enemy_preview_pressed)
 	preview_button_margin.add_child(enemy_preview_btn)
 
-	ResourceManager.dp_changed.connect(_on_dp_changed)
-	_on_dp_changed(ResourceManager.current_dp, ResourceManager.max_dp)
 	_layout_battle_buttons()
 
 
@@ -135,36 +105,21 @@ func _process(_delta: float) -> void:
 	if viewport_size != size:
 		size = viewport_size
 
-	# 更新金币和波次
-	if gold_label:
-		gold_label.text = "金币: %d" % GameManager.get_active_gold()
-	if life_label:
-		life_label.visible = GameManager.is_roguelike_run
-		life_label.text = "生命: %d / %d" % [GameManager.run_life, GameManager.run_max_life]
-
+	# 更新天数和当前阶段，不再显示部署点、波次、金币与生命。
 	if wave_label:
 		var state_text := ""
 		match BattleManager.state:
 			BattleManager.BattleState.PREPARING:
 				state_text = "准备阶段"
 			BattleManager.BattleState.IN_PROGRESS:
-				state_text = "战斗中"
+				state_text = "战斗阶段"
 			BattleManager.BattleState.WAVE_BREAK:
-				state_text = "波次间隙"
+				state_text = "战斗阶段"
 			BattleManager.BattleState.VICTORY:
-				state_text = "胜利!"
+				state_text = "结算阶段"
 			BattleManager.BattleState.DEFEAT:
-				state_text = "失败!"
-		if GameManager.is_roguelike_run:
-			wave_label.text = "回合: %d/%d | 波次: %d/%d | %s" % [
-				GameManager.current_run_round,
-				GameManager.max_run_rounds,
-				BattleManager.current_wave,
-				BattleManager.total_waves,
-				state_text
-			]
-		else:
-			wave_label.text = "波次: %d/%d | %s" % [BattleManager.current_wave, BattleManager.total_waves, state_text]
+				state_text = "战斗结束"
+		wave_label.text = "第%d天 | %s" % [maxi(1, GameManager.current_run_round), state_text]
 
 	# 更新波次按钮
 	_layout_battle_buttons()
@@ -246,7 +201,8 @@ func _on_enemy_preview_pressed() -> void:
 
 ## 处理部署点变化回调。
 func _on_dp_changed(current: int, max_val: int) -> void:
-	dp_label.text = "DP: %d / %d" % [current, max_val]
+	if dp_label:
+		dp_label.text = "DP: %d / %d" % [current, max_val]
 	if dp_bar:
 		dp_bar.max_value = max(max_val, 1)
 		dp_bar.value = clampi(current, 0, max(max_val, 1))

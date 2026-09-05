@@ -34,6 +34,7 @@ var freeze_btn: Button
 var refresh_btn: Button
 var upgrade_btn: Button
 var gold_label: Label
+var life_label: Label
 var title_label: Label
 var panel_container: PanelContainer
 var content_margin: MarginContainer
@@ -57,6 +58,8 @@ func _ready() -> void:
 		GameManager.run_gold_changed.connect(_on_run_gold_changed)
 	if not GameManager.run_round_changed.is_connected(_on_run_round_changed):
 		GameManager.run_round_changed.connect(_on_run_round_changed)
+	if not GameManager.run_life_changed.is_connected(_on_run_life_changed):
+		GameManager.run_life_changed.connect(_on_run_life_changed)
 	if not BattleManager.unit_deployed.is_connected(_on_roster_changed):
 		BattleManager.unit_deployed.connect(_on_roster_changed)
 	if not BattleManager.unit_retreated.is_connected(_on_roster_changed):
@@ -134,13 +137,23 @@ func _create_info_cell() -> void:
 	stack.alignment = BoxContainer.ALIGNMENT_CENTER
 
 	title_label = Label.new()
-	title_label.text = "酒馆等级 Lv.1"
+	title_label.text = "酒馆 Lv.1"
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	title_label.add_theme_font_size_override("font_size", 16)
 	title_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
 	title_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	stack.add_child(title_label)
+
+	life_label = Label.new()
+	life_label.name = "LifeLabel"
+	life_label.text = "生命 0/0"
+	life_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	life_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	life_label.add_theme_font_size_override("font_size", 14)
+	life_label.add_theme_color_override("font_color", Color(1.0, 0.48, 0.48))
+	life_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	stack.add_child(life_label)
 
 	gold_label = Label.new()
 	gold_label.text = "金币 0"
@@ -301,7 +314,8 @@ func _refresh() -> void:
 	if selected_option_index >= options.size():
 		_set_selected_option(-1)
 	var active_gold := GameManager.get_active_gold()
-	title_label.text = "酒馆等级 Lv.%d" % recruit_system.tavern_level
+	title_label.text = "酒馆 Lv.%d" % recruit_system.tavern_level
+	life_label.text = "生命 %d/%d" % [GameManager.run_life, GameManager.run_max_life]
 	gold_label.text = "金币 %d" % active_gold
 
 	freeze_btn.text = "解冻酒馆" if recruit_system.is_frozen else "冻结酒馆"
@@ -637,6 +651,10 @@ func _on_run_gold_changed(_gold: int) -> void:
 
 
 func _on_run_round_changed(_round: int, _max_rounds: int) -> void:
+	_refresh()
+
+
+func _on_run_life_changed(_current: int, _maximum: int) -> void:
 	_refresh()
 
 

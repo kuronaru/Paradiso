@@ -70,19 +70,25 @@ func _test_life_display() -> void:
 	GameManager.is_roguelike_run = true
 	GameManager.run_max_life = 20
 	GameManager.run_life = 7
+	GameManager.current_run_round = 1
+	BattleManager.state = BattleManager.BattleState.PREPARING
 	var resource_bar := ResourceBar.new()
 	add_child(resource_bar)
 	await get_tree().process_frame
 	resource_bar._process(0.0)
 
-	var life_label := resource_bar.find_child("LifeLabel", true, false) as Label
-	t.assert_true(life_label != null, "resource bar exposes a player-life label")
-	if life_label:
-		t.assert_true(life_label.visible, "life label is visible during a roguelike run")
-		t.assert_eq(life_label.text, "生命: 7 / 20", "life label displays current and maximum life")
+	t.assert_true(resource_bar.dp_label == null and resource_bar.dp_bar == null, "stage progress panel hides deployment points")
+	t.assert_true(resource_bar.gold_label == null and resource_bar.life_label == null, "stage progress panel hides gold and life")
+	t.assert_eq(resource_bar.wave_label.text, "第1天 | 准备阶段", "stage progress uses day notation during preparation")
+	GameManager.current_run_round = 10
+	BattleManager.state = BattleManager.BattleState.IN_PROGRESS
+	resource_bar._process(0.0)
+	t.assert_eq(resource_bar.wave_label.text, "第10天 | 战斗阶段", "stage progress uses day notation during combat without wave details")
 
 	remove_child(resource_bar)
 	resource_bar.queue_free()
+	GameManager.current_run_round = 1
+	BattleManager.state = BattleManager.BattleState.PREPARING
 	await get_tree().process_frame
 
 
@@ -296,6 +302,9 @@ func _test_unit_info_panel(unit: UnitBase, grid: GridSystem) -> void:
 
 func _test_recruit_option_info_panel() -> void:
 	GameManager.is_roguelike_run = true
+	GameManager.run_gold = 2
+	GameManager.run_life = 16
+	GameManager.run_max_life = 20
 	BattleManager.state = BattleManager.BattleState.PREPARING
 	var manager := RecruitPurchaseSpy.new()
 	add_child(manager)
@@ -309,6 +318,17 @@ func _test_recruit_option_info_panel() -> void:
 	await get_tree().process_frame
 	recruit_ui._show()
 	await get_tree().process_frame
+	t.assert_eq(recruit_ui.title_label.text, "酒馆 Lv.1", "recruit first cell shows the compact tavern level")
+	t.assert_eq(recruit_ui.life_label.text, "生命 16/20", "recruit first cell shows run life between tavern and gold")
+	t.assert_eq(recruit_ui.gold_label.text, "金币 2", "recruit first cell keeps the current run gold")
+	t.assert_true(
+		recruit_ui.title_label.get_index() < recruit_ui.life_label.get_index()
+		and recruit_ui.life_label.get_index() < recruit_ui.gold_label.get_index(),
+		"recruit first cell orders tavern, life, and gold vertically"
+	)
+	GameManager.run_life = 15
+	GameManager.run_life_changed.emit(15, 20)
+	t.assert_eq(recruit_ui.life_label.text, "生命 15/20", "recruit life display reacts to life changes")
 
 	var overlay := get_tree().root.get_node_or_null("UnitInfoOverlay") as UnitInfoPanel
 	var option_button := recruit_ui.option_buttons[0] as Button
