@@ -119,6 +119,9 @@ func _test_skills(registry: Node) -> void:
 func _test_enemies(registry: Node) -> void:
 	var pool: Array = registry.get_enemy_pool()
 	t.assert_true(not pool.is_empty(), "enemy pool is not empty")
+	t.assert_eq(pool.size(), 15, "enemy roster exposes 12 regular/elite enemies and 3 bosses")
+	var chapter_counts := {}
+	var rarity_counts := {"common": 0, "elite": 0, "boss": 0}
 	for enemy in pool:
 		var data: Dictionary = enemy
 		var enemy_id := str(data.get("enemy_id", data.get("name", "")))
@@ -131,8 +134,26 @@ func _test_enemies(registry: Node) -> void:
 		t.assert_true(float(data.get("move_speed", 0.0)) >= 0.0, "enemy move_speed non-negative: %s" % enemy_id)
 		t.assert_true(float(data.get("attack_range", 0.0)) >= 0.0, "enemy attack_range non-negative: %s" % enemy_id)
 		t.assert_true(float(data.get("search_range", 0.0)) >= 0.0, "enemy search_range non-negative: %s" % enemy_id)
+		var chapter_id := str(data.get("chapter_id", ""))
+		var rarity := str(data.get("rarity", ""))
+		t.assert_true(chapter_id in ["corrupted_border", "city_of_dead", "abyssal_court"], "enemy chapter is valid: %s" % enemy_id)
+		t.assert_true(rarity in ["common", "elite", "boss"], "visible enemy rarity is valid: %s" % enemy_id)
+		chapter_counts[chapter_id] = int(chapter_counts.get(chapter_id, 0)) + 1
+		rarity_counts[rarity] = int(rarity_counts.get(rarity, 0)) + 1
+		t.assert_true(str(data.get("combat_role", "")).strip_edges() != "", "enemy combat role set: %s" % enemy_id)
+		t.assert_true(data.get("tags", []) is Array and not data.get("tags", []).is_empty(), "enemy tags set: %s" % enemy_id)
 		for skill_id in _string_array(data.get("skills", [])):
 			t.assert_true(registry.get_all_skill_ids().has(skill_id), "enemy skill exists: %s -> %s" % [enemy_id, skill_id])
+		for passive in _dictionary_array(data.get("passives", [])):
+			var script_path := str(passive.get("script", passive.get("script_path", "")))
+			t.assert_true(script_path != "" and ResourceLoader.exists(script_path), "enemy passive script exists: %s" % enemy_id)
+	for chapter_id in ["corrupted_border", "city_of_dead", "abyssal_court"]:
+		t.assert_eq(int(chapter_counts.get(chapter_id, 0)), 5, "chapter exposes five roster enemies: %s" % chapter_id)
+	t.assert_eq(int(rarity_counts.get("common", 0)), 9, "roster has nine common enemies")
+	t.assert_eq(int(rarity_counts.get("elite", 0)), 3, "roster has three elite enemies")
+	t.assert_eq(int(rarity_counts.get("boss", 0)), 3, "roster has three bosses")
+	var split_add: Dictionary = registry.get_enemy("corrupted_slime_small")
+	t.assert_true(bool(split_add.get("hidden", false)), "slime split add remains loadable but hidden from roster")
 
 
 func _test_synergies(registry: Node) -> void:
@@ -203,8 +224,27 @@ func _test_auto_traits(registry: Node) -> void:
 
 
 func _test_waves(registry: Node) -> void:
-	var waves: Array = registry.get_waves_for_battle("")
-	t.assert_true(waves is Array, "waves can be queried by battle id")
+	var expected_battles := [
+		"f1_battle1", "f1_battle2", "f1_elite1", "f1_boss",
+		"f2_battle1", "f2_battle2", "f2_elite1", "f2_boss",
+		"f3_battle1", "f3_battle2", "f3_elite1", "f3_elite2", "f3_boss",
+	]
+	var wave_ids: Array = registry.get_all_wave_ids()
+	t.assert_true(not wave_ids.is_empty(), "scripted waves table is not empty")
+	for wave_id in wave_ids:
+		var wave: Dictionary = registry.get_wave(wave_id)
+		var enemy_id := str(wave.get("enemy_id", ""))
+		t.assert_true(str(wave.get("battle_id", "")) in expected_battles, "wave battle id is recognized: %s" % wave_id)
+		t.assert_true(not registry.get_enemy(enemy_id).is_empty(), "wave enemy exists: %s -> %s" % [wave_id, enemy_id])
+		t.assert_true(int(wave.get("wave_index", 0)) >= 1, "wave index positive: %s" % wave_id)
+		t.assert_true(int(wave.get("count", 0)) >= 1, "wave count positive: %s" % wave_id)
+	for battle_id in expected_battles:
+		var records: Array = registry.get_waves_for_battle(battle_id)
+		t.assert_true(not records.is_empty(), "battle has scripted wave records: %s" % battle_id)
+		var wave_indexes := {}
+		for record in records:
+			wave_indexes[int((record as Dictionary).get("wave_index", 0))] = true
+		t.assert_eq(wave_indexes.size(), 2, "battle has two designed waves: %s" % battle_id)
 
 
 func _registry() -> Node:

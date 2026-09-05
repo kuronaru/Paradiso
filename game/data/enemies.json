@@ -1,109 +1,128 @@
 {
-	"goblin": {
-		"enemy_id": "goblin",
-		"enabled": true,
-		"name": "哥布林",
-		"enemy_type": "melee",
-		"hp": 60,
-		"atk": 8,
-		"def": 2,
-		"attack_speed": 1.2,
-		"move_speed": 2.0,
-		"attack_range": 1.0,
-		"search_range": 4.0,
-		"skills": [],
-		"tags": [
-			"small",
-			"fast"
-		]
+	"corrupted_slime": {
+		"enemy_id": "corrupted_slime", "enabled": true, "name": "腐泥史莱姆",
+		"enemy_type": "melee", "chapter_id": "corrupted_border", "rarity": "common", "combat_role": "frontline_stall",
+		"hp": 99, "atk": 4, "def": 2, "attack_speed": 0.78, "move_speed": 1.1, "attack_range": 1.0, "search_range": 3.0,
+		"base_damage": 1, "body_radius_scale": 1.1, "visual_color": "#334d32", "skills": [],
+		"passives": [{"passive_id":"slime_split","script":"res://scripts/passives/enemy_mechanic_passive.gd","mechanic_id":"slime_split","params":{"spawn_enemy_id":"corrupted_slime_small","spawn_count":2}}],
+		"tags": ["small", "ooze", "frontline", "stall"]
 	},
-	"skeleton": {
-		"enemy_id": "skeleton",
-		"enabled": true,
-		"name": "骷髅兵",
-		"enemy_type": "melee",
-		"hp": 80,
-		"atk": 12,
-		"def": 4,
-		"attack_speed": 1.0,
-		"move_speed": 1.5,
-		"attack_range": 1.0,
-		"search_range": 5.0,
-		"skills": [],
-		"tags": [
-			"undead"
-		]
+	"corrupted_slime_small": {
+		"enemy_id": "corrupted_slime_small", "enabled": true, "hidden": true, "name": "腐泥幼体",
+		"enemy_type": "melee", "chapter_id": "corrupted_border", "rarity": "summon", "combat_role": "split_add",
+		"hp": 30, "atk": 3, "def": 0, "attack_speed": 1.1, "move_speed": 2.2, "attack_range": 1.0, "search_range": 3.0,
+		"base_damage": 1, "body_radius_scale": 0.55, "visual_color": "#527a43", "skills": [], "passives": [],
+		"tags": ["small", "ooze", "summon"]
 	},
-	"skeleton_archer": {
-		"enemy_id": "skeleton_archer",
-		"enabled": true,
-		"name": "骷髅弓手",
-		"enemy_type": "ranged",
-		"hp": 50,
-		"atk": 15,
-		"def": 1,
-		"attack_speed": 0.8,
-		"move_speed": 1.5,
-		"attack_range": 4.0,
-		"search_range": 6.0,
-		"skills": [],
-		"tags": [
-			"undead",
-			"ranged"
-		]
+	"plague_goblin": {
+		"enemy_id": "plague_goblin", "enabled": true, "name": "狂疫哥布林",
+		"enemy_type": "melee", "chapter_id": "corrupted_border", "rarity": "common", "combat_role": "fast_pressure",
+		"hp": 51, "atk": 7, "def": 1, "attack_speed": 1.62, "move_speed": 2.7, "attack_range": 1.0, "search_range": 4.0,
+		"base_damage": 1, "visual_color": "#80933c", "skills": [],
+		"passives": [{"passive_id":"plague_strikes","script":"res://scripts/passives/enemy_mechanic_passive.gd","mechanic_id":"plague_strikes","params":{"required_hits":3,"duration":4.0,"incoming_heal_multiplier":0.65}}],
+		"tags": ["small", "goblin", "fast", "swarm"]
 	},
-	"ogre": {
-		"enemy_id": "ogre",
-		"enabled": true,
-		"name": "食人魔",
-		"enemy_type": "brute",
-		"hp": 200,
-		"atk": 25,
-		"def": 8,
-		"attack_speed": 0.5,
-		"move_speed": 1.0,
-		"attack_range": 1.5,
-		"search_range": 4.0,
-		"skills": [],
-		"tags": [
-			"large",
-			"elite"
-		]
+	"blackfeather_spearman": {
+		"enemy_id": "blackfeather_spearman", "enabled": true, "name": "黑羽投矛手",
+		"enemy_type": "ranged", "chapter_id": "corrupted_border", "rarity": "common", "combat_role": "backline_damage", "target_priority": "lowest_defense",
+		"hp": 42, "atk": 10, "def": 1, "attack_speed": 1.02, "move_speed": 1.8, "attack_range": 4.0, "search_range": 6.0,
+		"base_damage": 1, "visual_color": "#6b432f", "skills": [], "passives": [],
+		"tags": ["small", "goblin", "ranged", "backline"]
 	},
-	"gargoyle": {
-		"enemy_id": "gargoyle",
-		"enabled": true,
-		"name": "石像鬼",
-		"enemy_type": "ranged",
-		"hp": 70,
-		"atk": 18,
-		"def": 3,
-		"attack_speed": 1.0,
-		"move_speed": 3.0,
-		"attack_range": 3.0,
-		"search_range": 7.0,
-		"skills": [],
-		"tags": [
-			"flying",
-			"ranged"
-		]
+	"ogre_butcher": {
+		"enemy_id": "ogre_butcher", "enabled": true, "name": "食人魔屠夫",
+		"enemy_type": "brute", "chapter_id": "corrupted_border", "rarity": "elite", "combat_role": "formation_breaker",
+		"hp": 180, "atk": 19, "def": 5, "attack_speed": 0.54, "move_speed": 1.3, "attack_range": 1.5, "search_range": 4.0,
+		"base_damage": 2, "body_radius_scale": 1.25, "visual_color": "#7d2f28", "skills": [],
+		"passives": [{"passive_id":"butcher_sweep","script":"res://scripts/passives/enemy_mechanic_passive.gd","mechanic_id":"butcher_sweep","params":{"trigger_every":3,"radius":1.5,"damage_multiplier":0.75}}],
+		"tags": ["large", "elite", "ogre", "breaker"]
 	},
-	"dragon_boss": {
-		"enemy_id": "dragon_boss",
-		"enabled": true,
-		"name": "巨龙Boss",
-		"enemy_type": "boss",
-		"hp": 500,
-		"atk": 40,
-		"def": 12,
-		"attack_speed": 0.4,
-		"move_speed": 0.8,
-		"attack_range": 3.0,
-		"search_range": 8.0,
-		"skills": [],
-		"tags": [
-			"boss",
-			"large"
-		]
+	"plaguecrown_goblin_king": {
+		"enemy_id": "plaguecrown_goblin_king", "enabled": true, "name": "瘟冠哥布林王",
+		"enemy_type": "boss", "chapter_id": "corrupted_border", "rarity": "boss", "combat_role": "commander_summoner",
+		"hp": 450, "atk": 18, "def": 4, "attack_speed": 0.9, "move_speed": 1.5, "attack_range": 2.0, "search_range": 7.0,
+		"base_damage": 20, "body_radius_scale": 1.2, "visual_color": "#8d285d", "skills": [],
+		"passives": [{"passive_id":"plaguecrown_phases","script":"res://scripts/passives/enemy_mechanic_passive.gd","mechanic_id":"plaguecrown_phases","params":{"summon_enemy_id":"plague_goblin","summon_interval":7.0,"max_summons":4,"aura_radius":3.0,"aura_attack_speed_multiplier":1.2,"aura_duration":0.8,"slow_radius":2.0,"slow_multiplier":0.7,"slow_duration":2.5,"rage_attack_speed_multiplier":1.55,"rage_move_speed_multiplier":1.45}}],
+		"tags": ["boss", "goblin", "commander", "summoner"]
+	},
+	"skeleton_shieldguard": {
+		"enemy_id": "skeleton_shieldguard", "enabled": true, "name": "骷髅盾卫",
+		"enemy_type": "melee", "chapter_id": "city_of_dead", "rarity": "common", "combat_role": "armored_frontline",
+		"hp": 102, "atk": 5, "def": 6, "attack_speed": 0.78, "move_speed": 1.3, "attack_range": 1.0, "search_range": 4.0,
+		"base_damage": 1, "body_radius_scale": 1.1, "visual_color": "#71808f", "skills": [],
+		"passives": [{"passive_id":"shieldguard_front","script":"res://scripts/passives/enemy_mechanic_passive.gd","mechanic_id":"shieldguard_front","params":{"front_damage_multiplier":0.65}}],
+		"tags": ["undead", "armored", "frontline", "protector"]
+	},
+	"bonebow_hunter": {
+		"enemy_id": "bonebow_hunter", "enabled": true, "name": "骨弓猎手",
+		"enemy_type": "ranged", "chapter_id": "city_of_dead", "rarity": "common", "combat_role": "focus_fire",
+		"hp": 45, "atk": 11, "def": 1, "attack_speed": 0.9, "move_speed": 1.6, "attack_range": 5.0, "search_range": 7.0,
+		"base_damage": 1, "visual_color": "#7b8fa8", "skills": [],
+		"passives": [{"passive_id":"bonebow_focus","script":"res://scripts/passives/enemy_mechanic_passive.gd","mechanic_id":"bonebow_focus","params":{"damage_per_stack":0.12,"max_stacks":3}}],
+		"tags": ["undead", "ranged", "backline", "focus_fire"]
+	},
+	"starving_ghoul": {
+		"enemy_id": "starving_ghoul", "enabled": true, "name": "饥饿尸鬼",
+		"enemy_type": "melee", "chapter_id": "city_of_dead", "rarity": "common", "combat_role": "finisher", "target_priority": "lowest_hp_ratio",
+		"hp": 69, "atk": 10, "def": 2, "attack_speed": 1.38, "move_speed": 2.2, "attack_range": 1.0, "search_range": 5.0,
+		"base_damage": 1, "visual_color": "#596d73", "skills": [],
+		"passives": [{"passive_id":"ghoul_bloodscent","script":"res://scripts/passives/enemy_mechanic_passive.gd","mechanic_id":"ghoul_bloodscent","params":{"hp_threshold":0.5,"life_steal_ratio":0.25}}],
+		"tags": ["undead", "melee", "finisher", "lifesteal"]
+	},
+	"wailing_banshee": {
+		"enemy_id": "wailing_banshee", "enabled": true, "name": "哀嚎女妖",
+		"enemy_type": "ranged", "chapter_id": "city_of_dead", "rarity": "elite", "combat_role": "area_disruptor",
+		"hp": 132, "atk": 14, "def": 2, "attack_speed": 0.84, "move_speed": 1.9, "attack_range": 4.5, "search_range": 7.0,
+		"base_damage": 2, "body_radius_scale": 1.1, "is_airborne": true, "visual_color": "#5964a6", "skills": [],
+		"passives": [{"passive_id":"banshee_wail","script":"res://scripts/passives/enemy_mechanic_passive.gd","mechanic_id":"banshee_wail","params":{"interval":6.0,"radius":2.5,"duration":3.0,"attack_speed_multiplier":0.72}}],
+		"tags": ["undead", "elite", "ranged", "disruptor", "flying"]
+	},
+	"headless_cemetery_knight": {
+		"enemy_id": "headless_cemetery_knight", "enabled": true, "name": "无头墓园骑士",
+		"enemy_type": "boss", "chapter_id": "city_of_dead", "rarity": "boss", "combat_role": "armored_charger",
+		"hp": 510, "atk": 20, "def": 7, "attack_speed": 0.78, "move_speed": 1.6, "attack_range": 1.5, "search_range": 6.0,
+		"base_damage": 20, "body_radius_scale": 1.3, "visual_color": "#384561", "skills": [],
+		"passives": [{"passive_id":"cemetery_knight_phases","script":"res://scripts/passives/enemy_mechanic_passive.gd","mechanic_id":"cemetery_knight_phases","params":{"front_damage_multiplier":0.75,"summon_enemy_id":"skeleton_shieldguard","summon_count":2,"rage_attack_speed_multiplier":1.5,"rage_move_speed_multiplier":1.6,"rage_defense_multiplier":0.7}}],
+		"tags": ["boss", "undead", "armored", "summoner", "charger"]
+	},
+	"bloodpact_imp": {
+		"enemy_id": "bloodpact_imp", "enabled": true, "name": "血契小恶魔",
+		"enemy_type": "melee", "chapter_id": "abyssal_court", "rarity": "common", "combat_role": "backline_diver", "target_priority": "farthest",
+		"hp": 39, "atk": 8, "def": 1, "attack_speed": 1.74, "move_speed": 3.2, "attack_range": 1.0, "search_range": 6.0,
+		"base_damage": 1, "body_radius_scale": 0.8, "is_airborne": true, "visual_color": "#9b315e", "skills": [],
+		"passives": [{"passive_id":"imp_swoop","script":"res://scripts/passives/enemy_mechanic_passive.gd","mechanic_id":"imp_swoop","params":{"flight_duration":2.5}}],
+		"tags": ["demon", "small", "fast", "diver", "flying"]
+	},
+	"court_gargoyle": {
+		"enemy_id": "court_gargoyle", "enabled": true, "name": "王庭石像鬼",
+		"enemy_type": "ranged", "chapter_id": "abyssal_court", "rarity": "common", "combat_role": "armored_ranged",
+		"hp": 90, "atk": 10, "def": 4, "attack_speed": 0.9, "move_speed": 2.4, "attack_range": 3.5, "search_range": 7.0,
+		"base_damage": 1, "body_radius_scale": 1.05, "is_airborne": true, "visual_color": "#4e405f", "skills": [],
+		"passives": [{"passive_id":"gargoyle_stance","script":"res://scripts/passives/enemy_mechanic_passive.gd","mechanic_id":"gargoyle_stance","params":{"grounded_defense_multiplier":1.35}}],
+		"tags": ["construct", "demon", "ranged", "armored", "flying"]
+	},
+	"succubus_inquisitor": {
+		"enemy_id": "succubus_inquisitor", "enabled": true, "name": "魅魔审讯官",
+		"enemy_type": "ranged", "chapter_id": "abyssal_court", "rarity": "common", "combat_role": "single_target_disruptor", "target_priority": "highest_attack",
+		"hp": 60, "atk": 7, "def": 2, "attack_speed": 0.96, "move_speed": 2.0, "attack_range": 4.0, "search_range": 8.0,
+		"base_damage": 1, "visual_color": "#8b467f", "skills": [],
+		"passives": [{"passive_id":"inquisitor_question","script":"res://scripts/passives/enemy_mechanic_passive.gd","mechanic_id":"inquisitor_question","params":{"interval":5.0,"duration":3.0,"attack_multiplier":0.72}}],
+		"tags": ["demon", "ranged", "support", "disruptor"]
+	},
+	"abyssal_black_knight": {
+		"enemy_id": "abyssal_black_knight", "enabled": true, "name": "深渊黑骑士",
+		"enemy_type": "brute", "chapter_id": "abyssal_court", "rarity": "elite", "combat_role": "shielded_breaker",
+		"hp": 192, "atk": 16, "def": 6, "attack_speed": 0.84, "move_speed": 1.5, "attack_range": 1.5, "search_range": 5.0,
+		"base_damage": 2, "body_radius_scale": 1.2, "visual_color": "#302b45", "skills": [],
+		"passives": [{"passive_id":"black_knight_shield","script":"res://scripts/passives/enemy_mechanic_passive.gd","mechanic_id":"black_knight_shield","params":{"shield_max_hp_ratio":0.3,"broken_attack_multiplier":1.45,"broken_attack_speed_multiplier":1.4,"broken_defense_multiplier":0.7}}],
+		"tags": ["demon", "elite", "armored", "breaker", "shield"]
+	},
+	"fallen_black_dragon": {
+		"enemy_id": "fallen_black_dragon", "enabled": true, "name": "堕落黑龙",
+		"enemy_type": "boss", "chapter_id": "abyssal_court", "rarity": "boss", "combat_role": "ranged_phase_boss",
+		"hp": 600, "atk": 24, "def": 6, "attack_speed": 0.66, "move_speed": 1.3, "attack_range": 4.0, "search_range": 8.0,
+		"base_damage": 20, "body_radius_scale": 1.45, "visual_color": "#4b173f", "skills": [],
+		"passives": [{"passive_id":"black_dragon_phases","script":"res://scripts/passives/enemy_mechanic_passive.gd","mechanic_id":"black_dragon_phases","params":{"breath_interval":7.0,"breath_damage_multiplier":1.1,"breath_width":1,"summon_enemy_id":"bloodpact_imp","summon_count":3,"air_duration":3.0,"rage_attack_speed_multiplier":1.45,"rage_move_speed_multiplier":1.35,"dive_interval":5.0,"dive_damage_multiplier":1.25}}],
+		"tags": ["boss", "dragon", "flying", "ranged", "phase_change"]
 	}
 }

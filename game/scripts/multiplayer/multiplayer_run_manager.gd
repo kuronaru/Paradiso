@@ -1211,6 +1211,8 @@ func _sanitize_enemy_payload(
 		"attack_range": clampf(float(value.get("attack_range", 1.0)), 0.0, 1000.0),
 		"search_range": clampf(float(value.get("search_range", 5.0)), 0.0, 1000.0),
 		"collision_radius": clampf(float(value.get("collision_radius", 0.0)), 0.0, 10_000.0),
+		"body_radius_scale": clampf(float(value.get("body_radius_scale", 1.0)), 0.35, 4.0),
+		"is_airborne": bool(value.get("is_airborne", false)),
 		"source_player_id": maxi(0, source_peer_id),
 		"base_damage": clampi(int(value.get("base_damage", 1)), 1, MAX_BASE_DAMAGE),
 		"transfer_count": clampi(int(value.get("transfer_count", 0)), 0, MAX_TRANSFER_COUNT),
@@ -1218,7 +1220,7 @@ func _sanitize_enemy_payload(
 	if payload["enemy_id"].is_empty():
 		return {}
 
-	for optional_string_key in ["visual_id"]:
+	for optional_string_key in ["visual_id", "visual_color", "chapter_id", "rarity", "combat_role", "target_priority"]:
 		if value.has(optional_string_key):
 			payload[optional_string_key] = _bounded_string(value[optional_string_key], 128)
 	for optional_collection_key in ["passives", "skills", "tags"]:

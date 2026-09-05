@@ -293,14 +293,4 @@ static func _range_shape(value: String) -> int:
 
 
 static func _target_priority(value: String) -> int:
-	match value:
-		"lowest_hp":
-			return ClassTemplate.TargetPriority.LOWEST_HP
-		"highest_atk":
-			return ClassTemplate.TargetPriority.HIGHEST_ATK
-		"farthest":
-			return ClassTemplate.TargetPriority.FARTHEST
-		"random":
-			return ClassTemplate.TargetPriority.RANDOM
-		_:
-			return ClassTemplate.TargetPriority.NEAREST
+	return ClassTemplate.target_priority_from_key(value)

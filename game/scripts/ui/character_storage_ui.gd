@@ -757,19 +757,7 @@ func _range_shape_name(value: int) -> String:
 
 ## 处理目标priorityname逻辑。
 func _target_priority_name(value: int) -> String:
-	match value:
-		ClassTemplate.TargetPriority.NEAREST:
-			return "最近"
-		ClassTemplate.TargetPriority.LOWEST_HP:
-			return "最低生命"
-		ClassTemplate.TargetPriority.HIGHEST_ATK:
-			return "最高攻击"
-		ClassTemplate.TargetPriority.FARTHEST:
-			return "最远"
-		ClassTemplate.TargetPriority.RANDOM:
-			return "随机"
-		_:
-			return "未知"
+	return ClassTemplate.target_priority_display_name(value)
 
 
 ## 处理bool文本逻辑。

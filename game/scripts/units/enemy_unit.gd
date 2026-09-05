@@ -18,6 +18,9 @@ enum EnemyType {
 var enemy_type: EnemyType = EnemyType.MELEE
 var enemy_id: String = ""
 var enemy_template_name: String = ""
+var chapter_id: String = ""
+var rarity: String = "common"
+var target_priority: String = "nearest"
 var enemy_uid: String = ""
 var source_player_id: int = 1
 var base_damage: int = 1
@@ -44,6 +47,9 @@ func setup_from_template(template: Dictionary) -> void:
 	spawn_template = template.duplicate(true)
 	enemy_id = str(template.get("enemy_id", ""))
 	enemy_template_name = template.get("name", "Unknown")
+	chapter_id = str(template.get("chapter_id", ""))
+	rarity = str(template.get("rarity", "common"))
+	target_priority = str(template.get("target_priority", "nearest")).strip_edges().to_lower()
 	enemy_type = _enemy_type_from_value(template.get("type", template.get("enemy_type", EnemyType.MELEE)))
 	enemy_uid = str(template.get("enemy_uid", ""))
 	source_player_id = int(template.get("source_player_id", 1))
@@ -77,6 +83,10 @@ func setup_from_template(template: Dictionary) -> void:
 		EnemyType.BOSS:
 			color = Color(0.8, 0.1, 0.5)
 			reference_body_radius = 40.0
+	var configured_color := str(template.get("visual_color", ""))
+	if configured_color != "":
+		color = Color.from_string(configured_color, color)
+	reference_body_radius *= maxf(0.35, float(template.get("body_radius_scale", 1.0)))
 
 	var type_scale := reference_body_radius / REFERENCE_BODY_RADIUS
 	reference_collision_radius = configured_collision_radius if configured_collision_radius > 0.0 else REFERENCE_COLLISION_RADIUS * type_scale
@@ -120,6 +130,9 @@ func to_transfer_payload() -> Dictionary:
 	payload["enemy_uid"] = enemy_uid
 	payload["enemy_id"] = enemy_id
 	payload["name"] = enemy_template_name
+	payload["chapter_id"] = chapter_id
+	payload["rarity"] = rarity
+	payload["target_priority"] = target_priority
 	payload["type"] = int(enemy_type)
 	payload["hp"] = max_hp
 	payload["max_hp"] = max_hp
@@ -135,6 +148,10 @@ func to_transfer_payload() -> Dictionary:
 	payload["base_damage"] = base_damage
 	payload["transfer_count"] = transfer_count
 	return payload
+
+
+func get_target_priority() -> String:
+	return target_priority
 
 
 func mark_resolved() -> void:

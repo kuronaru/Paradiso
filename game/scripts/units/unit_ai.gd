@@ -196,27 +196,15 @@ func _find_target() -> void:
 		owner_unit.target = null
 		return
 
-	var priority
+	var priority_key := "nearest"
 	if owner_unit.class_template:
-		priority = owner_unit.class_template.target_priority
-	else:
-		priority = ClassTemplate.TargetPriority.NEAREST
-
-	match priority:
-		ClassTemplate.TargetPriority.NEAREST:
-			if _is_healer():
-				_select_by(candidates, func(u): return u.current_hp, false)
-			else:
-				_select_by(candidates, func(u): return grid.get_distance(search_center, u.grid_position), false)
-		ClassTemplate.TargetPriority.LOWEST_HP:
-			_select_by(candidates, func(u): return u.current_hp, false)
-		ClassTemplate.TargetPriority.HIGHEST_ATK:
-			_select_by(candidates, func(u): return u.attack, true)
-		ClassTemplate.TargetPriority.FARTHEST:
-			_select_by(candidates, func(u): return grid.get_distance(search_center, u.grid_position), true)
-		ClassTemplate.TargetPriority.RANDOM:
-			candidates.shuffle()
-			owner_unit.target = candidates[0] if not candidates.is_empty() else null
+		priority_key = ClassTemplate.target_priority_key(owner_unit.class_template.target_priority)
+	elif owner_unit.has_method("get_target_priority"):
+		priority_key = ClassTemplate.normalize_target_priority_key(str(owner_unit.get_target_priority()))
+	# 治疗职业的历史默认行为是“先治当前生命最低者”，保留该兼容性。
+	if _is_healer() and priority_key == "nearest":
+		priority_key = "lowest_hp"
+	_select_by_priority(candidates, priority_key, search_center, grid)
 
 
 ## 判断治疗者状态。
@@ -231,16 +219,95 @@ func _get_target_team() -> String:
 	return "enemy" if owner_unit.team == "player" else "player"
 
 
+## 根据归一化的数据键选择目标。
+func _select_by_priority(candidates: Array, priority_key: String, search_center: Vector2i, grid: GridSystem) -> void:
+	match ClassTemplate.normalize_target_priority_key(priority_key):
+		"nearest":
+			_select_by(candidates, func(u): return grid.get_distance(search_center, u.grid_position), false)
+		"farthest":
+			_select_by(candidates, func(u): return grid.get_distance(search_center, u.grid_position), true)
+		"lowest_hp":
+			_select_by(candidates, func(u): return u.current_hp, false)
+		"highest_hp":
+			_select_by(candidates, func(u): return u.current_hp, true)
+		"lowest_hp_ratio":
+			_select_by(candidates, func(u): return float(u.current_hp) / float(maxi(1, u.max_hp)), false)
+		"highest_hp_ratio":
+			_select_by(candidates, func(u): return float(u.current_hp) / float(maxi(1, u.max_hp)), true)
+		"lowest_max_hp":
+			_select_by(candidates, func(u): return u.max_hp, false)
+		"highest_max_hp":
+			_select_by(candidates, func(u): return u.max_hp, true)
+		"lowest_missing_hp":
+			_select_by(candidates, func(u): return maxi(0, u.max_hp - u.current_hp), false)
+		"highest_missing_hp":
+			_select_by(candidates, func(u): return maxi(0, u.max_hp - u.current_hp), true)
+		"lowest_attack":
+			_select_by(candidates, func(u): return u.attack, false)
+		"highest_attack":
+			_select_by(candidates, func(u): return u.attack, true)
+		"lowest_defense":
+			_select_by(candidates, func(u): return u.defense, false)
+		"highest_defense":
+			_select_by(candidates, func(u): return u.defense, true)
+		"lowest_attack_speed":
+			_select_by(candidates, func(u): return u.attack_speed, false)
+		"highest_attack_speed":
+			_select_by(candidates, func(u): return u.attack_speed, true)
+		"lowest_move_speed":
+			_select_by(candidates, func(u): return u.move_speed, false)
+		"highest_move_speed":
+			_select_by(candidates, func(u): return u.move_speed, true)
+		"lowest_attack_range":
+			_select_by(candidates, func(u): return u.attack_range, false)
+		"highest_attack_range":
+			_select_by(candidates, func(u): return u.attack_range, true)
+		"lowest_search_range":
+			_select_by(candidates, func(u): return u.search_range, false)
+		"highest_search_range":
+			_select_by(candidates, func(u): return u.search_range, true)
+		"lowest_level":
+			_select_by(candidates, func(u): return u.level, false)
+		"highest_level":
+			_select_by(candidates, func(u): return u.level, true)
+		"lowest_star_level":
+			_select_by(candidates, func(u): return _star_level_of(u), false)
+		"highest_star_level":
+			_select_by(candidates, func(u): return _star_level_of(u), true)
+		"ground_first":
+			_select_by(candidates, func(u): return 1 if u.airborne else 0, false)
+		"airborne_first":
+			_select_by(candidates, func(u): return 1 if u.airborne else 0, true)
+		"random":
+			candidates.shuffle()
+			owner_unit.target = candidates[0] if not candidates.is_empty() else null
+
+
+## 非英雄单位没有星级字段，按一星处理。
+func _star_level_of(unit: UnitBase) -> int:
+	return unit.star_level if unit is HeroUnit else 1
+
+
 ## 按指定评分函数选择目标。
 func _select_by(candidates: Array, value_fn: Callable, highest: bool) -> void:
 	var best = null
 	var best_val = -INF if highest else INF
 	for u in candidates:
-		var v = value_fn.call(u)
-		if (highest and v > best_val) or (not highest and v < best_val):
+		var v := float(value_fn.call(u))
+		var is_better := (highest and v > best_val) or (not highest and v < best_val)
+		if best == null or is_better or (is_equal_approx(v, best_val) and _wins_priority_tie(u, best)):
 			best_val = v
 			best = u
 	owner_unit.target = best
+
+
+## 主评分相同时优先距离更近者，再用实例 ID 保证结果稳定。
+func _wins_priority_tie(candidate: Node, incumbent: Node) -> bool:
+	var candidate_distance := _distance_to(candidate)
+	var incumbent_distance := _distance_to(incumbent)
+	if not is_equal_approx(candidate_distance, incumbent_distance):
+		return candidate_distance < incumbent_distance
+	return candidate.get_instance_id() < incumbent.get_instance_id()
 
 
 ## 计算到目标的距离。

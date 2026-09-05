@@ -40,6 +40,7 @@ var current_wave: int = 0
 var total_waves: int = 3
 var enemy_pool: Array = []
 var wave_enemies: Array = []
+var scripted_waves: Array = []
 var next_wave_preview_enemies: Array[Dictionary] = []
 var _next_wave_preview_index: int = -1
 
@@ -62,7 +63,13 @@ var _joint_seen_enemy_uids: Dictionary = {}
 
 
 ## 初始化一场本地战斗。
-func setup_battle(_party_data: Array, enemies: Array, wave_count: int = 3, preserve_player_units: bool = false) -> void:
+func setup_battle(
+	_party_data: Array,
+	enemies: Array,
+	wave_count: int = 3,
+	preserve_player_units: bool = false,
+	scripted_wave_templates: Array = []
+) -> void:
 	if preserve_player_units:
 		_clear_enemy_units()
 		_prepare_existing_player_units()
@@ -74,6 +81,9 @@ func setup_battle(_party_data: Array, enemies: Array, wave_count: int = 3, prese
 	phase = BattlePhase.LOCAL
 	total_waves = maxi(1, wave_count)
 	enemy_pool = enemies.duplicate(true)
+	scripted_waves = scripted_wave_templates.duplicate(true)
+	if not scripted_waves.is_empty():
+		total_waves = scripted_waves.size()
 	current_wave = 0
 	defeated_enemy_count = 0
 	breached_enemy_payloads.clear()
@@ -219,6 +229,13 @@ func _prepare_next_wave_preview() -> void:
 ## 随机抽取指定波次的敌人模板；模板尚未获得运行时 UID，也不会注册为战斗单位。
 func _build_wave_enemy_templates(wave_index: int) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
+	if not scripted_waves.is_empty() and wave_index >= 1 and wave_index <= scripted_waves.size():
+		var configured_wave = scripted_waves[wave_index - 1]
+		if configured_wave is Array:
+			for template_value in configured_wave:
+				if template_value is Dictionary:
+					result.append((template_value as Dictionary).duplicate(true))
+		return result
 	var count: int = _cfg_int("battle_base_wave_enemy_count", 2) + wave_index * _cfg_int("battle_enemy_count_per_wave", 2)
 	var available_enemies := enemy_pool.duplicate(true)
 	for _i in range(count):
@@ -316,6 +333,9 @@ func handle_enemy_reached_player_base(enemy: EnemyUnit) -> bool:
 		breached_enemy_payloads.append(payload.duplicate(true))
 		enemy_breached.emit(payload)
 		var damage := maxi(1, int(payload.get("base_damage", _cfg_int("enemy_base_damage", 1))))
+		var payload_tags = payload.get("tags", [])
+		if payload_tags is Array and "boss" in payload_tags:
+			damage = maxi(damage, GameManager.run_life)
 		GameManager.damage_run_life(damage)
 		if not GameManager.is_run_player_alive():
 			_battle_lost()
@@ -364,6 +384,22 @@ func receive_joint_enemy_payload(payload: Dictionary) -> bool:
 	normalized["transfer_count"] = int(normalized.get("transfer_count", 0)) + 1
 	if grid and grid.has_method("spawn_enemy_wave"):
 		grid.spawn_enemy_wave([normalized], enemy_spawn_points)
+	return true
+
+
+## 由分裂、召唤等敌人机制追加一名援军，并复用标准 UID 与出生队列。
+func queue_enemy_reinforcement(template: Dictionary, spawn_pos: Vector2i = Vector2i(-9999, -9999)) -> bool:
+	if template.is_empty() or not grid or not grid.has_method("spawn_enemy_wave"):
+		return false
+	var normalized := template.duplicate(true)
+	normalized["enemy_uid"] = _make_enemy_uid()
+	normalized["source_player_id"] = int(normalized.get("source_player_id", _local_player_id()))
+	normalized["transfer_count"] = int(normalized.get("transfer_count", 0))
+	normalized["base_damage"] = int(normalized.get("base_damage", _cfg_int("enemy_base_damage", 1)))
+	var spawns: Array = []
+	if spawn_pos.x > -9000:
+		spawns.append(spawn_pos)
+	grid.spawn_enemy_wave([normalized], spawns)
 	return true
 
 

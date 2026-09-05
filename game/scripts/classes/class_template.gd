@@ -92,9 +92,71 @@ enum TargetPriority {
 	LOWEST_HP,      ## 最低血量
 	HIGHEST_ATK,    ## 最高攻击力
 	FARTHEST,       ## 最远
-	RANDOM          ## 随机
+	RANDOM,         ## 随机
+	HIGHEST_HP,     ## 最高当前生命
+	LOWEST_HP_RATIO,        ## 最低生命比例
+	HIGHEST_HP_RATIO,       ## 最高生命比例
+	LOWEST_MAX_HP,          ## 最低最大生命
+	HIGHEST_MAX_HP,         ## 最高最大生命
+	LOWEST_MISSING_HP,      ## 最少已损生命
+	HIGHEST_MISSING_HP,     ## 最多已损生命
+	LOWEST_ATK,             ## 最低攻击力
+	LOWEST_DEF,             ## 最低防御力
+	HIGHEST_DEF,            ## 最高防御力
+	LOWEST_ATTACK_SPEED,    ## 最低攻速
+	HIGHEST_ATTACK_SPEED,   ## 最高攻速
+	LOWEST_MOVE_SPEED,      ## 最低移速
+	HIGHEST_MOVE_SPEED,     ## 最高移速
+	LOWEST_ATTACK_RANGE,    ## 最低攻击范围
+	HIGHEST_ATTACK_RANGE,   ## 最高攻击范围
+	LOWEST_SEARCH_RANGE,    ## 最低索敌范围
+	HIGHEST_SEARCH_RANGE,   ## 最高索敌范围
+	LOWEST_LEVEL,           ## 最低等级
+	HIGHEST_LEVEL,          ## 最高等级
+	LOWEST_STAR_LEVEL,      ## 最低星级
+	HIGHEST_STAR_LEVEL,     ## 最高星级
+	GROUND_FIRST,           ## 优先地面单位
+	AIRBORNE_FIRST          ## 优先空中单位
 }
 @export var target_priority: TargetPriority = TargetPriority.NEAREST
+
+## 顺序与 TargetPriority 严格一致；旧枚举值 0..4 保持不变。
+const TARGET_PRIORITY_KEYS := [
+	"nearest", "lowest_hp", "highest_attack", "farthest", "random",
+	"highest_hp", "lowest_hp_ratio", "highest_hp_ratio",
+	"lowest_max_hp", "highest_max_hp", "lowest_missing_hp", "highest_missing_hp",
+	"lowest_attack", "lowest_defense", "highest_defense",
+	"lowest_attack_speed", "highest_attack_speed", "lowest_move_speed", "highest_move_speed",
+	"lowest_attack_range", "highest_attack_range", "lowest_search_range", "highest_search_range",
+	"lowest_level", "highest_level", "lowest_star_level", "highest_star_level",
+	"ground_first", "airborne_first",
+]
+
+const TARGET_PRIORITY_DISPLAY_NAMES := [
+	"最近", "最低当前生命", "最高攻击", "最远", "随机",
+	"最高当前生命", "最低生命比例", "最高生命比例",
+	"最低最大生命", "最高最大生命", "最少已损生命", "最多已损生命",
+	"最低攻击", "最低防御", "最高防御",
+	"最低攻速", "最高攻速", "最低移速", "最高移速",
+	"最低攻击范围", "最高攻击范围", "最低索敌范围", "最高索敌范围",
+	"最低等级", "最高等级", "最低星级", "最高星级",
+	"地面优先", "空中优先",
+]
+
+const TARGET_PRIORITY_ALIASES := {
+	"lowest_current_hp": "lowest_hp",
+	"highest_current_hp": "highest_hp",
+	"lowest_atk": "lowest_attack",
+	"highest_atk": "highest_attack",
+	"lowest_def": "lowest_defense",
+	"highest_def": "highest_defense",
+	"lowest_star": "lowest_star_level",
+	"highest_star": "highest_star_level",
+	"least_injured": "lowest_missing_hp",
+	"most_injured": "highest_missing_hp",
+	"grounded_first": "ground_first",
+	"air_first": "airborne_first",
+}
 
 ## 技能列表（技能ID数组）
 @export var skill_ids: Array = []
@@ -106,3 +168,29 @@ func get_attack_speed_interval() -> float:
 	if attack_speed <= 0:
 		return 999.0
 	return 1.0 / attack_speed
+
+
+## 将数据文件中的写法归一化为公开键，未知值安全回退到最近。
+static func normalize_target_priority_key(value: String) -> String:
+	var key := value.strip_edges().to_lower().replace("-", "_").replace(" ", "_")
+	key = str(TARGET_PRIORITY_ALIASES.get(key, key))
+	return key if key in TARGET_PRIORITY_KEYS else "nearest"
+
+
+## 将数据键转为枚举值。
+static func target_priority_from_key(value: String) -> int:
+	return TARGET_PRIORITY_KEYS.find(normalize_target_priority_key(value))
+
+
+## 将枚举值转为统一数据键。
+static func target_priority_key(value: int) -> String:
+	if value < 0 or value >= TARGET_PRIORITY_KEYS.size():
+		return "nearest"
+	return str(TARGET_PRIORITY_KEYS[value])
+
+
+## 返回界面使用的索敌优先级名称。
+static func target_priority_display_name(value: int) -> String:
+	if value < 0 or value >= TARGET_PRIORITY_DISPLAY_NAMES.size():
+		return "未知"
+	return str(TARGET_PRIORITY_DISPLAY_NAMES[value])

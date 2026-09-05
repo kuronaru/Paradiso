@@ -40,10 +40,12 @@ func _run() -> void:
 	t.assert_eq(target.current_hp, 100, "basic attack does not damage immediately")
 	t.assert_eq(_projectile_count(), 1, "basic attack creates one projectile")
 
-	await create_timer(0.25).timeout
+	# 160px at 640px/s takes 0.25s. Stay clearly below the boundary so frame
+	# scheduling cannot turn this pre-hit assertion into a flaky exact-time check.
+	await create_timer(0.15).timeout
 	t.assert_eq(target.current_hp, 100, "projectile has not hit before traveling enough distance")
 
-	await create_timer(0.35).timeout
+	await create_timer(0.20).timeout
 	t.assert_eq(target.current_hp, 80, "projectile applies damage after reaching target at fixed speed")
 	t.assert_eq(_projectile_count(), 0, "projectile is destroyed after hit")
 

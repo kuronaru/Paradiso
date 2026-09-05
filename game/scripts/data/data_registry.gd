@@ -109,11 +109,14 @@ func get_enemy(enemy_id: String) -> Dictionary:
 	return _get_record(_enemies, enemy_id, "enemy")
 
 
-func get_enemy_pool() -> Array[Dictionary]:
+func get_enemy_pool(include_hidden: bool = false) -> Array[Dictionary]:
 	ensure_loaded()
 	var result: Array[Dictionary] = []
 	for enemy_id in _sorted_keys(_enemies):
-		result.append(_enemies[enemy_id].duplicate(true))
+		var enemy: Dictionary = _enemies[enemy_id]
+		if not include_hidden and bool(enemy.get("hidden", false)):
+			continue
+		result.append(enemy.duplicate(true))
 	return result
 
 
@@ -203,6 +206,10 @@ func get_wave(wave_id: String) -> Dictionary:
 	return _get_record(_waves, wave_id, "wave")
 
 
+func get_all_wave_ids() -> Array[String]:
+	return _sorted_keys(_waves)
+
+
 func get_waves_for_battle(battle_id: String) -> Array[Dictionary]:
 	ensure_loaded()
 	var result: Array[Dictionary] = []
@@ -211,7 +218,11 @@ func get_waves_for_battle(battle_id: String) -> Array[Dictionary]:
 		if str(wave.get("battle_id", "")) == battle_id:
 			result.append(wave.duplicate(true))
 	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return int(a.get("wave_index", 0)) < int(b.get("wave_index", 0))
+		var a_wave := int(a.get("wave_index", 0))
+		var b_wave := int(b.get("wave_index", 0))
+		if a_wave != b_wave:
+			return a_wave < b_wave
+		return int(a.get("order", 0)) < int(b.get("order", 0))
 	)
 	return result
 

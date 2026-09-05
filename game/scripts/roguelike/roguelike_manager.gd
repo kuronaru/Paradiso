@@ -150,7 +150,13 @@ func _setup_round_preparation() -> void:
 	"""初始化本回合战斗，但保留在准备/招募阶段让玩家部署。"""
 	var node := _build_round_node(GameManager.current_run_round)
 	var battle_party := GameManager.get_battle_party_data()
-	BattleManager.setup_battle(battle_party, node.get("enemy_pool", EnemyUnit.get_enemy_pool()), node.get("waves", 1), true)
+	BattleManager.setup_battle(
+		battle_party,
+		node.get("enemy_pool", EnemyUnit.get_enemy_pool()),
+		node.get("waves", 1),
+		true,
+		node.get("scripted_waves", [])
+	)
 	BattleManager.enemy_spawn_points = node.get("spawn_points", [])
 	_sync_deployment_hand()
 
@@ -222,7 +228,13 @@ func _start_battle(node: Dictionary) -> void:
 		deployment.setup_hand(battle_party)
 
 	# 配置战斗
-	BattleManager.setup_battle(battle_party, node.get("enemy_pool", EnemyUnit.get_enemy_pool()), node.get("waves", 1), true)
+	BattleManager.setup_battle(
+		battle_party,
+		node.get("enemy_pool", EnemyUnit.get_enemy_pool()),
+		node.get("waves", 1),
+		true,
+		node.get("scripted_waves", [])
+	)
 	BattleManager.enemy_spawn_points = node.get("spawn_points", [])
 
 	# 连接战斗结束信号
@@ -394,14 +406,15 @@ func _end_run(victory: bool) -> void:
 
 ## 构建回合节点。
 func _build_round_node(round_number: int) -> Dictionary:
-	var is_boss := round_number >= GameManager.max_run_rounds
-	var is_elite := not is_boss and round_number % 4 == 0
-	var enemy_pool := _get_scaled_enemy_pool(round_number, is_elite, is_boss)
-	return {
-		"type": "boss" if is_boss else ("elite" if is_elite else "battle"),
-		"enemy_pool": enemy_pool,
-		"waves": 1,
-	}
+	var chapter := clampi(int((maxi(1, round_number) - 1) / 5) + 1, 1, 3)
+	var chapter_round := ((maxi(1, round_number) - 1) % 5) + 1
+	if chapter_round == 5:
+		return map_generator.build_encounter_node(chapter, "boss", 1)
+	if chapter_round == 4:
+		var elite_occurrence := 2 if chapter == 3 else 1
+		return map_generator.build_encounter_node(chapter, "elite", elite_occurrence)
+	var battle_occurrence := 1 if chapter_round == 1 else 2
+	return map_generator.build_encounter_node(chapter, "battle", battle_occurrence)
 
 
 ## 获取scaled敌人池。

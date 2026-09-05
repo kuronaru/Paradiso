@@ -369,6 +369,8 @@ func _recalculate_stats(preserve_hp_ratio: bool) -> void:
 	max_hp = maxi(1, int(round(float(base_max_hp) * float(synergy_modifiers.get("max_hp_multiplier", 1.0)))))
 	attack = maxi(1, int(round(float(base_attack) * float(synergy_modifiers.get("attack_multiplier", 1.0)))))
 	defense = maxi(0, int(round(float(base_defense) * float(synergy_modifiers.get("defense_multiplier", 1.0)))))
+	attack = maxi(1, int(round(float(attack) * _timed_combat_multiplier("attack_multiplier"))))
+	defense = maxi(0, int(round(float(defense) * _timed_combat_multiplier("defense_multiplier"))))
 	if combat_statuses.has("chaotic_reposition_boost"):
 		var chaotic_boost: Dictionary = combat_statuses.get("chaotic_reposition_boost", {})
 		attack = maxi(1, int(round(float(attack) * float(chaotic_boost.get("attack_multiplier", 1.0)))))
@@ -378,7 +380,9 @@ func _recalculate_stats(preserve_hp_ratio: bool) -> void:
 	defense += _get_status_flat_bonus("defense_bonus")
 	attack_speed = max(0.05, base_attack_speed * float(synergy_modifiers.get("attack_speed_multiplier", 1.0)))
 	attack_speed *= float(combat_statuses.get("strength_attack_speed_multiplier", 1.0))
+	attack_speed = maxf(0.05, attack_speed * _timed_combat_multiplier("attack_speed_multiplier"))
 	move_speed = max(0.0, base_move_speed * float(synergy_modifiers.get("move_speed_multiplier", 1.0)))
+	move_speed = maxf(0.0, move_speed * _timed_combat_multiplier("move_speed_multiplier"))
 	attack_range = base_attack_range
 	search_range = base_search_range + float(synergy_modifiers.get("search_range_bonus", 0.0))
 
@@ -1073,7 +1077,7 @@ func receive_attack_damage(amount: int, armor_pierce: float = 0.0, attacker: Uni
 	var incoming_armor_pierce := float(receive_context.get("armor_pierce", armor_pierce))
 	var effective_defense := int(round(float(defense) * (1.0 - clampf(incoming_armor_pierce, 0.0, 0.95))))
 	var actual: int = max(1, incoming_amount - effective_defense)
-	actual = maxi(1, int(round(float(actual) * float(synergy_modifiers.get("damage_taken_multiplier", 1.0)))))
+	actual = maxi(1, int(round(float(actual) * float(synergy_modifiers.get("damage_taken_multiplier", 1.0)) * _timed_combat_multiplier("damage_taken_multiplier"))))
 	var damage_context := {
 		"attacker": attacker,
 		"damage": actual,
@@ -1107,7 +1111,7 @@ func _apply_hp_loss(amount: int, text_color: Color) -> void:
 ## 恢复生命
 func heal(amount: int) -> int:
 	"""恢复生命"""
-	var scaled_amount := int(round(float(amount) * float(synergy_modifiers.get("incoming_heal_multiplier", 1.0))))
+	var scaled_amount := int(round(float(amount) * float(synergy_modifiers.get("incoming_heal_multiplier", 1.0)) * _timed_combat_multiplier("incoming_heal_multiplier")))
 	var actual: int = min(scaled_amount, max_hp - current_hp)
 	if actual <= 0:
 		return 0
@@ -1121,7 +1125,8 @@ func heal(amount: int) -> int:
 func clear_combat_statuses() -> void:
 	var had_status_bonuses := combat_statuses.has("tro_poem_sources") \
 		or combat_statuses.has("chaotic_reposition_boost") \
-		or combat_statuses.has("strength_attack_speed_multiplier")
+		or combat_statuses.has("strength_attack_speed_multiplier") \
+		or combat_statuses.has("enemy_timed_modifiers")
 	combat_statuses.clear()
 	law_damage_share_guard = false
 	var had_slow := not is_equal_approx(status_move_speed_multiplier, 1.0)
@@ -1273,6 +1278,67 @@ func _update_combat_statuses(delta: float) -> void:
 	_update_kroen_counter(delta)
 	_update_tro_poem_sources(delta)
 	_update_minor_synergy_statuses(delta)
+	_update_enemy_timed_modifiers(delta)
+
+
+## 应用敌人机制使用的通用限时乘区；同名效果刷新时间并保留更强幅度。
+func apply_timed_combat_modifier(status_id: String, duration: float, modifier_values: Dictionary) -> void:
+	if status_id.strip_edges() == "" or duration <= 0.0 or modifier_values.is_empty() or not is_alive:
+		return
+	var statuses: Dictionary = combat_statuses.get("enemy_timed_modifiers", {})
+	var status: Dictionary = statuses.get(status_id, {})
+	var merged: Dictionary = status.get("modifiers", {}).duplicate(true)
+	for key in modifier_values.keys():
+		var value := float(modifier_values[key])
+		if not merged.has(key):
+			merged[key] = value
+		elif value < 1.0:
+			merged[key] = minf(float(merged[key]), value)
+		else:
+			merged[key] = maxf(float(merged[key]), value)
+	status["remaining"] = maxf(float(status.get("remaining", 0.0)), duration)
+	status["modifiers"] = merged
+	statuses[status_id] = status
+	combat_statuses["enemy_timed_modifiers"] = statuses
+	_recalculate_stats(true)
+
+
+func has_timed_combat_modifier(status_id: String) -> bool:
+	var statuses: Dictionary = combat_statuses.get("enemy_timed_modifiers", {})
+	return statuses.has(status_id) and float((statuses.get(status_id, {}) as Dictionary).get("remaining", 0.0)) > 0.0
+
+
+func _update_enemy_timed_modifiers(delta: float) -> void:
+	if not combat_statuses.has("enemy_timed_modifiers"):
+		return
+	var statuses: Dictionary = combat_statuses.get("enemy_timed_modifiers", {})
+	var changed := false
+	for status_id in statuses.keys():
+		var status: Dictionary = statuses.get(status_id, {})
+		status["remaining"] = float(status.get("remaining", 0.0)) - delta
+		if float(status["remaining"]) <= 0.0:
+			statuses.erase(status_id)
+			changed = true
+		else:
+			statuses[status_id] = status
+	if statuses.is_empty():
+		combat_statuses.erase("enemy_timed_modifiers")
+	else:
+		combat_statuses["enemy_timed_modifiers"] = statuses
+	if changed:
+		_recalculate_stats(true)
+
+
+func _timed_combat_multiplier(stat: String) -> float:
+	var result := 1.0
+	var statuses: Dictionary = combat_statuses.get("enemy_timed_modifiers", {})
+	for status_value in statuses.values():
+		if not (status_value is Dictionary):
+			continue
+		var status: Dictionary = status_value
+		var status_modifiers: Dictionary = status.get("modifiers", {})
+		result *= float(status_modifiers.get(stat, 1.0))
+	return result
 
 
 ## 更新安马里特瘴毒。

@@ -501,6 +501,9 @@ func _format_enemy_detail(enemy_template: Dictionary) -> String:
 	return "\n".join([
 		"名称：%s" % enemy_template.get("name", "Unknown"),
 		"类型：%s" % _enemy_type_name(enemy_template.get("type", EnemyUnit.EnemyType.MELEE)),
+		"章节：%s" % _enemy_chapter_name(str(enemy_template.get("chapter_id", ""))),
+		"稀有度：%s" % _enemy_rarity_name(str(enemy_template.get("rarity", "common"))),
+		"战斗职责：%s" % enemy_template.get("combat_role", ""),
 		"",
 		"基础属性",
 		"生命值：%d" % enemy_template.get("hp", 80),
@@ -512,7 +515,43 @@ func _format_enemy_detail(enemy_template: Dictionary) -> String:
 		"战斗参数",
 		"攻击范围：%.1f 格" % enemy_template.get("attack_range", 1.5),
 		"索敌范围：%.1f 格" % enemy_template.get("search_range", 5.0),
+		"漏怪伤害：%d" % enemy_template.get("base_damage", 1),
+		"索敌偏好：%s" % enemy_template.get("target_priority", "nearest"),
+		"机制：%s" % _enemy_mechanic_text(enemy_template),
+		"标签：%s" % _array_text(enemy_template.get("tags", [])),
 	])
+
+
+func _enemy_chapter_name(chapter_id: String) -> String:
+	match chapter_id:
+		"corrupted_border":
+			return "腐化边境"
+		"city_of_dead":
+			return "亡者之城"
+		"abyssal_court":
+			return "深渊王庭"
+		_:
+			return "未分类"
+
+
+func _enemy_rarity_name(rarity: String) -> String:
+	match rarity:
+		"elite":
+			return "精英"
+		"boss":
+			return "Boss"
+		"summon":
+			return "召唤物"
+		_:
+			return "普通"
+
+
+func _enemy_mechanic_text(enemy_template: Dictionary) -> String:
+	var names: Array[String] = []
+	for passive_value in enemy_template.get("passives", []):
+		if passive_value is Dictionary:
+			names.append(str((passive_value as Dictionary).get("mechanic_id", (passive_value as Dictionary).get("passive_id", ""))))
+	return "基础属性" if names.is_empty() else "、".join(names)
 
 
 ## 处理攻击modename逻辑。
@@ -564,19 +603,7 @@ func _range_shape_name(value: int) -> String:
 
 ## 处理目标priorityname逻辑。
 func _target_priority_name(value: int) -> String:
-	match value:
-		ClassTemplate.TargetPriority.NEAREST:
-			return "最近"
-		ClassTemplate.TargetPriority.LOWEST_HP:
-			return "最低生命"
-		ClassTemplate.TargetPriority.HIGHEST_ATK:
-			return "最高攻击"
-		ClassTemplate.TargetPriority.FARTHEST:
-			return "最远"
-		ClassTemplate.TargetPriority.RANDOM:
-			return "随机"
-		_:
-			return "未知"
+	return ClassTemplate.target_priority_display_name(value)
 
 
 ## 处理敌人typename逻辑。
