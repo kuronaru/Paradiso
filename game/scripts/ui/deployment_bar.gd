@@ -3,6 +3,8 @@
 class_name DeploymentBar
 extends Control
 
+const TraitTextFormatterScript = preload("res://scripts/ui/auto_trait_text_formatter.gd")
+
 const M = "DeployBar"
 const SHOP_PANEL_HEIGHT := 136.0
 const SHOP_BOTTOM_MARGIN := 8.0
@@ -115,11 +117,15 @@ func _refresh_ui() -> void:
 		btn.position = Vector2.ZERO
 		btn.flat = false
 		_apply_reserve_hero_style(btn, bool(card_data.get("is_golden", false)))
-		var trait_names: Array[String] = []
-		for trait_id in ct.auto_trait_ids:
-			trait_names.append(str(DataRegistry.get_auto_trait(trait_id).get("display_name", trait_id)))
+		var trait_description: String = TraitTextFormatterScript.format_trait_list(
+			ct.auto_trait_ids,
+			ct.class_id,
+			int(card_data.get("star_level", 1)),
+			false,
+			ct.autochess_synergy_ids
+		)
 		btn.tooltip_text = "%s\n按住左键拖拽部署；备战阶段右键出售（%d金币）" % [
-			"特质：%s" % ("无" if trait_names.is_empty() else "、".join(trait_names)),
+			"特质：%s" % trait_description,
 			1,
 		]
 

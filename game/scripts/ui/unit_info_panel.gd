@@ -2,6 +2,7 @@
 class_name UnitInfoPanel
 extends CanvasLayer
 
+const TraitTextFormatterScript = preload("res://scripts/ui/auto_trait_text_formatter.gd")
 const PANEL_SIZE := Vector2(280.0, 480.0)
 const PANEL_MARGIN := 8.0
 const UNIT_SIDE_GAP := 14.0
@@ -132,6 +133,7 @@ func _build_panel() -> void:
 
 	_build_overview_section(columns)
 	traits_text = _build_text_section(columns, "TraitsSection", "特质", 90.0)
+	traits_text.bbcode_enabled = true
 	skills_text = _build_skills_section(columns, 90.0)
 	_build_equipment_section(columns, 102.0)
 
@@ -515,15 +517,17 @@ func _add_synergy_item(synergy_id: String) -> void:
 func _refresh_traits() -> void:
 	if not traits_text:
 		return
-	var lines: Array[String] = []
 	var ct := _content_template()
 	if ct:
-		for trait_id in ct.auto_trait_ids:
-			var trait_data: Dictionary = DataRegistry.get_auto_trait(str(trait_id))
-			var display_name := str(trait_data.get("display_name", trait_id))
-			var description := str(trait_data.get("description", "暂无描述"))
-			lines.append("【%s】\n%s" % [display_name, description])
-	traits_text.text = "\n\n".join(lines) if not lines.is_empty() else "无特质"
+		traits_text.text = TraitTextFormatterScript.format_trait_list(
+			ct.auto_trait_ids,
+			ct.class_id,
+			_content_star_level(),
+			true,
+			ct.autochess_synergy_ids
+		)
+	else:
+		traits_text.text = "无特质"
 
 
 func _refresh_skills() -> void:

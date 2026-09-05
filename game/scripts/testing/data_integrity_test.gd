@@ -191,11 +191,30 @@ func _test_auto_traits(registry: Node) -> void:
 	t.assert_true(not template_ids.is_empty(), "auto trait templates are registered")
 	t.assert_true(not trait_ids.is_empty(), "default auto traits are registered")
 	var covered_templates: Dictionary = {}
+	var square_placeholder_pattern := RegEx.new()
+	square_placeholder_pattern.compile("\\[[^\\]]+\\]")
 	for trait_id in trait_ids:
 		var trait_data: Dictionary = registry.get_auto_trait(trait_id)
 		var template_id := str(trait_data.get("template_id", ""))
+		var description := str(trait_data.get("description", ""))
 		t.assert_true(template_id in template_ids, "trait references template: %s -> %s" % [trait_id, template_id])
+		t.assert_false(trait_data.has("display_name"), "auto trait no longer stores a separate display name: %s" % trait_id)
+		t.assert_true(description.strip_edges() != "", "auto trait stores its design-document description: %s" % trait_id)
+		for placeholder_match in square_placeholder_pattern.search_all(description):
+			var placeholder := placeholder_match.get_string()
+			t.assert_true(placeholder in ["[X]", "[+X]"], "trait uses only canonical numeric placeholders: %s -> %s" % [trait_id, placeholder])
 		covered_templates[template_id] = true
+	t.assert_eq(
+		str(registry.get_auto_trait("E_GRANT_FRONT_TRAIT").get("description", "")),
+		"<战斗开始时>使身前一格英雄获得【某特质】",
+		"delegated trait keeps the design-document trigger and nested-trait placeholder"
+	)
+	t.assert_eq(
+		str(registry.get_auto_trait("E_STATUS_IN_RANGE").get("description", "")),
+		"<战斗中>每当范围内[X]名敌人进入【某状态】时，有50%概率使已激活的【某羁绊】层数[+X]",
+		"status trait keeps the design-document status, synergy, and number placeholders"
+	)
+	t.assert_true("50%概率" in str(registry.get_auto_trait("E_STATUS_IN_RANGE").get("description", "")), "probability percentages remain literal instead of becoming placeholders")
 
 	var hero_ids: Array = registry.get_all_autochess_hero_ids()
 	t.assert_true(not hero_ids.is_empty(), "autochess hero skeletons are registered")
@@ -213,6 +232,20 @@ func _test_auto_traits(registry: Node) -> void:
 			t.assert_true(hero_traits.is_empty(), "flying hero carries no auto trait: %s" % hero_id)
 		for trait_id in hero_traits:
 			t.assert_true(trait_id in trait_ids, "hero trait exists: %s -> %s" % [hero_id, trait_id])
+			var trait_description := str(registry.get_auto_trait(trait_id).get("description", ""))
+			var placeholder_count := trait_description.count("[X]") + trait_description.count("[+X]")
+			if placeholder_count > 0:
+				var trait_params = hero_data.get("trait_params", {}).get(trait_id, {}) \
+					if hero_data.get("trait_params", {}) is Dictionary else {}
+				var description_values = trait_params.get("description_values", {}) \
+					if trait_params is Dictionary else {}
+				t.assert_true(description_values is Dictionary, "hero stores concrete description values: %s -> %s" % [hero_id, trait_id])
+				if description_values is Dictionary:
+					for value_tier in ["base", "advanced"]:
+						var values = description_values.get(value_tier, [])
+						t.assert_true(values is Array, "hero description values are an array: %s -> %s/%s" % [hero_id, trait_id, value_tier])
+						if values is Array:
+							t.assert_eq(values.size(), placeholder_count, "hero description values match placeholder count: %s -> %s/%s" % [hero_id, trait_id, value_tier])
 
 	for equipment_id in registry.get_all_autochess_equipment_ids():
 		var equipment: Dictionary = registry.get_autochess_equipment(equipment_id)

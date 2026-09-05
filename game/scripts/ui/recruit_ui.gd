@@ -2,6 +2,7 @@
 class_name RecruitUI
 extends Control
 
+const TraitTextFormatterScript = preload("res://scripts/ui/auto_trait_text_formatter.gd")
 const PANEL_MARGIN := 16.0
 const PANEL_HEIGHT := 136.0
 const CELL_SPACING := 8.0
@@ -333,10 +334,13 @@ func _refresh_option_card(index: int, option, active_gold: int) -> void:
 	option_name_labels[index].text = ct.job_name
 	option_synergy_labels[index].text = _get_synergy_line(ct, option.level)
 	option_price_labels[index].text = "T%d · %d金币" % [ct.trait_tier, option.cost]
-	var trait_names: Array[String] = []
-	for trait_id in ct.auto_trait_ids:
-		trait_names.append(str(DataRegistry.get_auto_trait(trait_id).get("display_name", trait_id)))
-	var trait_tip := "特质：%s" % ("无" if trait_names.is_empty() else "、".join(trait_names))
+	var trait_tip := "特质：%s" % TraitTextFormatterScript.format_trait_list(
+		ct.auto_trait_ids,
+		ct.class_id,
+		option.level,
+		false,
+		ct.autochess_synergy_ids
+	)
 	option_buttons[index].tooltip_text = "手牌区已满（%d/%d）" % [GameManager.party.size(), GameManager.get_roguelike_max_hand_cards()] if hand_full else "%s\n%s" % [trait_tip, option.tavern_passive]
 	option_buttons[index].disabled = (
 		active_gold < option.cost

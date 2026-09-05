@@ -3,6 +3,8 @@
 class_name EncyclopediaUI
 extends Control
 
+const TraitTextFormatterScript = preload("res://scripts/ui/auto_trait_text_formatter.gd")
+
 const START_MENU_PATH := "res://scenes/start_menu.tscn"
 
 var hero_button_box: VBoxContainer = null
@@ -319,7 +321,7 @@ func _populate_traits() -> void:
 		if family != current_family:
 			current_family = family
 			_add_section_header(trait_button_box, str(family_names.get(family, family)))
-		var button := _create_list_button(str(trait_data.get("display_name", trait_id)))
+		var button := _create_list_button(str(trait_id))
 		button.pressed.connect(func(): _select_trait(button, trait_id))
 		trait_button_box.add_child(button)
 		if not first_button:
@@ -419,8 +421,12 @@ func _format_hero_detail(ct: ClassTemplate) -> String:
 	"""格式化角色职业数据"""
 	var trait_lines: Array[String] = []
 	for trait_id in ct.auto_trait_ids:
-		var trait_data := DataRegistry.get_auto_trait(trait_id)
-		trait_lines.append("%s（%s）\n  %s" % [trait_data.get("display_name", trait_id), trait_id, trait_data.get("description", "")])
+		trait_lines.append("%s\n  %s" % [
+			trait_id,
+			TraitTextFormatterScript.format_trait_description(
+				trait_id, ct.class_id, 1, false, ct.autochess_synergy_ids
+			)
+		])
 	return "\n".join([
 		"名称：%s" % ct.job_name,
 		"职业ID：%s" % ct.class_id,
@@ -466,7 +472,6 @@ func _format_trait_detail(trait_id: String) -> String:
 		if trait_id in ClassDefinitions.get_template(class_id).auto_trait_ids:
 			owners.append(ClassDefinitions.get_template(class_id).job_name)
 	return "\n".join([
-		"名称：%s" % trait_data.get("display_name", trait_id),
 		"特质ID：%s" % trait_id,
 		"模板ID：%s" % template_id,
 		"类别：%s" % template.get("family", ""),

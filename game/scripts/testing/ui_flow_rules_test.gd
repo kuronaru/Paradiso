@@ -2,6 +2,7 @@
 extends Node
 
 const TestAssertions = preload("res://scripts/testing/test_assertions.gd")
+const TraitTextFormatterScript = preload("res://scripts/ui/auto_trait_text_formatter.gd")
 
 var t := TestAssertions.new("UIFlowRules")
 var coordinator: Node = null
@@ -193,6 +194,36 @@ func _test_unit_info_panel(unit: UnitBase, grid: GridSystem) -> void:
 	unit.global_position = original_global_position
 	unit.set_billboard_screen_offset(original_billboard_offset)
 	t.assert_true(overlay.traits_text.text != "", "unit information panel renders autochess trait descriptions")
+	t.assert_true(overlay.traits_text.bbcode_enabled, "unit information trait descriptions support colored replacements")
+	var visible_trait_text := overlay.traits_text.get_parsed_text()
+	t.assert_true("<售出时>" in visible_trait_text, "unit information panel shows the design-document trigger phase directly")
+	t.assert_false("离队投资" in visible_trait_text, "unit information panel no longer shows the removed trait display name")
+	t.assert_false("[X]" in visible_trait_text or "[+X]" in visible_trait_text, "unit information panel replaces numeric placeholders")
+	t.assert_true("[color=%s]" % TraitTextFormatterScript.NUMBER_COLOR in overlay.traits_text.text, "unit information panel colors replaced numbers with color B")
+
+	var synergy_description := TraitTextFormatterScript.format_trait_description(
+		"E_REST_END_NAMED", "ranger_beast_master", 1, true
+	)
+	t.assert_true("<休整期结束时>" in synergy_description, "formatted trait retains its angle-bracket trigger phase")
+	t.assert_true("[color=%s]【扭曲生命】[/color]" % TraitTextFormatterScript.SYNERGY_COLOR in synergy_description, "synergy placeholder becomes the colored synergy name")
+	t.assert_true("[color=%s]+5[/color]" % TraitTextFormatterScript.NUMBER_COLOR in synergy_description, "engine value placeholder resolves from fixed tier and star level")
+	var advanced_synergy_description := TraitTextFormatterScript.format_trait_description(
+		"E_REST_END_NAMED", "ranger_beast_master", 2, false
+	)
+	t.assert_true("层数+10" in advanced_synergy_description, "advanced hero descriptions use their advanced concrete values")
+	var nested_description := TraitTextFormatterScript.format_trait_description(
+		"E_GRANT_ROW_RIGHT_TRAIT", "wizard_evocation", 1, true
+	)
+	t.assert_true("获得特质“<战斗中>首次施放技能时" in nested_description, "trait placeholder expands to its nested trait description")
+	t.assert_true("【某特质】" not in nested_description, "nested trait placeholder is fully replaced")
+	var status_description := TraitTextFormatterScript.format_trait_description(
+		"E_STATUS_IN_RANGE", "artificer_alchemist", 1, false
+	)
+	t.assert_true("进入任意状态时" in status_description, "empty status configuration resolves to an unbracketed readable state name")
+	t.assert_true("【某状态】" not in status_description, "status placeholder is fully replaced")
+	t.assert_true("范围内1名敌人" in status_description and "层数+3" in status_description, "trait description uses concrete hero values in placeholder order")
+	t.assert_true("50%概率" in status_description, "probability percentages remain literal in formatted descriptions")
+	t.assert_false("[X]" in status_description or "[+X]" in status_description, "formatted descriptions contain no unresolved numeric placeholders")
 	t.assert_true(overlay.skills_text.text != "", "unit information panel renders skill descriptions")
 
 	unit._on_info_mouse_exited()
