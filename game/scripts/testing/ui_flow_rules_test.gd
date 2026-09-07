@@ -383,11 +383,38 @@ func _test_recruit_option_info_panel() -> void:
 
 
 func _test_run_result_overlay() -> void:
+	BattleManager.state = BattleManager.BattleState.PREPARING
+	Engine.time_scale = 1.0
 	var roguelike_manager := RoguelikeManager.new()
 	add_child(roguelike_manager)
 	var game_menu := GameMenuUI.new()
 	add_child(game_menu)
 	await get_tree().process_frame
+	var top_button_bar := game_menu.find_child("TopButtonBar", true, false) as HBoxContainer
+	t.assert_true(top_button_bar != null, "game menu exposes the top-right shortcut bar")
+	t.assert_true(game_menu.game_speed_button != null, "game menu creates a combat speed button")
+	if top_button_bar and game_menu.game_speed_button:
+		t.assert_eq(game_menu.game_speed_button.get_index(), 1, "speed button sits between encyclopedia and pause")
+	t.assert_false(game_menu.game_speed_button.visible, "speed button is hidden outside combat")
+	t.assert_near(Engine.time_scale, 1.0, 0.001, "preparation UI keeps normal engine time")
+
+	BattleManager.state = BattleManager.BattleState.IN_PROGRESS
+	game_menu._process(0.0)
+	t.assert_true(game_menu.game_speed_button.visible, "speed button appears during combat")
+	t.assert_eq(game_menu.game_speed_button.text, "倍速1X", "combat starts at the normalized 1X label")
+	t.assert_near(Engine.time_scale, GameMenuUI.BASE_COMBAT_TIME_SCALE, 0.001, "new 1X halves the previous approximately-2X combat pace")
+	game_menu._on_game_speed_pressed()
+	t.assert_eq(game_menu.game_speed_button.text, "倍速2X", "first speed click selects 2X")
+	t.assert_near(Engine.time_scale, 1.0, 0.001, "2X matches the previous combat time scale")
+	game_menu._on_game_speed_pressed()
+	t.assert_eq(game_menu.game_speed_button.text, "倍速4X", "second speed click selects 4X")
+	t.assert_near(Engine.time_scale, 2.0, 0.001, "4X doubles the previous combat time scale")
+	game_menu._on_game_speed_pressed()
+	t.assert_eq(game_menu.game_speed_button.text, "倍速1X", "third speed click loops back to 1X")
+	BattleManager.state = BattleManager.BattleState.PREPARING
+	game_menu._process(0.0)
+	t.assert_false(game_menu.game_speed_button.visible, "leaving combat hides the speed button")
+	t.assert_near(Engine.time_scale, 1.0, 0.001, "leaving combat restores normal UI time")
 
 	t.assert_true(
 		roguelike_manager.run_ended.is_connected(game_menu._on_run_ended),

@@ -7,9 +7,12 @@ const M = "GameMenu"
 const START_MENU_PATH := "res://scenes/start_menu.tscn"
 const AFK_HUB_PATH := "res://scenes/afk_hub.tscn"
 const ENCYCLOPEDIA_SCENE_PATH := "res://scenes/encyclopedia.tscn"
+const BASE_COMBAT_TIME_SCALE := 0.5
+const COMBAT_SPEED_OPTIONS := [1, 2, 4]
 
 var pause_overlay: Control = null
 var pause_shortcut_button: Button = null
+var game_speed_button: Button = null
 var encyclopedia_overlay: EncyclopediaUI = null
 var settings_overlay: SettingsUI = null
 var run_end_overlay: Control = null
@@ -17,6 +20,8 @@ var run_end_title: Label = null
 var run_end_detail: Label = null
 var run_end_stay_button: Button = null
 var run_end_return_button: Button = null
+var game_speed_index: int = 0
+var was_combat_speed_active: bool = false
 
 
 ## 创建游戏内菜单UI
@@ -28,6 +33,16 @@ func _ready() -> void:
 	_build_run_end_overlay()
 	_build_top_buttons()
 	_connect_roguelike_manager()
+	_sync_game_speed(true)
+
+
+func _process(_delta: float) -> void:
+	_sync_game_speed()
+
+
+func _exit_tree() -> void:
+	# 时间倍率属于引擎全局状态，离开战斗场景时必须恢复，避免影响菜单与其他场景。
+	Engine.time_scale = 1.0
 
 
 ## 让菜单UI铺满窗口，便于放置右上角按钮和居中暂停菜单
@@ -48,14 +63,16 @@ func _set_full_rect() -> void:
 func _build_top_buttons() -> void:
 	"""创建右上角从左到右排列的游戏内按钮"""
 	var bar := HBoxContainer.new()
+	bar.name = "TopButtonBar"
 	bar.anchor_left = 1.0
 	bar.anchor_right = 1.0
 	bar.anchor_top = 0.0
 	bar.anchor_bottom = 0.0
-	bar.offset_left = -242.0
+	bar.offset_left = -352.0
 	bar.offset_right = -16.0
 	bar.offset_top = 16.0
 	bar.offset_bottom = 54.0
+	bar.alignment = BoxContainer.ALIGNMENT_END
 	bar.add_theme_constant_override("separation", 8)
 	bar.mouse_filter = Control.MOUSE_FILTER_PASS
 	bar.process_mode = Node.PROCESS_MODE_ALWAYS
@@ -64,8 +81,40 @@ func _build_top_buttons() -> void:
 
 	bar.add_child(_create_top_button("英雄图鉴", _on_catalog_pressed))
 
+	game_speed_button = _create_top_button("倍速1X", _on_game_speed_pressed)
+	game_speed_button.name = "GameSpeedButton"
+	game_speed_button.visible = false
+	bar.add_child(game_speed_button)
+
 	pause_shortcut_button = _create_top_button("暂停", _on_pause_shortcut_pressed)
+	pause_shortcut_button.name = "PauseShortcutButton"
 	bar.add_child(pause_shortcut_button)
+
+
+func _on_game_speed_pressed() -> void:
+	game_speed_index = (game_speed_index + 1) % COMBAT_SPEED_OPTIONS.size()
+	_sync_game_speed(true)
+
+
+func _sync_game_speed(force: bool = false) -> void:
+	var combat_active := BattleManager.state in [
+		BattleManager.BattleState.IN_PROGRESS,
+		BattleManager.BattleState.WAVE_BREAK,
+	]
+	if game_speed_button:
+		game_speed_button.visible = combat_active
+		game_speed_button.text = "倍速%dX" % int(COMBAT_SPEED_OPTIONS[game_speed_index])
+	if force or combat_active != was_combat_speed_active:
+		was_combat_speed_active = combat_active
+	_apply_game_speed(combat_active)
+
+
+func _apply_game_speed(combat_active: bool) -> void:
+	Engine.time_scale = (
+		BASE_COMBAT_TIME_SCALE * float(COMBAT_SPEED_OPTIONS[game_speed_index])
+		if combat_active
+		else 1.0
+	)
 
 
 ## 创建暂停时显示在画面中央的菜单

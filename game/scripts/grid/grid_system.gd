@@ -1369,9 +1369,9 @@ func _segment_circle_hit_time(circle_center: Vector2, segment_start: Vector2, se
 func _record_collision_debug(result: Dictionary) -> void:
 	if not debug_collision_prediction:
 		return
-	var moving_unit := result.get("moving_unit", null) as UnitBase
-	var hit_unit := result.get("hit_unit", null) as UnitBase
-	if not moving_unit or not hit_unit:
+	var moving_unit := _valid_collision_debug_unit(result, "moving_unit")
+	var hit_unit := _valid_collision_debug_unit(result, "hit_unit")
+	if moving_unit == null or hit_unit == null:
 		return
 
 	var key := "%s:%s" % [moving_unit.get_instance_id(), hit_unit.get_instance_id()]
@@ -1430,11 +1430,21 @@ func _update_collision_debug_entries(delta: float) -> bool:
 	for key in collision_debug_entries.keys():
 		if not collision_debug_entries.has(key):
 			continue
-		var entry: Dictionary = collision_debug_entries[key]
-		var result: Dictionary = entry.get("result", {})
-		var moving_unit := result.get("moving_unit", null) as UnitBase
-		var hit_unit := result.get("hit_unit", null) as UnitBase
-		if not moving_unit or not hit_unit or not is_instance_valid(moving_unit) or not is_instance_valid(hit_unit):
+		var raw_entry = collision_debug_entries[key]
+		if not raw_entry is Dictionary:
+			_remove_collision_debug_entry(key)
+			changed = true
+			continue
+		var entry: Dictionary = raw_entry
+		var raw_result = entry.get("result", {})
+		if not raw_result is Dictionary:
+			_remove_collision_debug_entry(key)
+			changed = true
+			continue
+		var result: Dictionary = raw_result
+		var moving_unit := _valid_collision_debug_unit(result, "moving_unit")
+		var hit_unit := _valid_collision_debug_unit(result, "hit_unit")
+		if moving_unit == null or hit_unit == null:
 			_remove_collision_debug_entry(key)
 			changed = true
 			continue
@@ -1454,12 +1464,16 @@ func _update_collision_debug_entries(delta: float) -> bool:
 
 ## 更新碰撞调试标签。
 func _update_collision_debug_label(entry: Dictionary) -> void:
-	var label := entry.get("label", null) as Label
-	if not label or not is_instance_valid(label):
+	var raw_label = entry.get("label", null)
+	if not is_instance_valid(raw_label) or not raw_label is Label:
 		return
-	var result: Dictionary = entry.get("result", {})
-	var hit_unit := result.get("hit_unit", null) as UnitBase
-	if not hit_unit or not is_instance_valid(hit_unit):
+	var label := raw_label as Label
+	var raw_result = entry.get("result", {})
+	if not raw_result is Dictionary:
+		return
+	var result: Dictionary = raw_result
+	var hit_unit := _valid_collision_debug_unit(result, "hit_unit")
+	if hit_unit == null:
 		return
 
 	var contact_position: Vector2 = result.get("contact_position", Vector2.ZERO)
@@ -1481,11 +1495,17 @@ func _update_collision_debug_label(entry: Dictionary) -> void:
 ## 绘制碰撞预测调试条目。
 func _draw_collision_debug_entries() -> void:
 	for key in collision_debug_entries.keys():
-		var entry: Dictionary = collision_debug_entries[key]
-		var result: Dictionary = entry.get("result", {})
-		var moving_unit := result.get("moving_unit", null) as UnitBase
-		var hit_unit := result.get("hit_unit", null) as UnitBase
-		if not moving_unit or not hit_unit or not is_instance_valid(moving_unit) or not is_instance_valid(hit_unit):
+		var raw_entry = collision_debug_entries[key]
+		if not raw_entry is Dictionary:
+			continue
+		var entry: Dictionary = raw_entry
+		var raw_result = entry.get("result", {})
+		if not raw_result is Dictionary:
+			continue
+		var result: Dictionary = raw_result
+		var moving_unit := _valid_collision_debug_unit(result, "moving_unit")
+		var hit_unit := _valid_collision_debug_unit(result, "hit_unit")
+		if moving_unit == null or hit_unit == null:
 			continue
 
 		var time_left := float(entry.get("time_left", debug_collision_prediction_duration))
@@ -1534,11 +1554,20 @@ func _trim_collision_debug_entries() -> void:
 func _remove_collision_debug_entry(key: String) -> void:
 	if not collision_debug_entries.has(key):
 		return
-	var entry: Dictionary = collision_debug_entries[key]
-	var label := entry.get("label", null) as Label
-	if label and is_instance_valid(label):
-		label.queue_free()
+	var raw_entry = collision_debug_entries[key]
+	if raw_entry is Dictionary:
+		var raw_label = raw_entry.get("label", null)
+		if is_instance_valid(raw_label) and raw_label is Label:
+			(raw_label as Label).queue_free()
 	collision_debug_entries.erase(key)
+
+
+## 从调试快照中安全读取单位；对象可能在记录后、下一帧刷新前已被释放。
+func _valid_collision_debug_unit(result: Dictionary, field: String) -> UnitBase:
+	var value = result.get(field, null)
+	if not is_instance_valid(value) or not value is UnitBase:
+		return null
+	return value as UnitBase
 
 
 ## 获取单位调试名称。

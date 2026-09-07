@@ -28,6 +28,7 @@ func _run() -> void:
 
 	_test_grid_and_bases(grid)
 	_test_projection_round_trip(grid)
+	await _test_stale_collision_debug_entries(grid)
 	await _test_battle_button_layout(grid)
 	_test_combat_stage_layout(grid)
 	_test_enemy_preview_layout(grid)
@@ -99,6 +100,33 @@ func _test_projection_round_trip(grid: GridSystem) -> void:
 	var near_height := grid.world_to_screen(Vector3(0.0, 0.0, grid.cell_size)).distance_to(grid.world_to_screen(Vector3(0.0, 0.0, 0.0)))
 	var far_height := grid.world_to_screen(Vector3(0.0, 0.0, board_depth)).distance_to(grid.world_to_screen(Vector3(0.0, 0.0, board_depth - grid.cell_size)))
 	t.assert_true(far_height < near_height, "larger Z shrinks projected Y distances")
+
+
+func _test_stale_collision_debug_entries(grid: GridSystem) -> void:
+	var stale_label := Label.new()
+	grid.add_child(stale_label)
+	grid.collision_debug_entries["missing_moving_unit"] = {
+		"label": stale_label,
+		"result": {"moving_unit": null, "hit_unit": null},
+		"time_left": 1.0,
+	}
+	t.assert_true(grid._update_collision_debug_entries(0.01), "collision debug update handles a null moving unit")
+	t.assert_false(grid.collision_debug_entries.has("missing_moving_unit"), "null-unit collision debug entry is removed")
+
+	var moving_unit := UnitBase.new()
+	var hit_unit := UnitBase.new()
+	grid.add_child(moving_unit)
+	grid.add_child(hit_unit)
+	grid.collision_debug_entries["freed_moving_unit"] = {
+		"result": {"moving_unit": moving_unit, "hit_unit": hit_unit},
+		"time_left": 1.0,
+	}
+	moving_unit.queue_free()
+	await get_tree().process_frame
+	t.assert_true(grid._update_collision_debug_entries(0.01), "collision debug update handles a moving unit freed between frames")
+	t.assert_false(grid.collision_debug_entries.has("freed_moving_unit"), "freed-unit collision debug entry is removed")
+	hit_unit.queue_free()
+	await get_tree().process_frame
 
 
 func _test_battle_button_layout(grid: GridSystem) -> void:
